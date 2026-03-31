@@ -1111,12 +1111,22 @@ The adapter layer is what allows one service layer to run on Supabase, Neon, raw
 
 ```typescript
 // packages/core/src/adapters/interface.ts
-import type { SQL, InferInsertModel, InferSelectModel } from 'drizzle-orm'
-import type { PgDatabase } from 'drizzle-orm/pg-core'
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import type { SQL, InferSelectModel } from 'drizzle-orm'
 import type { customFieldDefinitions } from '../schema/tables'
 
-export type OrbitDatabase = PgDatabase<Record<string, never>> | BetterSQLite3Database<Record<string, never>>
+export interface OrbitDatabase {
+  /**
+   * Implementors must wrap the callback in a real transaction boundary.
+   */
+  transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>): Promise<T>
+  execute(statement: SQL): Promise<unknown>
+}
+
+declare const MIGRATION_DATABASE_BRAND: unique symbol
+
+export type MigrationDatabase = OrbitDatabase & {
+  readonly [MIGRATION_DATABASE_BRAND]: true
+}
 
 export interface OrbitAuthContext {
   userId?: string
@@ -1140,7 +1150,7 @@ export interface IUserResolver {
 export interface ApiKeyAuthLookup {
   id: string
   organizationId: string
-  permissions: string[]
+  scopes: string[]
   revokedAt: Date | null
   expiresAt: Date | null
 }
@@ -1159,13 +1169,13 @@ export interface StorageAdapter {
   readonly supportsBranching: boolean
   readonly supportsJsonbIndexes: boolean
   readonly authorityModel: AdapterAuthorityModel
-  readonly database: OrbitDatabase
+  readonly unsafeRawDatabase: OrbitDatabase
   readonly users: IUserResolver
 
   connect(): Promise<void>
   disconnect(): Promise<void>
   migrate(): Promise<void>
-  runWithMigrationAuthority<T>(fn: (db: OrbitDatabase) => Promise<T>): Promise<T>
+  runWithMigrationAuthority<T>(fn: (db: MigrationDatabase) => Promise<T>): Promise<T>
   lookupApiKeyForAuth(keyHash: string): Promise<ApiKeyAuthLookup | null>
   transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>): Promise<T>
   execute(statement: SQL): Promise<unknown>
@@ -1191,7 +1201,7 @@ Adapter-specific requirements:
 
 Authority rules:
 
-- `adapter.database`, `transaction()`, `execute()`, and `withTenantContext()` are runtime-path primitives and must run with the least-privilege application role for the active request
+- `adapter.unsafeRawDatabase`, `transaction()`, `execute()`, and `withTenantContext()` are runtime-path primitives and must run with the least-privilege application role for the active request
 - `lookupApiKeyForAuth()` is the only pre-tenant request lookup allowed outside tenant context and must return a minimal auth DTO, not a raw `api_keys` row
 - `migrate()` and `runWithMigrationAuthority()` are migration-only primitives and must never be reachable from generic CRUD, admin list/read, search, import, webhook delivery, SDK direct mode, or MCP request paths; they may run only behind explicit schema mutation flows
 - request handlers must never use Supabase `service_role`, Postgres owners, or other bypass-RLS credentials to satisfy normal API/SDK/MCP/CLI traffic
@@ -1205,13 +1215,11 @@ export async function withTenantContext<T>(
   context: OrbitAuthContext,
   fn: (tx: OrbitDatabase) => Promise<T>,
 ): Promise<T> {
+  assertOrbitId(context.orgId, 'organization')
+
   return db.transaction(async (tx) => {
     await tx.execute(sql`select set_config('app.current_org_id', ${context.orgId}, true)`)
-    try {
-      return await fn(tx)
-    } finally {
-      await tx.execute(sql`select set_config('app.current_org_id', '', true)`)
-    }
+    return await fn(tx)
   })
 }
 ```

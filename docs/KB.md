@@ -36,7 +36,7 @@ Completed:
 Current focus:
 
 - maintain the repo knowledge base as the live hub
-- move from completed slice-1 remediation into slice 2 operational schema and repository primitives
+- move from completed slice 2 and follow-up hardening into the next core service-wave planning step
 - keep execution docs and skills aligned with implementation progress
 
 Not started yet:
@@ -96,8 +96,8 @@ Immediate next actions:
 2. Start slice 1 from [core-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-implementation-plan.md) using the defined workstreams:
    - completed on branch `core-slice-1-execution`
 3. Next:
-   - accept the slice-1 remediation branch and review outcome
-   - execute [core-slice-2-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-slice-2-plan.md)
+   - accept the slice-2 branch and follow-up hardening outcome
+   - create the next core service-wave plan for Wave 1 services
    - keep tenant-safety review in the loop for repository work
 
 ## Open Items
@@ -126,6 +126,8 @@ These are still open, but they do not block the KB:
 - 2026-03-31: Accepted [core-slice-1-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-slice-1-review.md) as the gating review artifact and created [core-slice-1-remediation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-slice-1-remediation-plan.md) to fix the blocking issues before slice 2 starts.
 - 2026-03-31: Executed the slice-1 remediation patch set on branch `core-slice-1-remediation`, reran core validation, and cleared the must-fix auth, tenant-context, and schema-helper issues that were blocking slice 2.
 - 2026-03-31: Recorded the remediation review outcome in [core-slice-1-remediation-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-slice-1-remediation-review.md); slice 1 remediation is now ready for acceptance and slice 2 is unblocked.
+- 2026-03-31: Executed core slice 2 on branch `core-slice-2-execution`, added the operational schema bridge plus query and repository primitives, and recorded the review outcome in [core-slice-2-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-slice-2-review.md).
+- 2026-03-31: Closed the slice-2 hardening follow-ups on branch `core-slice-2-execution`: added `MigrationDatabase`, restricted the raw adapter handle to `unsafeRawDatabase`, added prefix invariant coverage, strengthened the tenant-context proof harness, and landed a baseline SQLite adapter.
 
 ## Working Rule
 

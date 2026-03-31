@@ -26,6 +26,9 @@ importers:
       drizzle-orm:
         specifier: ^0.44.5
         version: 0.44.7
+      drizzle-zod:
+        specifier: ^0.8.3
+        version: 0.8.3(drizzle-orm@0.44.7)(zod@4.3.6)
       ulid:
         specifier: ^3.0.1
         version: 3.0.2
@@ -511,6 +514,12 @@ packages:
       sqlite3:
         optional: true
 
+  drizzle-zod@0.8.3:
+    resolution: {integrity: sha512-66yVOuvGhKJnTdiqj1/Xaaz9/qzOdRJADpDa68enqS6g3t0kpNkwNYjUuaeXgZfO/UWuIM9HIhSlJ6C5ZraMww==}
+    peerDependencies:
+      drizzle-orm: '>=0.36.0'
+      zod: ^3.25.0 || ^4.0.0
+
   es-module-lexer@1.7.0:
     resolution: {integrity: sha512-jEQoCwk8hyb2AZziIOLhDqpm5+2ww5uIE6lkO/6jcOCusfk6LhMHpXXfBLXTZ7Ydyt0j4VoUQv6uGNYbdW+kBA==}
 
@@ -966,6 +975,11 @@ snapshots:
   deep-eql@5.0.2: {}
 
   drizzle-orm@0.44.7: {}
+
+  drizzle-zod@0.8.3(drizzle-orm@0.44.7)(zod@4.3.6):
+    dependencies:
+      drizzle-orm: 0.44.7
+      zod: 4.3.6
 
   es-module-lexer@1.7.0: {}
 
