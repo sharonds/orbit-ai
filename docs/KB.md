@@ -1,0 +1,122 @@
+# Orbit AI KB
+
+Date: 2026-03-31
+Status: Active working hub
+Current baseline commit: `e326e39`
+
+## What Orbit Is
+
+Orbit AI is CRM infrastructure for developers and AI agents.
+
+It is not a CRM application. It is the package and interface layer for:
+
+- core CRM schema and services
+- REST API
+- TypeScript SDK
+- CLI
+- MCP server
+- integrations
+
+## Current Status
+
+Planning and security baseline are in place.
+
+Completed:
+
+- strategy docs
+- product brief and release definition
+- six implementation specs
+- security architecture
+- database hardening checklist
+- focused threat model
+- skills plan
+- docs reconciliation and validation reports
+
+Current focus:
+
+- maintain the repo knowledge base as the live hub
+- create the first two execution skills needed for core
+- begin `@orbit-ai/core` slice 1 after the skills exist
+
+Not started yet:
+
+- package implementation
+- skill creation
+
+## Frozen Decisions
+
+- One Orbit project maps to one database.
+- Developers choose the project database.
+- Initial supported adapters are Supabase, Neon, and SQLite for local/dev.
+- A project can be single-organization or multi-organization.
+- Hosted Orbit should provision one database per project.
+- Hosted v1 restricts live schema apply/rollback.
+- Hosted blocks private/internal webhook targets by default.
+- SQLite is not a production isolation model.
+- IDs use type-prefixed ULIDs.
+- API, SDK, CLI, and MCP follow the reconciled envelope/redaction contracts in the specs.
+
+## What Is Canonical
+
+Use these files first:
+
+- Product and strategy:
+  - [META-PLAN.md](/Users/sharonsciammas/orbit-ai/docs/META-PLAN.md)
+  - [orbit-ai-prd.md](/Users/sharonsciammas/orbit-ai/docs/strategy/orbit-ai-prd.md)
+  - [orbit-ai-ard.md](/Users/sharonsciammas/orbit-ai/docs/strategy/orbit-ai-ard.md)
+- Product management:
+  - [orbit-ai-product-brief.md](/Users/sharonsciammas/orbit-ai/docs/product/orbit-ai-product-brief.md)
+  - [release-definition-v1.md](/Users/sharonsciammas/orbit-ai/docs/product/release-definition-v1.md)
+- Implementation contracts:
+  - [01-core.md](/Users/sharonsciammas/orbit-ai/docs/specs/01-core.md)
+  - [02-api.md](/Users/sharonsciammas/orbit-ai/docs/specs/02-api.md)
+  - [03-sdk.md](/Users/sharonsciammas/orbit-ai/docs/specs/03-sdk.md)
+  - [04-cli.md](/Users/sharonsciammas/orbit-ai/docs/specs/04-cli.md)
+  - [05-mcp.md](/Users/sharonsciammas/orbit-ai/docs/specs/05-mcp.md)
+  - [06-integrations.md](/Users/sharonsciammas/orbit-ai/docs/specs/06-integrations.md)
+- Security:
+  - [security-architecture.md](/Users/sharonsciammas/orbit-ai/docs/security/security-architecture.md)
+  - [database-hardening-checklist.md](/Users/sharonsciammas/orbit-ai/docs/security/database-hardening-checklist.md)
+  - [orbit-ai-threat-model.md](/Users/sharonsciammas/orbit-ai/docs/security/orbit-ai-threat-model.md)
+- Execution support:
+  - [IMPLEMENTATION-PLAN.md](/Users/sharonsciammas/orbit-ai/docs/IMPLEMENTATION-PLAN.md)
+  - [core-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-implementation-plan.md)
+  - [orbit-skills-plan.md](/Users/sharonsciammas/orbit-ai/docs/skills/orbit-skills-plan.md)
+
+## What Is Next
+
+Immediate next actions:
+
+1. Create only the minimum pre-core skills:
+   - `orbit-tenant-safety-review`
+   - `orbit-schema-change`
+2. Start slice 1 from [core-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-implementation-plan.md):
+   - Milestone 0
+   - Milestone 1
+   - bootstrap-table portions of Milestone 2
+   - authority-boundary portions of Milestone 4
+3. Stop after slice 1 and review before moving into repository primitives or wave-1 services.
+
+## Open Items
+
+These are still open, but they do not block the KB:
+
+- hosted launch wording beyond the current “restricted hosted v1” posture
+- raw Postgres support milestone after the first adapter wave
+- public release sequencing across packages
+- contribution and open-source governance docs
+
+## Decision Log
+
+- 2026-03-31: Reconciled top-level docs and implementation specs into one baseline. See [docs-validation-report.md](/Users/sharonsciammas/orbit-ai/docs/review/docs-validation-report.md) and [docs-reconciliation-task-list.md](/Users/sharonsciammas/orbit-ai/docs/review/docs-reconciliation-task-list.md).
+- 2026-03-31: Froze the product model as one Orbit project = one database, with single-org or multi-org inside that project.
+- 2026-03-31: Froze hosted security posture to restrict live schema apply/rollback in v1.
+- 2026-03-31: Froze hosted outbound webhook policy to block private/internal targets by default.
+- 2026-03-31: Finalized the focused threat model in [orbit-ai-threat-model.md](/Users/sharonsciammas/orbit-ai/docs/security/orbit-ai-threat-model.md).
+- 2026-03-31: Defined the first skills backlog in [orbit-skills-plan.md](/Users/sharonsciammas/orbit-ai/docs/skills/orbit-skills-plan.md).
+- 2026-03-31: Upgraded [IMPLEMENTATION-PLAN.md](/Users/sharonsciammas/orbit-ai/docs/IMPLEMENTATION-PLAN.md) into the execution-grade baseline.
+- 2026-03-31: Created and reviewed [core-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-implementation-plan.md); the final sub-agent review returned no findings.
+
+## Working Rule
+
+If a document conflicts with this KB, treat the detailed canonical doc as the source of truth and update the KB immediately after.

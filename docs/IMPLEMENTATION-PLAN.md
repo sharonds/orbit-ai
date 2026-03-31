@@ -1,221 +1,453 @@
 # Orbit AI Implementation Plan
 
 Date: 2026-03-31
-Status: Draft after top-level docs reconciliation
-Prerequisite: complete the remaining implementation-facing contract pushdown from [docs-validation-report.md](/Users/sharonsciammas/orbit-ai/docs/review/docs-validation-report.md)
+Status: Execution baseline
+Related:
+- [KB.md](/Users/sharonsciammas/orbit-ai/docs/KB.md)
+- [release-definition-v1.md](/Users/sharonsciammas/orbit-ai/docs/product/release-definition-v1.md)
+- [orbit-ai-threat-model.md](/Users/sharonsciammas/orbit-ai/docs/security/orbit-ai-threat-model.md)
+- [orbit-skills-plan.md](/Users/sharonsciammas/orbit-ai/docs/skills/orbit-skills-plan.md)
 
-## 1. Exit Criteria Before Coding
+## 1. Purpose
 
-The original spec-review blockers are now closed in the package specs. Broad implementation should start only after the remaining implementation-facing clarifications are pushed into the build docs:
+This document is the execution-grade implementation plan for Orbit AI.
 
-1. Core and API specs define runtime role versus migration role expectations.
-2. Request paths explicitly prohibit elevated credentials such as Supabase `service_role`.
-3. API and MCP specs define redacted read contracts for secret-bearing objects.
-4. SDK and CLI specs agree on how `--json` output obtains envelope metadata.
-5. Top-level docs remain aligned on hosted stance, adapter rollout, and `v1` scope while implementation begins.
+It replaces the earlier “what order should we build things in” plan with a concrete delivery baseline:
 
-## 2. Recommended Build Order
+- what is already frozen
+- what can start now
+- what must happen before core execution
+- what each phase must produce
+- what validation gates must pass before moving on
 
-### Phase 0: Contract Pushdown
+## 2. Current Readiness
+
+The planning baseline is now in place.
+
+Completed:
+
+- strategy docs reconciled
+- product brief and release definition
+- implementation specs for core, API, SDK, CLI, MCP, and integrations
+- security architecture and database hardening checklist
+- focused threat model
+- skills plan
+- KB hub
+
+What this means:
+
+- broad documentation reconciliation is complete
+- package implementation can begin after the immediate execution-enablement tasks below
+- the next real implementation target is `@orbit-ai/core`
+
+## 3. Frozen Baseline
+
+Execution should assume these decisions are fixed unless a later explicit decision supersedes them:
+
+- one Orbit project maps to one database
+- developers choose the project database
+- initial supported adapter wave is Supabase, Neon, and SQLite for local/dev
+- a project may be single-organization or multi-organization
+- hosted Orbit provisions one database per project
+- hosted v1 restricts live schema apply/rollback
+- hosted blocks private/internal webhook targets by default
+- SQLite is not treated as a production isolation boundary
+- runtime and migration authority are separate
+- secret-bearing reads must be sanitized across API, CLI, MCP, and integrations
+
+## 4. Execution Principles
+
+Implementation must follow these rules:
+
+1. `@orbit-ai/core` is the source of truth for schema, IDs, shared types, tenant context, and migration behavior.
+2. No package may invent a competing wire contract when one already exists in the specs.
+3. Security-sensitive shortcuts are not allowed in order to “get moving faster.”
+4. The first package goal is a correct core, not broad surface-area progress.
+5. Start with the minimum skills required for safe execution, not the full skill backlog.
+
+## 5. Immediate Execution-Enablement Tasks
+
+These tasks should happen before broad package coding:
+
+### Task A. Finalize This Execution Plan
+
+Output:
+
+- this document upgraded from sequencing to execution baseline
+
+Done when:
+
+- phase ordering is stable
+- phase gates are explicit
+- immediate next actions are unambiguous
+
+### Task B. Decide Core Plan Location
+
+Decision:
+
+- create a separate core execution plan file rather than embedding all core detail here
+
+Recommended location:
+
+- `docs/execution/core-implementation-plan.md`
+
+Reason:
+
+- core will accumulate the most detail and should not overload the program-level plan
+
+### Task C. Create Minimum Pre-Core Skills
+
+Create only:
+
+1. `orbit-tenant-safety-review`
+2. `orbit-schema-change`
+
+Reason:
+
+- they directly reduce the top two categories of pre-core mistakes:
+  - tenant-isolation regressions
+  - schema drift and unsafe migration work
+
+### Task D. Prepare Core Execution Plan
+
+Output:
+
+- a focused implementation plan for `@orbit-ai/core`
+
+It should break core into:
+
+- foundations
+- domain schema and repositories
+- services
+- schema engine
+- adapter implementations
+- validation
+
+## 6. Program Phases
+
+### Phase 0. Execution Enablement
+
+Status:
+
+- in progress
 
 Outputs:
 
-- revised `01-core.md`
-- revised `02-api.md`
-- revised `03-sdk.md`
-- revised `04-cli.md`
-- revised `05-mcp.md`
-- revised `06-integrations.md`
-- validation note closing the remaining contract gaps
+- KB hub
+- execution-grade implementation plan
+- first two Orbit skills
+- core-only implementation plan
 
-Goals:
+Exit criteria:
 
-- push security authority rules into implementation-facing specs
-- push secret-redaction rules into API and MCP contracts
-- lock the CLI/SDK JSON contract
-- confirm the reconciled top-level docs remain the canonical product baseline
+- the KB is accepted as the current working hub
+- this implementation plan is accepted as the execution baseline
+- the first two skills exist and validate
+- the core implementation plan is ready to drive work
 
-### Phase 1: Core Foundations
+### Phase 1. Core Foundations
 
-Package: `@orbit-ai/core`
+Package:
 
-Deliverables:
+- `@orbit-ai/core`
+
+Scope:
 
 - ID utilities and parsers
-- shared error/envelope/pagination/search types
-- bootstrap org model, user, membership, and API key schema
+- shared error, envelope, pagination, and search types
+- bootstrap entities: organizations, users, memberships, API keys
 - tenant-aware adapter interface
 - migration bootstrap
-- explicit internal page type to wire envelope mapper
-- per-request tenant-context transaction pattern
+- internal page metadata to wire mapping boundary
+- transaction-bound tenant context
+
+Threat-model focus:
+
+- T1 cross-tenant leakage
+- T2 privileged credential misuse
 
 Exit criteria:
 
-- a clean migration can create the bootstrap schema without self-referential org hacks
-- request-scoped tenant context is safe on Postgres pools and SQLite
-- internal pagination and wire envelopes have one documented translation path
+- bootstrap schema can migrate cleanly
+- runtime vs migration authority is enforced in the adapter contract
+- tenant context is transaction-bound on Postgres-family adapters
+- shared types are stable enough for API and SDK implementation
 
-### Phase 2: Core Domain Schema and Services
+### Phase 2. Core Domain Schema And Services
 
-Package: `@orbit-ai/core`
+Package:
 
-Deliverables:
+- `@orbit-ai/core`
 
-- entity tables and relations
-- CRUD services for contacts, companies, deals, activities, tasks, notes, products, payments, contracts, sequences, stages, pipelines, tags, webhooks, imports, and users
-- explicit decision and service layer for system/admin entities
-- batch service support if batch remains generic
+Scope:
+
+- first-party entity tables and relations
+- CRUD repositories and services
+- admin/system service separation
 - audit logging
-- contact context
 - search service
+- contact context
+- batch behavior where still part of the public contract
+
+Threat-model focus:
+
+- T1 cross-tenant leakage
+- T3 secret leakage through read models
 
 Exit criteria:
 
-- all CRUD services run against at least one Postgres adapter and SQLite
-- cursor pagination is stable across entities
+- core entity services exist for the intended v1 surface
+- explicit admin/system entities are not mixed into generic public services
+- cursor pagination is stable across implemented entities
 
-### Phase 3: Schema Engine and RLS
+### Phase 3. Schema Engine And Policy Generation
 
-Package: `@orbit-ai/core`
+Package:
 
-Deliverables:
+- `@orbit-ai/core`
+
+Scope:
 
 - custom field registry
 - `addField`, `addEntity`, `promoteField`
 - reversible migration records
 - Postgres RLS generation
 - plugin schema extension hooks
-- plugin-owned table registration and tenant policy metadata
+
+Threat-model focus:
+
+- T2 privileged authority misuse
+- T6 unsafe schema evolution
 
 Exit criteria:
 
-- custom field creation and promotion are previewable and reversible
-- plugin tables can register tenant policy metadata
+- preview/apply/rollback behavior matches the spec
+- destructive behavior remains blocked or explicitly gated
+- plugin-owned tenant tables can register safely
 
-### Phase 4: API Server
+### Phase 4. API Server
 
-Package: `@orbit-ai/api`
+Package:
 
-Deliverables:
+- `@orbit-ai/api`
+
+Scope:
 
 - auth middleware
+- scope enforcement
 - request ID, versioning, idempotency, rate limiting
-- public and admin route layers
-- typed global search route
-- object introspection and schema routes
+- public, admin, bootstrap, and schema routes
 - webhook registration and delivery worker
 - OpenAPI generation
 
+Threat-model focus:
+
+- T2 privileged credential misuse
+- T3 secret leakage
+- T4 outbound webhook SSRF
+- T5 replay and verification failures
+
 Exit criteria:
 
-- OpenAPI matches the real route behavior
-- every supported entity has list/get/create/update/delete semantics where intended
-- read-only system entities enforce read-only semantics
-- admin-only entities enforce stronger scope checks in code, not prose
+- OpenAPI matches real routes
+- secret-bearing reads are sanitized
+- webhook and schema routes enforce the intended stronger controls
 
-### Phase 5: SDK
+### Phase 5. SDK
 
-Package: `@orbit-ai/sdk`
+Package:
 
-Deliverables:
+- `@orbit-ai/sdk`
+
+Scope:
 
 - transport abstraction
 - HTTP transport
 - direct transport
 - resource classes
-- retry and idempotency behavior
-- cross-entity search client
-- explicit record-vs-envelope public contract
-- direct-mode operation map for all supported non-CRUD routes
+- retries, idempotency, and version headers
+- explicit `.response()` and `firstPage()` behavior
+
+Threat-model focus:
+
+- T1 tenant-context parity in direct mode
+- T3 envelope and secret-handling drift
 
 Exit criteria:
 
-- API mode and direct mode produce the same public results
-- auto-pagination works uniformly
+- API mode and direct mode expose the same public semantics
+- non-CRUD routes needed by CLI and MCP have SDK support
 
-### Phase 6: CLI
+### Phase 6. CLI
 
-Package: `@orbit-ai/cli`
+Package:
 
-Deliverables:
+- `@orbit-ai/cli`
 
-- full command registry
-- formatters
-- interactive prompts
+Scope:
+
+- command registry
+- output formatters
 - `orbit init`
 - `orbit context`
-- reports and dashboard
-- `orbit mcp serve`
+- reporting/dashboard commands
+- embedded `orbit mcp serve`
+
+Threat-model focus:
+
+- T3 secret leakage in JSON output
+- operator misuse around direct mode and schema flows
 
 Exit criteria:
 
-- every declared command exists
-- `--json` mode is stable and machine-safe across commands
-- direct mode and hosted mode are both configurable from `orbit init`
+- `--json` is machine-safe and envelope-correct
+- direct mode and hosted mode are both configurable
 
-### Phase 7: MCP
+### Phase 7. MCP
 
-Package: `@orbit-ai/mcp`
+Package:
 
-Deliverables:
+- `@orbit-ai/mcp`
 
-- 23 tool definitions in code
-- tool execution runtime
-- stdio transport
-- HTTP transport
-- MCP resources
-- explicit policy for whether integrations may extend the core 23-tool set
+Scope:
+
+- 23 core tools
+- tool runtime and transports
+- resources
+- sanitized output rules
+
+Threat-model focus:
+
+- T3 secret leakage
+- prompt-driven misuse of unsafe tools
 
 Exit criteria:
 
-- tool registry matches the spec exactly
-- errors include actionable recovery guidance
+- core 23-tool registry matches the spec
+- error recovery guidance and safety annotations are implemented
 
-### Phase 8: Integrations
+### Phase 8. Integrations
 
-Package: `@orbit-ai/integrations`
+Package:
 
-Deliverables:
+- `@orbit-ai/integrations`
+
+Scope:
 
 - plugin loader
 - Gmail connector
 - Google Calendar connector
 - Stripe connector
-- connector CLI and MCP registration
-- connector persistence tables
-- inbound provider webhook and polling runners
-- internal event subscriptions
+- connector tables and serializers
+- inbound provider flows
+- extension CLI and MCP registration
+
+Threat-model focus:
+
+- T3 secret leakage
+- T4 outbound and provider-boundary abuse
+- T5 provider replay and verification failures
 
 Exit criteria:
 
-- connectors can install without modifying core package code
-- connector state is tenant-scoped and migration-safe
-- connector flows do not reuse the customer outbound webhook worker as an internal event bus
+- connectors install without modifying core package code
+- connector state is tenant-scoped and sanitized on read
+- customer outbound webhooks are not reused as the connector event bus
 
-## 3. Parallelization Strategy
+## 7. Execution Order
 
-Use sub-agents by workstream rather than by package count.
+Program order:
 
-Recommended workstreams:
+1. finish Phase 0
+2. execute Phases 1-3 for `@orbit-ai/core`
+3. start Phase 4 and Phase 5 once core contracts stabilize
+4. start CLI and MCP once SDK and API behavior are stable enough to consume
+5. start integrations only after core plugin hooks, secret-redaction model, and webhook semantics are reliable
 
-1. Core schema and migration engine
-2. API and SDK contract implementation
-3. CLI and MCP interface implementation
-4. Integrations and plugin extension model
-5. Cross-cutting eventing and serialization rules
+Recommended overlap:
 
-Parallelize only after Phase 0 closes the remaining implementation-facing contract gaps.
+- API and SDK may overlap late in core Phase 3
+- CLI and MCP may overlap after API and SDK core contracts settle
+- integrations should lag core/API by design
 
-## 4. Validation Gates
+## 8. Required Skills By Phase
 
-At the end of each phase:
+Use these skills during execution:
 
-1. run typecheck for all touched packages
-2. regenerate artifacts and verify no drift
-3. run adapter-specific integration tests where relevant
-4. update AGENTS.MD and docs for any changed contract
-5. confirm OpenAPI, SDK, CLI, and MCP still agree on the same wire format
+- Phase 0:
+  - none required yet, but create the first two skills
+- Phases 1-3:
+  - `orbit-tenant-safety-review`
+  - `orbit-schema-change`
+- Phases 4-6:
+  - add `orbit-api-sdk-parity`
+- Phase 7:
+  - add `orbit-mcp-tool-authoring`
+- Phase 8:
+  - add `orbit-integration-extraction`
 
-## 5. Immediate Next Action
+Do not create the full skills backlog before core unless execution proves it is necessary.
 
-Next action: close the remaining Phase 0 contract-pushdown items in the implementation-facing specs, then freeze a “v1 implementation baseline” before broad package work begins.
+## 9. Validation Gates
+
+Every phase must pass these gates before the next one is considered stable:
+
+1. typecheck on all touched packages
+2. regenerated artifacts checked for drift
+3. docs updated for any contract changes
+4. new tests added for new security-sensitive behavior
+5. package interfaces still align with the specs
+
+Additional mandatory security gates:
+
+- T1 gate:
+  no unresolved tenant-isolation or org-scope leakage path
+- T2 gate:
+  no request-serving path uses elevated or migration credentials
+- T3 gate:
+  no secret-bearing object has an unspecified or untested read contract
+- T4 gate:
+  hosted outbound webhook/network policy is implemented before hosted release claims
+- T5 gate:
+  webhook verification and replay handling are implemented before connector release claims
+- T6 gate:
+  schema mutation controls are implemented before hosted schema-apply exposure
+
+## 10. Tracking Model
+
+During execution, track each phase using:
+
+- status:
+  - not started
+  - in progress
+  - validation
+  - done
+- owner or active workstream
+- blocked or unblocked
+- validation evidence
+
+The KB should be updated whenever:
+
+- a phase changes status
+- a major decision changes
+- a new blocking issue appears
+
+## 11. Risks To Watch During Execution
+
+Most likely execution risks:
+
+- core implementation starts before the first two safety skills exist
+- API/SDK/CLI behavior drifts during parallel work
+- schema engine work outruns the security model
+- connector extraction starts before the secret-handling model is proven
+- the KB stops being updated and the team begins operating from stale assumptions
+
+## 12. Immediate Next Actions
+
+Next actions in order:
+
+1. accept this execution-grade implementation plan
+2. create `docs/execution/core-implementation-plan.md`
+3. create `orbit-tenant-safety-review`
+4. create `orbit-schema-change`
+5. begin `@orbit-ai/core` implementation from Phase 1
