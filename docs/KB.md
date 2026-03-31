@@ -35,7 +35,7 @@ Completed:
 Current focus:
 
 - maintain the repo knowledge base as the live hub
-- begin `@orbit-ai/core` slice 1 with the first two execution skills in place
+- begin `@orbit-ai/core` slice 1 with the three pre-core execution skills in place
 - keep execution docs and skills aligned as implementation starts
 
 Not started yet:
@@ -89,12 +89,13 @@ Immediate next actions:
 1. Minimum pre-core skills are in place:
    - `orbit-tenant-safety-review`
    - `orbit-schema-change`
-2. Start slice 1 from [core-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-implementation-plan.md):
+   - `orbit-core-slice-review`
+2. Start slice 1 from [core-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-implementation-plan.md) using the defined workstreams:
    - Milestone 0
    - Milestone 1
    - bootstrap-table portions of Milestone 2
    - authority-boundary portions of Milestone 4
-3. Stop after slice 1 and review before moving into repository primitives or wave-1 services.
+3. Stop after slice 1 and run the integrated review gate before moving into repository primitives or wave-1 services.
 
 ## Open Items
 
@@ -116,6 +117,7 @@ These are still open, but they do not block the KB:
 - 2026-03-31: Upgraded [IMPLEMENTATION-PLAN.md](/Users/sharonsciammas/orbit-ai/docs/IMPLEMENTATION-PLAN.md) into the execution-grade baseline.
 - 2026-03-31: Created and reviewed [core-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-implementation-plan.md); the final sub-agent review returned no findings.
 - 2026-03-31: Created the first two execution skills under `.claude/skills/` and tightened them after review to cover CLI contract drift and secret-redaction validation explicitly.
+- 2026-03-31: Reconciled [AGENTS.MD](/Users/sharonsciammas/orbit-ai/AGENTS.MD) with the frozen product and execution baseline, and added `orbit-core-slice-review` so completed core slices have an explicit validation gate.
 
 ## Working Rule
 

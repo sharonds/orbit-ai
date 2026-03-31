@@ -1,7 +1,7 @@
 # Orbit AI Core Implementation Plan
 
 Date: 2026-03-31
-Status: Draft
+Status: Execution-ready baseline
 Package: `@orbit-ai/core`
 Depends on:
 - [IMPLEMENTATION-PLAN.md](/Users/sharonsciammas/orbit-ai/docs/IMPLEMENTATION-PLAN.md)
@@ -41,6 +41,7 @@ If any of those are weak, downstream packages will either drift or encode securi
 5. Use the planned skills selectively during core work:
    - `orbit-tenant-safety-review`
    - `orbit-schema-change`
+   - `orbit-core-slice-review`
 
 ## 4. Non-Goals For Initial Core Execution
 
@@ -471,7 +472,49 @@ Definition of done for slice 1:
 - tenant context helper behavior is tested for Postgres-family semantics
 - `lookupApiKeyForAuth()` contract tests pass
 - runtime authority vs migration authority contract tests pass
+- one Postgres-family path proves bootstrap migration plus tenant-context behavior together in an integration-style test or harness
 - tenant-safety review has run on the slice before Milestone 3 starts
+- core-slice review has run on the completed slice before Milestone 3 starts
+
+### Slice 1 Workstream Ownership
+
+To use sub-agents safely, split slice 1 into disjoint write scopes:
+
+1. **Workstream A: package skeleton and exports**
+   - owns:
+     - `packages/core/package.json`
+     - `packages/core/tsconfig.json`
+     - `packages/core/vitest.config.ts`
+     - `packages/core/src/index.ts`
+2. **Workstream B: IDs and shared types**
+   - owns:
+     - `packages/core/src/ids/*`
+     - `packages/core/src/types/errors.ts`
+     - `packages/core/src/types/pagination.ts`
+     - `packages/core/src/types/api.ts`
+     - `packages/core/src/types/entities.ts`
+3. **Workstream C: bootstrap schema**
+   - owns:
+     - `packages/core/src/schema/helpers.ts`
+     - `packages/core/src/schema/tables.ts`
+     - `packages/core/src/schema/relations.ts`
+   - limited in slice 1 to:
+     - `organizations`
+     - `users`
+     - `organization_memberships`
+     - `api_keys`
+4. **Workstream D: adapter boundary and auth lookup**
+   - owns:
+     - `packages/core/src/adapters/interface.ts`
+     - `packages/core/src/adapters/postgres/tenant-context.ts`
+     - adapter test scaffolding for `lookupApiKeyForAuth()` and authority boundaries
+
+Coordination rules:
+
+- one workstream owns one file set; do not overlap write scopes during the same round
+- Workstream A lands first, then B/C/D can proceed in parallel
+- Workstream D may read B/C outputs but should not rewrite their files
+- slice review happens only after the four workstreams are integrated
 
 ## 7. Required Skills During Core Execution
 
@@ -489,6 +532,11 @@ Use only these skills at first:
   - field additions
   - custom field logic
   - schema-engine behavior
+- `orbit-core-slice-review`
+  Required for:
+  - completed Milestone 0-1 diffs
+  - slice-1 integration review before Milestone 3 starts
+  - checking build/test evidence against slice acceptance criteria
 
 Do not block the first core slice on building the rest of the skill backlog.
 
@@ -501,6 +549,7 @@ Validation should run at three layers:
 - unit tests for the touched layer
 - build and typecheck
 - generated artifact drift check
+- for slice 1, include one Postgres-family integration-style proof for bootstrap migration plus tenant context
 
 ### 8.2 Contract Validation
 
@@ -511,6 +560,7 @@ Validation should run at three layers:
 
 - tenant-safety review for boundary-affecting changes
 - schema-change review for migration-affecting changes
+- core-slice review for integrated slice acceptance
 - explicit confirmation against threat themes:
   - T1
   - T2
@@ -522,7 +572,7 @@ Validation should run at three layers:
 Before moving from one milestone group to the next:
 
 - Before Milestone 3 starts:
-  require a tenant-safety review outcome for any tenant-scoped table work completed in Milestone 2
+  require a tenant-safety review outcome for any tenant-scoped table work completed in Milestone 2 and a core-slice review outcome for the integrated slice
 - Before Milestone 4 is accepted:
   require a tenant-safety review outcome for adapter, auth lookup, and tenant-context work
 - Milestones 5-7:
@@ -553,8 +603,11 @@ Core is ready to unblock broad downstream work when all of the following are tru
 ## 12. Immediate Next Actions
 
 1. Accept this core implementation plan.
-2. Create `orbit-tenant-safety-review`.
-3. Create `orbit-schema-change`.
+2. Confirm the three pre-core skills are available:
+   - `orbit-tenant-safety-review`
+   - `orbit-schema-change`
+   - `orbit-core-slice-review`
+3. Assign slice-1 workstreams A-D with non-overlapping file ownership.
 4. Start slice 1:
    - Milestone 0
    - Milestone 1
