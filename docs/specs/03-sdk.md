@@ -13,6 +13,12 @@ Depends on: `@orbit-ai/core`, optionally `@orbit-ai/api`
 
 The public API must stay identical across both modes.
 
+Public SDK contract:
+
+- resource methods are record-first, not envelope-first
+- low-level response metadata is available through explicit `.withResponse()` helpers and transport internals
+- pagination helpers yield records, while preserving cursor metadata for callers that need it
+
 ## 2. Package Structure
 
 ```text
@@ -149,17 +155,18 @@ export class OrbitClient {
 export class SearchResource {
   constructor(private readonly transport: import('./transport').OrbitTransport) {}
 
-  query(input: {
+  async query(input: {
     query: string
     object_types?: string[]
     limit?: number
     cursor?: string
   }) {
-    return this.transport.request({
+    const response = await this.transport.request({
       method: 'POST',
       path: '/v1/search',
       body: input,
     })
+    return response.data
   }
 }
 ```
@@ -171,6 +178,13 @@ export class SearchResource {
 import type { ListQuery, OrbitEnvelope } from '@orbit-ai/core'
 
 export interface OrbitTransport {
+  rawRequest<T>(input: {
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+    path: string
+    query?: Record<string, unknown>
+    body?: unknown
+    headers?: Record<string, string>
+  }): Promise<OrbitEnvelope<T>>
   request<T>(input: {
     method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
     path: string
@@ -193,13 +207,17 @@ import type { OrbitClientOptions } from '../client'
 export class HttpTransport implements OrbitTransport {
   constructor(private readonly options: OrbitClientOptions) {}
 
-  async request<T>(input: {
+  async rawRequest<T>(input: {
     method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
     path: string
     query?: Record<string, unknown>
     body?: unknown
     headers?: Record<string, string>
   }) {
+    const idempotencyKey =
+      input.headers?.['idempotency-key'] ??
+      (input.method === 'GET' ? undefined : crypto.randomUUID())
+
     return retry(async () => {
       const url = new URL(input.path, this.options.baseUrl ?? 'http://localhost:3000')
       if (input.query) {
@@ -214,7 +232,7 @@ export class HttpTransport implements OrbitTransport {
           'content-type': 'application/json',
           authorization: `Bearer ${this.options.apiKey}`,
           'orbit-version': this.options.version ?? '2026-04-01',
-          'idempotency-key': input.method === 'GET' ? '' : crypto.randomUUID(),
+          ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
           ...input.headers,
         },
         body: input.body ? JSON.stringify(input.body) : undefined,
@@ -226,6 +244,16 @@ export class HttpTransport implements OrbitTransport {
 
       return (await response.json()) as Promise<import('@orbit-ai/core').OrbitEnvelope<T>>
     }, { maxRetries: this.options.maxRetries ?? 2 })
+  }
+
+  async request<T>(input: {
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+    path: string
+    query?: Record<string, unknown>
+    body?: unknown
+    headers?: Record<string, string>
+  }): Promise<OrbitEnvelope<T>> {
+    return this.rawRequest(input)
   }
 }
 ```
@@ -248,7 +276,7 @@ export class DirectTransport implements OrbitTransport {
     this.services = createCoreServices(options.adapter)
   }
 
-  async request<T>(input: {
+  async rawRequest<T>(input: {
     method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
     path: string
     query?: Record<string, unknown>
@@ -256,10 +284,31 @@ export class DirectTransport implements OrbitTransport {
   }): Promise<import('@orbit-ai/core').OrbitEnvelope<T>> {
     return dispatchDirectRequest<T>(this.services, this.options.context!, input)
   }
+
+  async request<T>(input: {
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
+    path: string
+    query?: Record<string, unknown>
+    body?: unknown
+  }): Promise<import('@orbit-ai/core').OrbitEnvelope<T>> {
+    return this.rawRequest(input)
+  }
 }
 ```
 
-`dispatchDirectRequest()` maps canonical SDK paths like `/v1/contacts` and `/v1/deals/:id/move` to the matching core service methods.
+`dispatchDirectRequest()` maps canonical SDK paths like `/v1/contacts`, `/v1/deals/:id/move`, `/v1/search`, `/v1/context/:contactId`, and schema routes to the matching core service methods and must synthesize the same envelope shape as HTTP mode.
+
+Required direct-mode mapping coverage:
+
+- CRUD resource routes
+- `/v1/<entity>/search`
+- `/v1/<entity>/batch`
+- `/v1/deals/:id/move`
+- `/v1/sequences/:id/enroll`
+- `/v1/sequence_enrollments/:id/unenroll`
+- `/v1/search`
+- `/v1/context/:contactId`
+- `/v1/objects*` and schema migration preview routes
 
 ## 5. Resource Base Class
 
@@ -275,39 +324,62 @@ export class BaseResource<TRecord, TCreate, TUpdate> {
     protected readonly basePath: string,
   ) {}
 
-  create(input: TCreate) {
-    return this.transport.request<TRecord>({ method: 'POST', path: this.basePath, body: input })
+  async create(input: TCreate): Promise<TRecord> {
+    const response = await this.transport.request<TRecord>({ method: 'POST', path: this.basePath, body: input })
+    return response.data
   }
 
-  get(id: string, include?: string[]) {
-    return this.transport.request<TRecord>({
+  async get(id: string, include?: string[]): Promise<TRecord> {
+    const response = await this.transport.request<TRecord>({
       method: 'GET',
       path: `${this.basePath}/${id}`,
       query: include?.length ? { include: include.join(',') } : undefined,
     })
+    return response.data
   }
 
-  update(id: string, input: TUpdate) {
-    return this.transport.request<TRecord>({ method: 'PATCH', path: `${this.basePath}/${id}`, body: input })
+  async update(id: string, input: TUpdate): Promise<TRecord> {
+    const response = await this.transport.request<TRecord>({ method: 'PATCH', path: `${this.basePath}/${id}`, body: input })
+    return response.data
   }
 
-  delete(id: string) {
-    return this.transport.request<{ id: string; deleted: true }>({
+  async delete(id: string): Promise<{ id: string; deleted: true }> {
+    const response = await this.transport.request<{ id: string; deleted: true }>({
       method: 'DELETE',
       path: `${this.basePath}/${id}`,
     })
+    return response.data
   }
 
   list(query: ListQuery = {}) {
     return new AutoPager<TRecord>(this.transport, this.basePath, query)
   }
 
-  search(body: Record<string, unknown>) {
-    return this.transport.request<TRecord[]>({
+  async search(body: Record<string, unknown>): Promise<TRecord[]> {
+    const response = await this.transport.request<TRecord[]>({
       method: 'POST',
       path: `${this.basePath}/search`,
       body,
     })
+    return response.data
+  }
+
+  withResponse() {
+    return {
+      create: (input: TCreate) => this.transport.rawRequest<TRecord>({ method: 'POST', path: this.basePath, body: input }),
+      get: (id: string, include?: string[]) =>
+        this.transport.rawRequest<TRecord>({
+          method: 'GET',
+          path: `${this.basePath}/${id}`,
+          query: include?.length ? { include: include.join(',') } : undefined,
+        }),
+      update: (id: string, input: TUpdate) =>
+        this.transport.rawRequest<TRecord>({ method: 'PATCH', path: `${this.basePath}/${id}`, body: input }),
+      delete: (id: string) =>
+        this.transport.rawRequest<{ id: string; deleted: true }>({ method: 'DELETE', path: `${this.basePath}/${id}` }),
+      search: (body: Record<string, unknown>) =>
+        this.transport.rawRequest<TRecord[]>({ method: 'POST', path: `${this.basePath}/search`, body }),
+    }
   }
 }
 ```
@@ -365,11 +437,12 @@ export class ContactResource extends BaseResource<ContactRecord, CreateContactIn
     super(transport, '/v1/contacts')
   }
 
-  context(idOrEmail: string) {
-    return this.transport.request({
+  async context(idOrEmail: string) {
+    const response = await this.transport.request({
       method: 'GET',
       path: `/v1/context/${idOrEmail}`,
     })
+    return response.data
   }
 }
 ```
@@ -414,20 +487,23 @@ export class DealResource extends BaseResource<DealRecord, Record<string, unknow
     super(transport, '/v1/deals')
   }
 
-  move(id: string, input: MoveDealStageInput) {
-    return this.transport.request<DealRecord>({
+  async move(id: string, input: MoveDealStageInput): Promise<DealRecord> {
+    const response = await this.transport.request<DealRecord>({
       method: 'POST',
       path: `/v1/deals/${id}/move`,
       body: input,
     })
+    return response.data
   }
 
-  pipeline(query: Record<string, unknown> = {}) {
-    return this.transport.request({ method: 'GET', path: '/v1/deals/pipeline', query })
+  async pipeline(query: Record<string, unknown> = {}) {
+    const response = await this.transport.request({ method: 'GET', path: '/v1/deals/pipeline', query })
+    return response.data
   }
 
-  stats(query: Record<string, unknown> = {}) {
-    return this.transport.request({ method: 'GET', path: '/v1/deals/stats', query })
+  async stats(query: Record<string, unknown> = {}) {
+    const response = await this.transport.request({ method: 'GET', path: '/v1/deals/stats', query })
+    return response.data
   }
 }
 ```
@@ -449,36 +525,41 @@ export interface AddFieldInput {
 export class SchemaResource {
   constructor(private readonly transport: import('../transport').OrbitTransport) {}
 
-  listObjects() {
-    return this.transport.request({ method: 'GET', path: '/v1/objects' })
+  async listObjects() {
+    const response = await this.transport.request({ method: 'GET', path: '/v1/objects' })
+    return response.data
   }
 
-  describeObject(type: string) {
-    return this.transport.request({ method: 'GET', path: `/v1/objects/${type}` })
+  async describeObject(type: string) {
+    const response = await this.transport.request({ method: 'GET', path: `/v1/objects/${type}` })
+    return response.data
   }
 
-  addField(type: string, input: AddFieldInput) {
-    return this.transport.request({
+  async addField(type: string, input: AddFieldInput) {
+    const response = await this.transport.request({
       method: 'POST',
       path: `/v1/objects/${type}/fields`,
       body: input,
     })
+    return response.data
   }
 
-  updateField(type: string, fieldName: string, input: Partial<AddFieldInput>) {
-    return this.transport.request({
+  async updateField(type: string, fieldName: string, input: Partial<AddFieldInput>) {
+    const response = await this.transport.request({
       method: 'PATCH',
       path: `/v1/objects/${type}/fields/${fieldName}`,
       body: input,
     })
+    return response.data
   }
 
-  previewMigration(body: Record<string, unknown>) {
-    return this.transport.request({
+  async previewMigration(body: Record<string, unknown>) {
+    const response = await this.transport.request({
       method: 'POST',
       path: '/v1/schema/migrations/preview',
       body,
     })
+    return response.data
   }
 }
 ```
@@ -548,6 +629,7 @@ Resource coverage requirements:
 
 - every public API entity gets a dedicated resource class
 - system entities may use admin resources under `client.admin.*` in a later phase, but `webhooks`, `imports`, `users`, `tags`, `stages`, and all sequence sub-entities are part of MVP
+- resource-specific non-CRUD methods must be added wherever the API defines workflow routes; this includes batch, enroll/unenroll, attach/detach, import/export, and move/stats/context operations
 
 ## 9. Retry Policy
 
@@ -626,5 +708,7 @@ The emitter is local-only. It mirrors client-side actions and does not replace w
 2. Contacts, companies, deals, activities, tasks, notes, products, payments, contracts, sequences, pipelines, schema, webhooks, and users each expose resource classes.
 3. `list().autoPaginate()` works across both transports.
 4. Errors surface as typed `OrbitApiError` with shared Orbit error codes.
-5. Retries, idempotency, and version headers are applied automatically.
-6. Resource interfaces use real TypeScript types, not `any`.
+5. A single logical write request reuses one idempotency key across all retry attempts.
+6. Public resource methods return records, while `.withResponse()` exposes raw envelopes.
+7. Retries, idempotency, and version headers are applied automatically.
+8. Resource interfaces use real TypeScript types, not `any`.

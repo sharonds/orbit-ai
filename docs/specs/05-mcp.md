@@ -6,7 +6,7 @@ Depends on: `@orbit-ai/core`, `@orbit-ai/sdk`
 
 ## 1. Scope
 
-`@orbit-ai/mcp` is Orbit’s agent-native interface. It exposes 23 tools across 8 tiers using Attio-style universal tools with `object_type` parameters, plus a small set of semantic workflow tools where abstraction helps agents.
+`@orbit-ai/mcp` is Orbit’s agent-native interface. It exposes 23 core tools across 8 tiers using Attio-style universal tools with `object_type` parameters, plus a small set of semantic workflow tools where abstraction helps agents.
 
 Requirements:
 
@@ -16,6 +16,13 @@ Requirements:
 - error responses with `hint` and `recovery`
 - resource endpoints for reference data
 - full reuse of core and SDK types
+
+Tool surface rule:
+
+- `@orbit-ai/mcp` ships exactly 23 core tools
+- integrations may register extension tools only in a composite server runtime
+- extension tools must use provider namespaces such as `integrations.gmail.send_email`
+- the core package contract remains fixed at 23 tools
 
 ## 2. Package Structure
 
@@ -45,7 +52,7 @@ packages/mcp/
 
 ## 3. Tool Inventory
 
-Exactly 23 tools:
+Exactly 23 core tools:
 
 ### 3.1 Core Record Operations
 
@@ -111,6 +118,38 @@ Descriptions must include:
 - when not to use the tool
 - required IDs or preconditions
 
+Shared schemas:
+
+```typescript
+// packages/mcp/src/tools/schemas.ts
+const BASE_OBJECT_TYPES = [
+  'contacts',
+  'companies',
+  'deals',
+  'pipelines',
+  'stages',
+  'activities',
+  'tasks',
+  'notes',
+  'products',
+  'payments',
+  'contracts',
+  'sequences',
+  'sequence_steps',
+  'sequence_enrollments',
+  'sequence_events',
+  'tags',
+  'webhooks',
+  'users',
+  'imports',
+] as const
+
+export const ObjectTypeSchema = z.enum(BASE_OBJECT_TYPES)
+export const SearchObjectTypeSchema = z.union([ObjectTypeSchema, z.literal('all')])
+export const CursorSchema = z.string().nullable().optional()
+export const LimitSchema = z.number().int().min(1).max(100).optional()
+```
+
 Example:
 
 ```typescript
@@ -128,7 +167,7 @@ export const getRecordTool: Tool = {
     properties: {
       object_type: {
         type: 'string',
-        enum: ['contacts', 'companies', 'deals', 'pipelines', 'stages', 'activities', 'tasks', 'notes', 'products', 'payments', 'contracts', 'sequences', 'sequence_steps', 'sequence_enrollments', 'sequence_events', 'tags', 'webhooks', 'users'],
+        enum: [...BASE_OBJECT_TYPES],
       },
       record_id: { type: 'string' },
       include: {
@@ -194,6 +233,166 @@ export const getRecordTool: Tool = {
 
 ## 6. Tool Implementations
 
+All 23 core tools must be defined in TypeScript, not prose only.
+
+```typescript
+// packages/mcp/src/tools/core-records.ts
+export const searchRecordsTool: Tool = defineTool('search_records', {
+  title: 'Search Orbit records',
+  description: 'Use this to discover records by text or filters. Prefer this over get_record when you do not already know the record ID.',
+  inputSchema: zodToJsonSchema(z.object({
+    object_type: SearchObjectTypeSchema,
+    query: z.string().optional(),
+    filter: z.record(z.unknown()).optional(),
+    sort: z.array(z.object({ field: z.string(), direction: z.enum(['asc', 'desc']) })).optional(),
+    limit: LimitSchema,
+    cursor: CursorSchema,
+    include: z.array(z.string()).optional(),
+  })),
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+})
+
+export const getRecordTool: Tool = defineTool('get_record', {
+  title: 'Get one Orbit record',
+  description: 'Use this only when you already know the exact Orbit record ID.',
+  inputSchema: zodToJsonSchema(z.object({
+    object_type: ObjectTypeSchema,
+    record_id: z.string(),
+    include: z.array(z.string()).optional(),
+  })),
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+})
+
+export const createRecordTool: Tool = defineTool('create_record', {
+  title: 'Create an Orbit record',
+  description: 'Create one record of a known object type. Do not use this for bulk writes; use bulk_operation instead.',
+  inputSchema: zodToJsonSchema(z.object({
+    object_type: ObjectTypeSchema,
+    record: z.record(z.unknown()),
+    idempotency_key: z.string().optional(),
+  })),
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+})
+
+export const updateRecordTool: Tool = defineTool('update_record', {
+  title: 'Update an Orbit record',
+  description: 'Patch one known record. Use move_deal_stage instead of patching deal stage_id directly.',
+  inputSchema: zodToJsonSchema(z.object({
+    object_type: ObjectTypeSchema,
+    record_id: z.string(),
+    record: z.record(z.unknown()),
+    idempotency_key: z.string().optional(),
+  })),
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+})
+
+export const deleteRecordTool: Tool = defineTool('delete_record', {
+  title: 'Delete an Orbit record',
+  description: 'Delete one known record. Use only when deletion is explicitly intended.',
+  inputSchema: zodToJsonSchema(z.object({
+    object_type: ObjectTypeSchema,
+    record_id: z.string(),
+    confirm: z.literal(true),
+    idempotency_key: z.string().optional(),
+  })),
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+})
+
+export const relateRecordsTool: Tool = defineTool('relate_records', {
+  title: 'Create a relationship between two records',
+  description: 'Use this for relationship operations such as tags or supported associations. Do not use it to fake workflow actions.',
+  inputSchema: zodToJsonSchema(z.object({
+    source_object_type: ObjectTypeSchema,
+    source_record_id: z.string(),
+    target_object_type: ObjectTypeSchema,
+    target_record_id: z.string(),
+    relationship_type: z.enum(['tag', 'contact_company', 'contact_deal', 'company_deal']),
+    idempotency_key: z.string().optional(),
+  })),
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+})
+
+export const listRelatedRecordsTool: Tool = defineTool('list_related_records', {
+  title: 'List records related to a known record',
+  description: 'Use this to inspect deals for a contact, contacts for a company, tags on a record, or similar known relationships.',
+  inputSchema: zodToJsonSchema(z.object({
+    object_type: ObjectTypeSchema,
+    record_id: z.string(),
+    relationship: z.string(),
+    limit: LimitSchema,
+    cursor: CursorSchema,
+  })),
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+})
+
+export const bulkOperationTool: Tool = defineTool('bulk_operation', {
+  title: 'Run a bounded batch of record operations',
+  description: 'Use this for small bounded write batches. Do not exceed 100 operations.',
+  inputSchema: zodToJsonSchema(z.object({
+    object_type: ObjectTypeSchema,
+    operations: z.array(z.union([
+      z.object({ action: z.literal('create'), record: z.record(z.unknown()) }),
+      z.object({ action: z.literal('update'), record_id: z.string(), record: z.record(z.unknown()) }),
+      z.object({ action: z.literal('delete'), record_id: z.string(), confirm: z.literal(true) }),
+    ])).max(100),
+  })),
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+})
+```
+
+```typescript
+// packages/mcp/src/tools/pipelines.ts
+export const getPipelinesTool = defineTool('get_pipelines', { /* z.object({ include_stats?: z.boolean() }) */ })
+export const moveDealStageTool = defineTool('move_deal_stage', { /* z.object({ deal_id, stage_id, occurred_at?, note? }) */ })
+export const getPipelineStatsTool = defineTool('get_pipeline_stats', { /* z.object({ pipeline_id?, period? }) */ })
+```
+
+```typescript
+// packages/mcp/src/tools/activities.ts
+export const logActivityTool = defineTool('log_activity', { /* z.object({ type, subject?, body?, contact_id?, deal_id?, company_id?, occurred_at, duration_minutes?, outcome? }) */ })
+export const listActivitiesTool = defineTool('list_activities', { /* z.object({ contact_id?, deal_id?, company_id?, type?, limit?, cursor? }) */ })
+```
+
+```typescript
+// packages/mcp/src/tools/schema.ts
+export const getSchemaTool = defineTool('get_schema', { /* z.object({ object_type?: SearchObjectTypeSchema }) */ })
+export const createCustomFieldTool = defineTool('create_custom_field', { /* z.object({ object_type: ObjectTypeSchema, field_name, field_type, label, is_required?, options?, validation? }) */ })
+export const updateCustomFieldTool = defineTool('update_custom_field', { /* z.object({ object_type: ObjectTypeSchema, field_name, patch: z.record(z.unknown()) }) */ })
+```
+
+```typescript
+// packages/mcp/src/tools/imports.ts
+export const importRecordsTool = defineTool('import_records', { /* z.object({ object_type: ObjectTypeSchema, source_format: z.enum(['csv','json']), source, dry_run? }) */ })
+export const exportRecordsTool = defineTool('export_records', { /* z.object({ object_type: ObjectTypeSchema, format: z.enum(['csv','json']), filter?, limit?, cursor? }) */ })
+```
+
+```typescript
+// packages/mcp/src/tools/sequences.ts
+export const enrollInSequenceTool = defineTool('enroll_in_sequence', { /* z.object({ sequence_id, contact_id, idempotency_key? }) */ })
+export const unenrollFromSequenceTool = defineTool('unenroll_from_sequence', { /* z.object({ enrollment_id, reason?, idempotency_key? }) */ })
+```
+
+```typescript
+// packages/mcp/src/tools/analytics.ts
+export const runReportTool = defineTool('run_report', { /* z.object({ report_type: z.enum(['pipeline','activities','conversion']), filters?, limit?, cursor? }) */ })
+export const getDashboardSummaryTool = defineTool('get_dashboard_summary', { /* z.object({ period?: z.string() }) */ })
+```
+
+```typescript
+// packages/mcp/src/tools/team.ts
+export const assignRecordTool = defineTool('assign_record', {
+  title: 'Assign a record to a team member',
+  description: 'Use this to set assigned_to_user_id on assignable records such as contacts, companies, deals, or tasks.',
+  inputSchema: zodToJsonSchema(z.object({
+    object_type: z.enum(['contacts', 'companies', 'deals', 'tasks']),
+    record_id: z.string(),
+    user_id: z.string(),
+    idempotency_key: z.string().optional(),
+  })),
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+})
+```
+
 ```typescript
 // packages/mcp/src/tools/registry.ts
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
@@ -214,6 +413,38 @@ export function registerTools(server: Server, client: import('@orbit-ai/sdk').Or
 ```
 
 `executeTool()` must use a simple dispatch table and return MCP content blocks, not prose-only blobs.
+
+The registry must include all 23 core tools explicitly:
+
+```typescript
+export function buildTools(): Tool[] {
+  return [
+    searchRecordsTool,
+    getRecordTool,
+    createRecordTool,
+    updateRecordTool,
+    deleteRecordTool,
+    relateRecordsTool,
+    listRelatedRecordsTool,
+    bulkOperationTool,
+    getPipelinesTool,
+    moveDealStageTool,
+    getPipelineStatsTool,
+    logActivityTool,
+    listActivitiesTool,
+    getSchemaTool,
+    createCustomFieldTool,
+    updateCustomFieldTool,
+    importRecordsTool,
+    exportRecordsTool,
+    enrollInSequenceTool,
+    unenrollFromSequenceTool,
+    runReportTool,
+    getDashboardSummaryTool,
+    assignRecordTool,
+  ]
+}
+```
 
 ## 7. Semantic Tools
 
@@ -318,6 +549,7 @@ Example result:
 At minimum ship one MCP resource:
 
 - `orbit://team-members`
+- `orbit://schema`
 
 It returns active users for the current organization to help agents assign work without listing tools first.
 
@@ -331,6 +563,22 @@ export async function readTeamMembers(client: import('@orbit-ai/sdk').OrbitClien
         uri: 'orbit://team-members',
         mimeType: 'application/json',
         text: JSON.stringify(result.data, null, 2),
+      },
+    ],
+  }
+}
+```
+
+```typescript
+// packages/mcp/src/resources/schema.ts
+export async function readSchema(client: import('@orbit-ai/sdk').OrbitClient) {
+  const result = await client.schema.listObjects()
+  return {
+    contents: [
+      {
+        uri: 'orbit://schema',
+        mimeType: 'application/json',
+        text: JSON.stringify(result, null, 2),
       },
     ],
   }
@@ -397,3 +645,4 @@ export async function startMcpServer(options: {
 4. Errors always include `hint` and `recovery`.
 5. Both stdio and HTTP transports work against the same tool registry.
 6. Tool descriptions are explicit enough for LLM selection and mention when not to use the tool.
+7. The core `@orbit-ai/mcp` package remains fixed at 23 tools even when integrations register extension tools in a composite runtime.

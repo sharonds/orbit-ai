@@ -243,10 +243,24 @@ export interface OrbitEnvelope<T> {
   links: EnvelopeLinks
 }
 
-export interface PaginatedResult<T> {
+export interface InternalPaginatedResult<T> {
   data: T[]
   nextCursor: string | null
   hasMore: boolean
+}
+
+export function toWirePageMeta(input: {
+  requestId: string
+  version: string
+  page: InternalPaginatedResult<unknown>
+}): PageMeta {
+  return {
+    request_id: input.requestId,
+    cursor: null,
+    next_cursor: input.page.nextCursor,
+    has_more: input.page.hasMore,
+    version: input.version,
+  }
 }
 ```
 
@@ -307,16 +321,24 @@ export interface SearchQuery extends ListQuery {
 }
 ```
 
+Serialization rule:
+
+- internal service, adapter, and repository types may use camelCase
+- HTTP, MCP, CLI JSON, and persisted webhook payloads use snake_case
+- `@orbit-ai/core` owns the required mapper helpers between internal page results and wire envelopes so downstream packages never hand-roll them
+
 ## 5. Drizzle Schema Definitions
 
-All first-party tables live in schema `orbit`. Every table includes:
+All first-party tables live in schema `orbit`.
+
+Tenant-scoped tables include:
 
 - `id text primary key`
 - `organization_id text not null references orbit.organizations(id)`
 - `created_at timestamptz not null default now()`
 - `updated_at timestamptz not null default now()`
 
-For `organizations`, `organization_id` is self-referential and must equal `id`. This looks unusual, but it keeps the invariant the user requested: every table carries `organization_id` referencing `organizations`.
+Bootstrap and platform tables may omit `organization_id`. In v1, `organizations` is the only bootstrap table and is intentionally not tenant-scoped. All other first-party and plugin extension tables that hold tenant data must include `organization_id`.
 
 ### 5.1 Shared Column Helpers
 
@@ -377,7 +399,6 @@ export const organizations = orbit.table(
   'organizations',
   {
     id: text('id').primaryKey(),
-    organizationId: text('organization_id').notNull(),
     name: text('name').notNull(),
     slug: text('slug').notNull(),
     plan: text('plan').notNull().default('community'),
@@ -385,14 +406,7 @@ export const organizations = orbit.table(
     settings: jsonb('settings').$type<Record<string, unknown>>().notNull().default({}),
     ...timestamps,
   },
-  (table) => [
-    foreignKey({
-      columns: [table.organizationId],
-      foreignColumns: [table.id],
-      name: 'organizations_organization_id_fkey',
-    }),
-    uniqueIndex('organizations_slug_idx').on(table.slug),
-  ],
+  (table) => [uniqueIndex('organizations_slug_idx').on(table.slug)],
 )
 
 export const users = orbit.table(
@@ -1132,8 +1146,10 @@ export interface StorageAdapter {
   migrate(): Promise<void>
   transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>): Promise<T>
   execute(statement: SQL): Promise<unknown>
-  enableTenantContext(context: OrbitAuthContext): Promise<void>
-  clearTenantContext(): Promise<void>
+  withTenantContext<T>(
+    context: OrbitAuthContext,
+    fn: (db: OrbitDatabase) => Promise<T>,
+  ): Promise<T>
   createBranch?(name: string): Promise<{ id: string; name: string }>
   mergeBranch?(id: string): Promise<void>
   getSchemaSnapshot(): Promise<{
@@ -1149,6 +1165,55 @@ Adapter-specific requirements:
 - Neon: same as raw Postgres plus `createBranch` and `mergeBranch`
 - Raw Postgres: full SQL support, no Supabase auth assumptions
 - SQLite: application-level tenant enforcement, no database RLS, schema changes may require table recreation
+
+```typescript
+// packages/core/src/adapters/postgres/tenant-context.ts
+export async function withTenantContext<T>(
+  db: OrbitDatabase,
+  context: OrbitAuthContext,
+  fn: (tx: OrbitDatabase) => Promise<T>,
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.current_org_id', ${context.orgId}, true)`)
+    try {
+      return await fn(tx)
+    } finally {
+      await tx.execute(sql`select set_config('app.current_org_id', '', true)`)
+    }
+  })
+}
+```
+
+Postgres-family adapters must implement `withTenantContext()` with a transaction and `SET LOCAL`/transaction-local config semantics. SQLite adapters may no-op the session setting but must still route through `withTenantContext()` so the calling contract stays uniform.
+
+### 8.1 Plugin Schema Extensions
+
+`@orbit-ai/core` owns the extension contract used by `@orbit-ai/integrations`.
+
+```typescript
+export interface PluginSchemaExtension {
+  key: string
+  tables: string[]
+  tenantScopedTables: string[]
+  migrations: Array<{
+    id: string
+    up: string[]
+    down: string[]
+  }>
+  registerObjectTypes?: string[]
+}
+
+export interface PluginSchemaRegistry {
+  register(extension: PluginSchemaExtension): void
+  list(): PluginSchemaExtension[]
+}
+```
+
+Rules:
+
+- plugin tables that hold tenant data must appear in `tenantScopedTables`
+- plugin migrations run through the same schema engine recordkeeping as first-party migrations
+- plugin tenant tables receive the same RLS generation and application-level tenant filtering as first-party tables
 
 ## 9. RLS Auto-Generation
 
@@ -1207,7 +1272,8 @@ export function generatePostgresRlsSql(schema = 'orbit'): string[] {
 
 Tenant context rules:
 
-- API and SDK direct-DB mode call `set_config('app.current_org_id', $1, true)` before queries
+- `organizations` is intentionally excluded because it is a bootstrap/platform table, not a tenant table
+- API and SDK direct-DB mode must execute tenant-scoped work inside `adapter.withTenantContext(...)`
 - `organization_id` must always be injected by the service layer, never trusted from public callers
 - repositories still include explicit `where organization_id = ctx.orgId` filters even when RLS is enabled
 
@@ -1285,7 +1351,9 @@ Every entity service implements a common contract and injects `organization_id` 
 
 ```typescript
 // packages/core/src/services/entity-service.ts
-import type { PaginatedResult, SearchQuery } from '../types/api'
+import type { InternalPaginatedResult } from '../types/pagination'
+import type { SearchQuery } from '../types/api'
+import type { OrbitErrorShape } from '../types/errors'
 import type { OrbitAuthContext } from '../adapters/interface'
 
 export interface EntityService<TCreate, TUpdate, TRecord> {
@@ -1293,8 +1361,24 @@ export interface EntityService<TCreate, TUpdate, TRecord> {
   get(ctx: OrbitAuthContext, id: string): Promise<TRecord | null>
   update(ctx: OrbitAuthContext, id: string, input: TUpdate): Promise<TRecord>
   delete(ctx: OrbitAuthContext, id: string): Promise<void>
-  list(ctx: OrbitAuthContext, query: SearchQuery): Promise<PaginatedResult<TRecord>>
-  search(ctx: OrbitAuthContext, query: SearchQuery): Promise<PaginatedResult<TRecord>>
+  list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<TRecord>>
+  search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<TRecord>>
+}
+
+export interface BatchCapableEntityService<TCreate, TUpdate, TRecord> extends EntityService<TCreate, TUpdate, TRecord> {
+  batch(
+    ctx: OrbitAuthContext,
+    operations: Array<
+      | { action: 'create'; data: TCreate }
+      | { action: 'update'; id: string; data: TUpdate }
+      | { action: 'delete'; id: string }
+    >,
+  ): Promise<Array<{ ok: true; result: TRecord | { id: string; deleted: true } } | { ok: false; error: OrbitErrorShape }>>
+}
+
+export interface AdminEntityService<TRecord> {
+  list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<TRecord>>
+  get(ctx: OrbitAuthContext, id: string): Promise<TRecord | null>
 }
 ```
 
@@ -1323,8 +1407,20 @@ export function createCoreServices(adapter: StorageAdapter) {
     webhooks: createWebhookService(adapter),
     imports: createImportService(adapter),
     users: createUserService(adapter),
+    search: createSearchService(adapter),
     schema: new OrbitSchemaEngine(adapter),
     contactContext: createContactContextService(adapter),
+    system: {
+      organizations: createOrganizationAdminService(adapter),
+      organizationMemberships: createOrganizationMembershipAdminService(adapter),
+      apiKeys: createApiKeyAdminService(adapter),
+      auditLogs: createAuditLogAdminService(adapter),
+      schemaMigrations: createSchemaMigrationAdminService(adapter),
+      idempotencyKeys: createIdempotencyKeyAdminService(adapter),
+      webhookDeliveries: createWebhookDeliveryAdminService(adapter),
+      customFieldDefinitions: createCustomFieldAdminService(adapter),
+      entityTags: createEntityTagAdminService(adapter),
+    },
   }
 }
 ```
@@ -1351,6 +1447,18 @@ Required first-party services:
 - `imports`
 - `schema`
 - `users`
+
+System/admin services:
+
+- `organizations`
+- `organization_memberships`
+- `api_keys`
+- `custom_field_definitions`
+- `webhook_deliveries`
+- `audit_logs`
+- `schema_migrations`
+- `idempotency_keys`
+- `entity_tags`
 
 Every service must:
 
@@ -1459,10 +1567,12 @@ Generated files after schema change:
 Implementation is complete only when all of the following are true:
 
 1. `pnpm --filter @orbit-ai/core build` succeeds with no generated-type drift.
-2. Base migrations create every table in this spec with `organization_id text not null`.
+2. Base migrations create every tenant-scoped table in this spec with `organization_id text not null`, while `organizations` remains bootstrap-scoped.
 3. Postgres adapters generate and apply RLS SQL for every tenant table.
-4. SQLite adapter enforces tenant filters in repositories and documents migration limitations.
-5. `addField`, `addEntity`, and `promoteField` produce reversible migration records.
-6. Cursor pagination and error/envelope types are imported unchanged by API, SDK, CLI, and MCP packages.
-7. `getContactContext()` returns the exact dossier shape required by CLI and MCP.
-8. Every entity directory contains `AGENTS.MD`.
+4. Tenant context is applied through `withTenantContext()` and is safe under pooled Postgres connections.
+5. SQLite adapter enforces tenant filters in repositories and documents migration limitations.
+6. `addField`, `addEntity`, and `promoteField` produce reversible migration records.
+7. Plugin schema extensions can register tenant tables and receive RLS coverage.
+8. Cursor pagination and error/envelope types are imported unchanged by API, SDK, CLI, and MCP packages.
+9. `getContactContext()` returns the exact dossier shape required by CLI and MCP.
+10. Every entity directory contains `AGENTS.MD`.

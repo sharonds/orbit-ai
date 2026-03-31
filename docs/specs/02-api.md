@@ -52,7 +52,7 @@ packages/api/
 ### 3.1 Base Path and Versioning
 
 - Base path: `/v1`
-- Required version header: `Orbit-Version: 2026-04-01`
+- Preferred version header: `Orbit-Version: 2026-04-01`
 - Absent header defaults to the current stable version
 - Breaking changes require a new calendar date version and 24-month support window
 
@@ -121,12 +121,16 @@ import { Hono } from 'hono'
 import { requestIdMiddleware } from './middleware/request-id'
 import { versionMiddleware } from './middleware/version'
 import { authMiddleware } from './middleware/auth'
+import { tenantContextMiddleware } from './middleware/tenant-context'
 import { rateLimitMiddleware } from './middleware/rate-limit'
 import { idempotencyMiddleware } from './middleware/idempotency'
-import { registerEntityRoutes } from './routes/entities'
+import { registerBootstrapRoutes } from './routes/bootstrap'
+import { registerPublicEntityRoutes } from './routes/entities'
+import { registerAdminRoutes } from './routes/admin'
 import { registerObjectRoutes } from './routes/objects'
 import { registerWebhookRoutes } from './routes/webhooks'
 import { registerImportRoutes } from './routes/imports'
+import { registerSearchRoutes } from './routes/search'
 import { registerHealthRoutes } from './routes/health'
 import type { StorageAdapter } from '@orbit-ai/core'
 
@@ -141,14 +145,18 @@ export function createApi(options: CreateApiOptions) {
   app.use('*', requestIdMiddleware())
   app.use('/v1/*', versionMiddleware(options.version))
   app.use('/v1/*', authMiddleware(options.adapter))
+  app.use('/v1/*', tenantContextMiddleware(options.adapter))
   app.use('/v1/*', rateLimitMiddleware())
   app.use('/v1/*', idempotencyMiddleware(options.adapter))
 
   registerHealthRoutes(app)
-  registerEntityRoutes(app, options.adapter)
+  registerBootstrapRoutes(app, options.adapter)
+  registerPublicEntityRoutes(app, options.adapter)
+  registerAdminRoutes(app, options.adapter)
   registerObjectRoutes(app, options.adapter)
   registerWebhookRoutes(app, options.adapter)
   registerImportRoutes(app, options.adapter)
+  registerSearchRoutes(app, options.adapter)
 
   return app
 }
@@ -156,7 +164,7 @@ export function createApi(options: CreateApiOptions) {
 
 ## 5. Endpoint Matrix
 
-Every entity below supports the standard collection and item endpoints:
+Every public tenant-scoped entity below supports the standard collection and item endpoints:
 
 - `GET /v1/<entity>`
 - `POST /v1/<entity>`
@@ -165,11 +173,6 @@ Every entity below supports the standard collection and item endpoints:
 - `DELETE /v1/<entity>/:id`
 - `POST /v1/<entity>/search`
 - `POST /v1/<entity>/batch`
-
-Exceptions:
-
-- `audit_logs`, `schema_migrations`, `idempotency_keys`, and `webhook_deliveries` are read-only over HTTP and therefore expose `GET`, `GET/:id`, and `POST /search`, but not mutating routes.
-- `organizations`, `organization_memberships`, and `api_keys` are admin-scoped and must enforce elevated scopes.
 
 Public entities:
 
@@ -193,17 +196,23 @@ Public entities:
 - `users`
 - `imports`
 
-Admin and system entities:
+Admin and system entities are exposed under `/v1/admin/*`, not through the public generic registry:
 
-- `organizations`
-- `organization_memberships`
-- `api_keys`
-- `custom_field_definitions`
-- `webhook_deliveries`
-- `audit_logs`
-- `schema_migrations`
-- `idempotency_keys`
-- `entity_tags`
+- `GET /v1/admin/organization_memberships`
+- `GET /v1/admin/api_keys`
+- `GET /v1/admin/custom_field_definitions`
+- `GET /v1/admin/webhook_deliveries`
+- `GET /v1/admin/audit_logs`
+- `GET /v1/admin/schema_migrations`
+- `GET /v1/admin/idempotency_keys`
+- `GET /v1/admin/entity_tags`
+
+Bootstrap and current-organization routes:
+
+- `POST /v1/bootstrap/organizations`
+- `POST /v1/bootstrap/api-keys`
+- `GET /v1/organizations/current`
+- `PATCH /v1/organizations/current`
 
 Relationship and workflow endpoints:
 
@@ -260,10 +269,7 @@ import { z } from 'zod'
 import type { Hono } from 'hono'
 import type { StorageAdapter } from '@orbit-ai/core'
 
-const ENTITY_CAPABILITIES = {
-  organizations: { read: true, write: true, batch: false, admin: true },
-  organization_memberships: { read: true, write: true, batch: false, admin: true },
-  api_keys: { read: true, write: true, batch: false, admin: true },
+const PUBLIC_ENTITY_CAPABILITIES = {
   contacts: { read: true, write: true, batch: true },
   companies: { read: true, write: true, batch: true },
   deals: { read: true, write: true, batch: true },
@@ -280,15 +286,20 @@ const ENTITY_CAPABILITIES = {
   sequence_enrollments: { read: true, write: true, batch: false },
   sequence_events: { read: true, write: false, batch: false },
   tags: { read: true, write: true, batch: true },
-  entity_tags: { read: true, write: true, batch: false },
-  custom_field_definitions: { read: true, write: true, batch: false, admin: true },
   webhooks: { read: true, write: true, batch: false },
-  webhook_deliveries: { read: true, write: false, batch: false, admin: true },
-  users: { read: true, write: true, batch: false, admin: true },
+  users: { read: true, write: true, batch: false },
   imports: { read: true, write: true, batch: false },
-  audit_logs: { read: true, write: false, batch: false, admin: true },
-  schema_migrations: { read: true, write: false, batch: false, admin: true },
-  idempotency_keys: { read: true, write: false, batch: false, admin: true },
+} as const
+
+const ADMIN_ENTITY_CAPABILITIES = {
+  organization_memberships: { read: true, write: true, batch: false },
+  api_keys: { read: true, write: true, batch: false },
+  custom_field_definitions: { read: true, write: true, batch: false },
+  webhook_deliveries: { read: true, write: false, batch: false },
+  audit_logs: { read: true, write: false, batch: false },
+  schema_migrations: { read: true, write: false, batch: false },
+  idempotency_keys: { read: true, write: false, batch: false },
+  entity_tags: { read: true, write: true, batch: false },
 } as const
 
 const listQuerySchema = z.object({
@@ -297,8 +308,8 @@ const listQuerySchema = z.object({
   include: z.string().optional(),
 })
 
-export function registerEntityRoutes(app: Hono, adapter: StorageAdapter) {
-  for (const [entity, capabilities] of Object.entries(ENTITY_CAPABILITIES)) {
+export function registerPublicEntityRoutes(app: Hono, adapter: StorageAdapter) {
+  for (const [entity, capabilities] of Object.entries(PUBLIC_ENTITY_CAPABILITIES)) {
     app.get(`/v1/${entity}`, async (c) => {
       const query = listQuerySchema.parse(c.req.query())
       const service = resolveService(adapter, entity)
@@ -360,7 +371,59 @@ export function registerEntityRoutes(app: Hono, adapter: StorageAdapter) {
 }
 ```
 
-`resolveService()` maps route names to `@orbit-ai/core` services. No API-layer business logic is allowed beyond HTTP translation.
+```typescript
+// packages/api/src/routes/admin.ts
+export function registerAdminRoutes(app: Hono, adapter: StorageAdapter) {
+  const admin = new Hono()
+
+  admin.use('*', requireScope('admin:*'))
+
+  for (const [entity, capabilities] of Object.entries(ADMIN_ENTITY_CAPABILITIES)) {
+    admin.get(`/${entity}`, async (c) => {
+      const service = resolveAdminService(adapter, entity)
+      const result = await service.list(c.get('orbit'), parseListQuery(c))
+      return c.json(toEnvelope(c, result.data, result))
+    })
+
+    admin.get(`/${entity}/:id`, async (c) => {
+      const service = resolveAdminService(adapter, entity)
+      const record = await service.get(c.get('orbit'), c.req.param('id'))
+      if (!record) return c.json(toError(c, 'RESOURCE_NOT_FOUND', `${entity} not found`), 404)
+      return c.json(toEnvelope(c, record))
+    })
+
+    if (capabilities.write) {
+      admin.post(`/${entity}`, async (c) => {
+        const service = resolveAdminService(adapter, entity)
+        const created = await service.create?.(c.get('orbit'), await c.req.json())
+        return c.json(toEnvelope(c, created), 201)
+      })
+    }
+  }
+
+  app.route('/v1/admin', admin)
+}
+```
+
+```typescript
+// packages/api/src/routes/bootstrap.ts
+export function registerBootstrapRoutes(app: Hono, adapter: StorageAdapter) {
+  app.post('/v1/bootstrap/organizations', requireScope('platform:bootstrap'), async (c) => {
+    const service = resolveBootstrapService(adapter, 'organizations')
+    const created = await service.create(await c.req.json())
+    return c.json(toEnvelope(c, created), 201)
+  })
+}
+```
+
+`resolveService()` maps public routes to first-party core entity services. `resolveAdminService()` maps `/v1/admin/*` routes to `client.system.*` / core admin services. `organizations` creation is never part of the tenant generic registry.
+
+Public-route rules:
+
+- only services listed under `createCoreServices()` are eligible for generic `/v1/<entity>` registration
+- generic `batch` is only enabled for entities implemented as `BatchCapableEntityService`
+- admin/system entities must use explicit `/v1/admin/*` routing and scope gates
+- bootstrap routes must never enter tenant context middleware
 
 ## 7. Request and Response Shapes
 
@@ -414,6 +477,118 @@ Example:
 }
 ```
 
+### 7.3 Global Search Contract
+
+`POST /v1/search`
+
+```json
+{
+  "query": "jane acme renewal",
+  "object_types": ["contacts", "deals", "companies"],
+  "limit": 20,
+  "cursor": null
+}
+```
+
+Response:
+
+```json
+{
+  "data": [
+    {
+      "object_type": "contacts",
+      "record_id": "contact_01J1...",
+      "title": "Jane Doe",
+      "snippet": "jane@acme.com",
+      "score": 0.93
+    }
+  ],
+  "meta": {
+    "request_id": "req_01J1...",
+    "cursor": null,
+    "next_cursor": null,
+    "has_more": false,
+    "version": "2026-04-01"
+  },
+  "links": {
+    "self": "/v1/search"
+  }
+}
+```
+
+### 7.4 Envelope Mapping
+
+`@orbit-ai/api` must not hand-roll pagination metadata.
+
+```typescript
+// packages/api/src/responses.ts
+import { toWirePageMeta, type InternalPaginatedResult, type OrbitEnvelope } from '@orbit-ai/core'
+
+export function toEnvelope<T>(
+  c: import('hono').Context,
+  data: T,
+  page?: InternalPaginatedResult<unknown>,
+): OrbitEnvelope<T> {
+  return {
+    data,
+    meta: page
+      ? toWirePageMeta({
+          requestId: c.get('requestId'),
+          version: c.get('orbitVersion'),
+          page,
+        })
+      : {
+          request_id: c.get('requestId'),
+          cursor: null,
+          next_cursor: null,
+          has_more: false,
+          version: c.get('orbitVersion'),
+        },
+    links: {
+      self: c.req.path,
+    },
+  }
+}
+```
+
+The API layer owns snake_case wire serialization. Core services return camelCase internal page metadata only.
+
+### 7.5 Workflow and Admin Route Examples
+
+`POST /v1/deals/:id/move`
+
+```json
+{
+  "stage_id": "stage_01J1...",
+  "occurred_at": "2026-04-01T09:00:00.000Z",
+  "note": "Budget approved"
+}
+```
+
+`POST /v1/schema/migrations/preview`
+
+```json
+{
+  "operations": [
+    {
+      "type": "add_field",
+      "object_type": "contacts",
+      "field_name": "wedding_date",
+      "field_type": "date"
+    }
+  ]
+}
+```
+
+`GET /v1/admin/audit_logs`
+
+Query params:
+
+- `limit`
+- `cursor`
+- `filter[entity_type]`
+- `filter[action]`
+
 Response:
 
 ```json
@@ -466,10 +641,54 @@ export function authMiddleware(adapter: StorageAdapter): MiddlewareHandler {
       apiKeyId: key.id,
       requestId: c.get('requestId'),
     })
-
-    await adapter.enableTenantContext(c.get('orbit'))
     await next()
   }
+}
+```
+
+```typescript
+// packages/api/src/middleware/tenant-context.ts
+import type { MiddlewareHandler } from 'hono'
+import type { StorageAdapter } from '@orbit-ai/core'
+
+export function tenantContextMiddleware(adapter: StorageAdapter): MiddlewareHandler {
+  return async (c, next) => {
+    if (c.req.path.startsWith('/v1/bootstrap/')) {
+      return next()
+    }
+
+    await adapter.withTenantContext(c.get('orbit'), async () => {
+      await next()
+    })
+  }
+}
+```
+
+Tenant-context rules:
+
+- bootstrap routes run outside tenant context
+- tenant-scoped routes must run inside `adapter.withTenantContext(...)`
+- Postgres-family adapters must implement `withTenantContext()` with transaction-local settings and guaranteed cleanup
+
+### 8.1 Search Route Example
+
+```typescript
+// packages/api/src/routes/search.ts
+import { z } from 'zod'
+
+const globalSearchSchema = z.object({
+  query: z.string().min(1),
+  object_types: z.array(z.string()).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  cursor: z.string().nullable().optional(),
+})
+
+export function registerSearchRoutes(app: Hono, adapter: StorageAdapter) {
+  app.post('/v1/search', async (c) => {
+    const body = globalSearchSchema.parse(await c.req.json())
+    const results = await createCoreServices(adapter).search.query(c.get('orbit'), body)
+    return c.json(toEnvelope(c, results.data, results))
+  })
 }
 ```
 

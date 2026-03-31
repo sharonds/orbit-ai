@@ -16,10 +16,16 @@ This package also owns:
 
 - plugin registration architecture
 - integration configuration loading
-- connector-provided MCP tools and CLI commands
+- connector-provided extension MCP tools and CLI commands
 - outbound webhook event subscriptions for connector workflows
 
 Outbound webhook delivery infrastructure itself remains in `@orbit-ai/api`; this package consumes it.
+
+Extension model:
+
+- `@orbit-ai/mcp` itself remains fixed at 23 core tools
+- integrations may add extension tools only when running in a composite server alongside `@orbit-ai/mcp`
+- integration tool names must be namespaced, for example `integrations.gmail.send_email`
 
 ## 2. Package Structure
 
@@ -80,6 +86,7 @@ export interface IntegrationRuntime {
   adapter: StorageAdapter
   client: OrbitClient
   config: Record<string, unknown>
+  eventBus: OrbitIntegrationEventBus
 }
 
 export interface OrbitIntegrationPlugin {
@@ -92,6 +99,13 @@ export interface OrbitIntegrationPlugin {
   install(context: IntegrationRuntime): Promise<void>
   uninstall?(context: IntegrationRuntime): Promise<void>
   healthcheck?(context: IntegrationRuntime): Promise<Record<string, unknown>>
+}
+```
+
+```typescript
+export interface OrbitIntegrationEventBus {
+  publish(event: { type: string; organizationId: string; payload: Record<string, unknown> }): Promise<void>
+  subscribe(pattern: string, handler: IntegrationWebhookHandler): Promise<void>
 }
 ```
 
@@ -153,6 +167,19 @@ Required extracted capabilities from the existing Orbit CRM:
 - Gmail scan / polling job
 - token refresh handling
 - email-to-activity mapping
+
+Shared connector helpers live in `packages/integrations/src/shared/contacts.ts` and own:
+
+- `findOrCreateContactFromEmail`
+- `findOrCreateContactByAttendees`
+- contact/company dedupe rules
+- the policy for when connectors are allowed to auto-create records
+
+Dedupe rules:
+
+1. exact normalized email match
+2. existing company match by domain
+3. create only when connector config explicitly allows auto-create
 
 ### 5.1 Gmail Connector Interface
 
@@ -216,10 +243,10 @@ export async function syncGmailMessage(
 
 ### 5.3 Gmail MCP Tools
 
-- `gmail_send_email`
-- `gmail_sync_thread`
+- `integrations.gmail.send_email`
+- `integrations.gmail.sync_thread`
 
-These tools are integration-scoped and registered only when the plugin is enabled.
+These are extension tools and are registered only when the plugin is enabled in a composite MCP runtime.
 
 ## 6. Google Calendar Connector
 
@@ -270,8 +297,8 @@ export async function syncCalendarEvent(
 
 Calendar-specific MCP tools:
 
-- `calendar_list_events`
-- `calendar_create_event`
+- `integrations.google_calendar.list_events`
+- `integrations.google_calendar.create_event`
 
 Calendar-specific CLI commands:
 
@@ -319,8 +346,8 @@ export async function syncStripeCheckoutSession(
 
 Stripe-specific MCP tools:
 
-- `stripe_create_payment_link`
-- `stripe_get_payment_status`
+- `integrations.stripe.create_payment_link`
+- `integrations.stripe.get_payment_status`
 
 Stripe-specific CLI commands:
 
@@ -340,21 +367,64 @@ Example definitions:
 
 ```typescript
 // packages/integrations/src/schema.ts
-import { orbit, text, jsonb, boolean, timestamp } from '@orbit-ai/core/schema/helpers'
+import { orbit, text, jsonb, integer, timestamp } from '@orbit-ai/core/schema/helpers'
 import { organizations, users } from '@orbit-ai/core/schema/tables'
 
 export const integrationConnections = orbit.table('integration_connections', {
   id: text('id').primaryKey(),
   organizationId: text('organization_id').notNull().references(() => organizations.id),
   provider: text('provider').notNull(),
+  connectionType: text('connection_type').notNull().default('oauth'),
   userId: text('user_id').references(() => users.id),
   status: text('status').notNull().default('active'),
   credentialsEncrypted: text('credentials_encrypted').notNull(),
+  refreshTokenEncrypted: text('refresh_token_encrypted'),
+  accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
+  providerAccountId: text('provider_account_id'),
+  providerWebhookId: text('provider_webhook_id'),
   scopes: jsonb('scopes').$type<string[]>().notNull().default([]),
+  failureCount: integer('failure_count').notNull().default(0),
+  lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+  lastFailureAt: timestamp('last_failure_at', { withTimezone: true }),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+export const integrationSyncState = orbit.table('integration_sync_state', {
+  id: text('id').primaryKey(),
+  organizationId: text('organization_id').notNull().references(() => organizations.id),
+  provider: text('provider').notNull(),
+  connectionId: text('connection_id').notNull().references(() => integrationConnections.id),
+  stream: text('stream').notNull(),
+  cursor: text('cursor'),
+  checkpoint: jsonb('checkpoint').$type<Record<string, unknown>>().notNull().default({}),
+  lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
+  lastSeenExternalUpdatedAt: timestamp('last_seen_external_updated_at', { withTimezone: true }),
+  failureCount: integer('failure_count').notNull().default(0),
+  lastError: text('last_error'),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+```
+
+These tables must be registered through the core plugin schema extension contract so they receive migrations, tenant filtering, and RLS coverage like first-party tenant tables.
+
+```typescript
+// packages/integrations/src/schema-extension.ts
+export const integrationSchemaExtension: import('@orbit-ai/core').PluginSchemaExtension = {
+  key: 'integrations',
+  tables: ['integration_connections', 'integration_sync_state'],
+  tenantScopedTables: ['integration_connections', 'integration_sync_state'],
+  migrations: [
+    {
+      id: '20260401_integrations_base',
+      up: ['create table orbit.integration_connections (...)', 'create table orbit.integration_sync_state (...)'],
+      down: ['drop table orbit.integration_sync_state', 'drop table orbit.integration_connections'],
+    },
+  ],
+}
 ```
 
 ## 9. Plugin Loading
@@ -384,7 +454,7 @@ export async function loadEnabledIntegrations(
 
 ## 10. CLI and MCP Registration
 
-Integration packages must register their commands and tools dynamically.
+Integration packages must register their commands and extension tools dynamically.
 
 ```typescript
 // packages/integrations/src/index.ts
@@ -410,9 +480,47 @@ export async function getIntegrationTools(
 }
 ```
 
-## 11. Outbound Webhook Consumption
+Composite MCP runtime rule:
 
-Integrations consume API-layer events to trigger sync behavior.
+- the base `@orbit-ai/mcp` server registers the 23 core tools
+- the composite runtime may append integration extension tools after loading enabled plugins
+- extension tools must not shadow or replace core tool names
+
+## 11. Event Architecture
+
+Integrations depend on three distinct event paths.
+
+### 11.1 Internal Orbit Domain Events
+
+Used for connector reactions to Orbit changes:
+
+- `contact.created`
+- `deal.stage_moved`
+- `payment.created`
+
+These are published on the internal event bus and consumed by integration handlers.
+
+### 11.2 Outbound Customer Webhooks
+
+Used to notify Orbit customers and external automation systems.
+
+- delivered by the API webhook delivery worker
+- not reused as the connector event bus
+- uses the Standard Webhooks contract from the API spec
+
+### 11.3 Inbound Provider Webhooks and Polling
+
+Used to ingest changes from Gmail, Google Calendar, and Stripe.
+
+- Stripe: provider webhooks
+- Gmail: polling and optional Gmail push watch support
+- Google Calendar: provider webhooks where available plus polling fallback
+
+Integrations must not route inbound provider events through the customer outbound webhook delivery worker.
+
+## 12. Connector Event Consumption
+
+Integrations consume internal Orbit events to trigger follow-on connector behavior.
 
 Examples:
 
@@ -420,9 +528,9 @@ Examples:
 - `deal.stage_moved` -> optionally create Calendar follow-up
 - `payment.created` -> enrich Stripe metadata or send receipt email
 
-Connector handlers are registered by event name and invoked from the webhook delivery worker or an internal event bus.
+Connector handlers are registered by event name and invoked from the internal event bus or provider-specific inbound webhook/polling workers, depending on direction.
 
-## 12. Extraction Guidance From `~/smb-sale-crm-app`
+## 13. Extraction Guidance From `~/smb-sale-crm-app`
 
 Before implementation, extract these bounded capabilities:
 
@@ -439,10 +547,11 @@ Do not carry over:
 
 The target output is a reusable connector package, not a direct port.
 
-## 13. Acceptance Criteria
+## 14. Acceptance Criteria
 
 1. The package can enable Gmail, Google Calendar, and Stripe via `.orbit/integrations.json`.
 2. Each connector exposes installation logic, commands, tools, and sync handlers.
 3. Connector state is stored in Orbit-owned tenant-scoped tables.
-4. Connectors reuse the API webhook system rather than inventing a second delivery mechanism.
-5. Commands and tools are registered dynamically only when the plugin is enabled.
+4. Connector tables are registered through the core plugin schema extension contract.
+5. Commands and extension tools are registered dynamically only when the plugin is enabled.
+6. Connector flows distinguish internal domain events, outbound customer webhooks, and inbound provider webhooks/polling.

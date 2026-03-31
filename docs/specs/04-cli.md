@@ -32,11 +32,13 @@ packages/cli/
 │   │   ├── init.ts
 │   │   ├── status.ts
 │   │   ├── doctor.ts
+│   │   ├── seed.ts
 │   │   ├── migrate.ts
 │   │   ├── context.ts
 │   │   ├── contacts.ts
 │   │   ├── companies.ts
 │   │   ├── deals.ts
+│   │   ├── log.ts
 │   │   ├── tasks.ts
 │   │   ├── notes.ts
 │   │   ├── sequences.ts
@@ -192,16 +194,21 @@ import { Command } from 'commander'
 import { registerInitCommand } from './commands/init'
 import { registerStatusCommand } from './commands/status'
 import { registerDoctorCommand } from './commands/doctor'
+import { registerSeedCommand } from './commands/seed'
 import { registerMigrateCommand } from './commands/migrate'
 import { registerContextCommand } from './commands/context'
 import { registerContactsCommand } from './commands/contacts'
 import { registerCompaniesCommand } from './commands/companies'
 import { registerDealsCommand } from './commands/deals'
+import { registerLogCommand } from './commands/log'
 import { registerTasksCommand } from './commands/tasks'
+import { registerNotesCommand } from './commands/notes'
+import { registerSequencesCommand } from './commands/sequences'
 import { registerSchemaCommand } from './commands/schema'
 import { registerFieldsCommand } from './commands/fields'
 import { registerReportCommand } from './commands/report'
 import { registerDashboardCommand } from './commands/dashboard'
+import { registerSearchCommand } from './commands/search'
 import { registerIntegrationsCommand } from './commands/integrations'
 import { registerMcpCommand } from './commands/mcp'
 
@@ -224,16 +231,21 @@ export function createProgram() {
   registerInitCommand(program)
   registerStatusCommand(program)
   registerDoctorCommand(program)
+  registerSeedCommand(program)
   registerMigrateCommand(program)
   registerContextCommand(program)
   registerContactsCommand(program)
   registerCompaniesCommand(program)
   registerDealsCommand(program)
+  registerLogCommand(program)
   registerTasksCommand(program)
+  registerNotesCommand(program)
+  registerSequencesCommand(program)
   registerSchemaCommand(program)
   registerFieldsCommand(program)
   registerReportCommand(program)
   registerDashboardCommand(program)
+  registerSearchCommand(program)
   registerIntegrationsCommand(program)
   registerMcpCommand(program)
 
@@ -250,21 +262,80 @@ CLI context resolution order:
 3. `.orbit/config.json`
 4. `~/.config/orbit/config.json`
 
+Project config must explicitly support hosted and direct modes:
+
+```json
+{
+  "mode": "api",
+  "profile": "default",
+  "baseUrl": "https://api.orbit-ai.dev",
+  "apiKeyEnv": "ORBIT_API_KEY",
+  "context": {
+    "orgId": "org_01...",
+    "userId": "user_01..."
+  }
+}
+```
+
+```json
+{
+  "mode": "direct",
+  "profile": "local",
+  "adapter": "sqlite",
+  "databaseUrl": "./.orbit/orbit.db",
+  "context": {
+    "orgId": "org_01...",
+    "userId": "user_01..."
+  }
+}
+```
+
 ```typescript
 // packages/cli/src/config/resolve-context.ts
 import { OrbitClient } from '@orbit-ai/sdk'
+import { createSqliteAdapter, createSupabaseAdapter, createNeonAdapter, createPostgresAdapter } from '@orbit-ai/core'
 
 export function resolveClient(flags: {
   apiKey?: string
   baseUrl?: string
   orgId?: string
   userId?: string
+  mode?: 'api' | 'direct'
+  adapter?: 'sqlite' | 'supabase' | 'neon' | 'postgres'
+  databaseUrl?: string
 }) {
+  if (flags.mode === 'direct') {
+    const adapter = resolveAdapter(flags)
+    return new OrbitClient({
+      adapter,
+      context: {
+        orgId: flags.orgId ?? process.env.ORBIT_ORG_ID ?? requiredConfig('context.orgId'),
+        userId: flags.userId ?? process.env.ORBIT_USER_ID,
+      },
+    })
+  }
+
   return new OrbitClient({
     apiKey: flags.apiKey ?? process.env.ORBIT_API_KEY,
     baseUrl: flags.baseUrl ?? process.env.ORBIT_BASE_URL,
     context: flags.orgId ? { orgId: flags.orgId, userId: flags.userId } : undefined,
   })
+}
+
+function resolveAdapter(flags: {
+  adapter?: 'sqlite' | 'supabase' | 'neon' | 'postgres'
+  databaseUrl?: string
+}) {
+  switch (flags.adapter) {
+    case 'sqlite':
+      return createSqliteAdapter({ databaseUrl: flags.databaseUrl ?? './.orbit/orbit.db' })
+    case 'supabase':
+      return createSupabaseAdapter({ databaseUrl: flags.databaseUrl ?? process.env.DATABASE_URL! })
+    case 'neon':
+      return createNeonAdapter({ databaseUrl: flags.databaseUrl ?? process.env.DATABASE_URL! })
+    default:
+      return createPostgresAdapter({ databaseUrl: flags.databaseUrl ?? process.env.DATABASE_URL! })
+  }
 }
 ```
 
@@ -333,6 +404,15 @@ Non-interactive form:
 ```bash
 orbit init --db supabase --org-name "Acme" --yes --json
 ```
+
+`orbit init` must write a config file that records:
+
+- `mode`
+- `adapter`
+- `baseUrl` or `databaseUrl`
+- default `orgId`
+- default `userId` when available
+- profile name
 
 ## 9. `orbit context`
 
@@ -443,3 +523,5 @@ Package manifest requirements:
 4. Table, JSON, CSV, and TSV output all work from the same data payload.
 5. Human mode prompts only when appropriate; agent mode never prompts.
 6. CLI delegates all business logic to SDK/core rather than duplicating it.
+7. The registered Commander command tree exactly matches the documented command surface, including `seed`, `log`, `notes`, `sequences`, and `search`.
+8. Hosted API mode and direct DB mode are both configurable and exercised through the same CLI surface.
