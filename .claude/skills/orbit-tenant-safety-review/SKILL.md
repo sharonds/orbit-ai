@@ -12,7 +12,10 @@ This skill reviews code changes for tenant isolation safety. Cross-tenant data e
 - Generic performance optimization with no tenant data path changes
 - Frontend/UI-only changes
 - Documentation-only changes that don't alter security contracts
-- Changes entirely within `packages/cli/src/commands/` that only format output (no data fetching logic)
+- Changes entirely within CLI presentation code only when all of the following are true:
+  - no data fetching logic changes
+  - no serializer or DTO shape changes
+  - no `--json` output changes for secret-bearing or admin-only objects
 
 ## Step 1: Load context
 
@@ -113,7 +116,7 @@ Where does `organization_id` come from in the changed code? Is it from a trusted
 Does the change remain safe across both API mode (HTTP requests with API key auth) and direct mode (SDK with trusted context)? If MCP is involved, is it safe there too?
 
 ### Secret exposure check
-Can any secrets or admin-only state leak through the changed paths?
+Can any secrets or admin-only state leak through the changed paths? This includes API output, SDK direct-mode envelopes, CLI `--json`, MCP tool results, logs, audit snapshots, and connector/webhook DTOs.
 
 ### Findings (if any)
 
@@ -132,10 +135,11 @@ Severity definitions:
 
 ### Validation
 
-Explicitly state pass or fail for each of these three checks:
+Explicitly state pass or fail for each of these four checks:
 
 1. **No caller-controlled org context**: Pass/Fail — [brief evidence]
 2. **Runtime credentials only**: Pass/Fail — [brief evidence]
 3. **Defense-in-depth on new tables**: Pass/Fail or N/A — [brief evidence]
+4. **Secrets stay redacted across read surfaces**: Pass/Fail or N/A — [brief evidence]
 
 If any check fails, the review outcome is **FAIL** and the findings must be resolved before the change is safe to merge.
