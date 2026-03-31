@@ -1,65 +1,267 @@
 # Spec 1: `@orbit-ai/core`
 
-*Note: Part 1 (sections 1-8) has not been written yet. This file currently contains Part 2 only (sections 9-15). Part 1 covers: package overview, directory layout, storage adapter interface, Drizzle schema definitions, ID generation, Zod validation, RLS generation, and the shared types module.*
+Status: Ready for implementation
+Package: `packages/core`
+Depends on: nothing
+Blocks: `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`, `@orbit-ai/integrations`
 
----
+## 1. Scope
 
-## 9. Schema Engine (The Moat)
+`@orbit-ai/core` is the canonical domain layer for Orbit AI. It owns:
 
-The schema engine is the primary differentiator of Orbit AI. It allows agents and developers to extend the CRM schema at runtime — adding fields to existing entities, creating entirely new entities, and promoting JSONB fields to real columns — without writing raw SQL and without risking data loss.
+- Base Drizzle schema for every first-party entity
+- ID generation and parsing for type-prefixed ULIDs
+- Shared types used by every other package
+- Storage adapter interfaces and concrete adapter contracts
+- CRUD services with tenant scoping
+- Schema engine for custom fields and agent-safe migrations
+- RLS policy generation for Postgres-family adapters
+- Audit logging, idempotency, pagination, and contact context aggregation
 
-### 9.1 Interface
+This package must build with no dependency on Hono, Commander, Ink, or MCP SDK types.
+
+## 2. Package Structure
+
+```text
+packages/core/
+├── src/
+│   ├── adapters/
+│   │   ├── interface.ts
+│   │   ├── postgres/
+│   │   ├── supabase/
+│   │   ├── neon/
+│   │   └── sqlite/
+│   ├── entities/
+│   │   ├── contacts/
+│   │   │   ├── AGENTS.MD
+│   │   │   ├── repository.ts
+│   │   │   ├── service.ts
+│   │   │   └── validators.ts
+│   │   └── ...same pattern for all entities
+│   ├── ids/
+│   │   ├── prefixes.ts
+│   │   ├── generate-id.ts
+│   │   └── parse-id.ts
+│   ├── schema/
+│   │   ├── helpers.ts
+│   │   ├── tables.ts
+│   │   ├── zod.ts
+│   │   └── relations.ts
+│   ├── schema-engine/
+│   │   ├── engine.ts
+│   │   ├── preview.ts
+│   │   ├── add-field.ts
+│   │   ├── add-entity.ts
+│   │   ├── promote-field.ts
+│   │   ├── rls.ts
+│   │   └── typegen.ts
+│   ├── services/
+│   │   ├── entity-service.ts
+│   │   ├── search-service.ts
+│   │   ├── audit-service.ts
+│   │   └── contact-context.ts
+│   ├── types/
+│   │   ├── api.ts
+│   │   ├── entities.ts
+│   │   ├── errors.ts
+│   │   ├── pagination.ts
+│   │   └── schema.ts
+│   ├── utils/
+│   │   ├── cursor.ts
+│   │   ├── dates.ts
+│   │   └── json.ts
+│   └── index.ts
+├── package.json
+├── tsconfig.json
+└── vitest.config.ts
+```
+
+Export surface:
 
 ```typescript
-import type { FieldDefinition, EntityType, SchemaOperation, MigrationResult, SchemaDescription, Migration } from '@orbit-ai/core/types'
+export * from './adapters/interface'
+export * from './ids/generate-id'
+export * from './ids/parse-id'
+export * from './schema/tables'
+export * from './schema/zod'
+export * from './schema-engine/engine'
+export * from './services/contact-context'
+export * from './types/api'
+export * from './types/entities'
+export * from './types/errors'
+export * from './types/pagination'
+export * from './types/schema'
+```
 
-interface SchemaEngine {
-  // Add a custom field to an entity at runtime
-  addField(entityType: EntityType, field: FieldDefinition): Promise<MigrationResult>
+## 3. ID System
 
-  // Add entirely new entity (creates table + RLS + types + API routes)
-  addEntity(name: string, fields: FieldDefinition[]): Promise<MigrationResult>
+Orbit uses prefixed ULIDs everywhere. IDs are stored in `text` columns, never `uuid`.
 
-  // Promote a JSONB custom_fields entry to a real database column
-  promoteField(entityType: EntityType, fieldName: string): Promise<MigrationResult>
+Rules:
 
-  // Generate migration SQL without applying it
-  preview(operation: SchemaOperation): Promise<{ sql: string[], warnings: string[] }>
+- Every persisted entity ID is `prefix + "_" + ulid()`
+- Prefix identifies the object type at a glance
+- Sort order is preserved because the ULID portion is lexicographically sortable
+- API, SDK, CLI, and MCP must reject IDs with valid ULID bodies but wrong prefixes
 
-  // Apply pending migrations
-  apply(options?: { dryRun?: boolean, force?: boolean }): Promise<MigrationResult>
+```typescript
+// packages/core/src/ids/prefixes.ts
+export const ID_PREFIXES = {
+  organization: 'org',
+  membership: 'mbr',
+  user: 'user',
+  apiKey: 'key',
+  contact: 'contact',
+  company: 'company',
+  deal: 'deal',
+  pipeline: 'pipeline',
+  stage: 'stage',
+  activity: 'activity',
+  task: 'task',
+  note: 'note',
+  product: 'product',
+  payment: 'payment',
+  contract: 'contract',
+  sequence: 'sequence',
+  sequenceStep: 'seqstep',
+  sequenceEnrollment: 'seqenr',
+  sequenceEvent: 'seqevt',
+  tag: 'tag',
+  entityTag: 'etag',
+  customField: 'field',
+  webhook: 'webhook',
+  webhookDelivery: 'whdel',
+  importJob: 'import',
+  migration: 'migration',
+  auditLog: 'audit',
+  idempotencyKey: 'idem',
+} as const
 
-  // Rollback last N migrations (default: 1)
-  rollback(count?: number): Promise<MigrationResult>
+export type OrbitIdKind = keyof typeof ID_PREFIXES
+```
 
-  // Get current schema state for one or all entities
-  describe(entityType?: EntityType): Promise<SchemaDescription>
+```typescript
+// packages/core/src/ids/generate-id.ts
+import { ulid } from 'ulid'
+import { ID_PREFIXES, type OrbitIdKind } from './prefixes'
 
-  // List migration history for the current organization
-  history(): Promise<Migration[]>
+export function generateId(kind: OrbitIdKind): string {
+  return `${ID_PREFIXES[kind]}_${ulid()}`
 }
 ```
 
-### 9.2 Supporting Types
+```typescript
+// packages/core/src/ids/parse-id.ts
+import { ID_PREFIXES, type OrbitIdKind } from './prefixes'
+
+const ULID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{26}$/
+
+export function assertOrbitId(value: string, kind: OrbitIdKind): string {
+  const prefix = `${ID_PREFIXES[kind]}_`
+  if (!value.startsWith(prefix)) {
+    throw new Error(`Expected ${kind} ID with prefix "${prefix}"`)
+  }
+  const raw = value.slice(prefix.length)
+  if (!ULID_PATTERN.test(raw)) {
+    throw new Error(`Invalid ULID body for ${kind} ID`)
+  }
+  return value
+}
+```
+
+## 4. Shared Types Module
+
+`@orbit-ai/core/types` is the only allowed source for envelopes, errors, cursors, and cross-package entity names.
+
+### 4.1 Error Codes
 
 ```typescript
-type FieldType = 'text' | 'number' | 'boolean' | 'date' | 'datetime' | 'select' | 'multi_select' | 'url' | 'email' | 'phone' | 'currency' | 'relation'
+// packages/core/src/types/errors.ts
+export const ORBIT_ERROR_CODES = [
+  'AUTH_INVALID_API_KEY',
+  'AUTH_INSUFFICIENT_SCOPE',
+  'AUTH_CONTEXT_REQUIRED',
+  'RATE_LIMITED',
+  'VALIDATION_FAILED',
+  'INVALID_CURSOR',
+  'RESOURCE_NOT_FOUND',
+  'RELATION_NOT_FOUND',
+  'CONFLICT',
+  'IDEMPOTENCY_CONFLICT',
+  'SCHEMA_INVALID_FIELD',
+  'SCHEMA_ENTITY_EXISTS',
+  'SCHEMA_DESTRUCTIVE_BLOCKED',
+  'SCHEMA_INCOMPATIBLE_PROMOTION',
+  'MIGRATION_FAILED',
+  'ADAPTER_UNAVAILABLE',
+  'ADAPTER_TRANSACTION_FAILED',
+  'RLS_GENERATION_FAILED',
+  'WEBHOOK_DELIVERY_FAILED',
+  'INTERNAL_ERROR',
+] as const
 
-interface FieldDefinition {
-  name: string                        // snake_case, e.g. "wedding_date"
-  type: FieldType
-  label?: string                      // Human-readable, e.g. "Wedding Date"
-  required?: boolean                  // Default: false
-  defaultValue?: unknown
-  options?: string[]                  // For select / multi_select types
-  relatedEntity?: EntityType          // For relation type
-  validation?: Record<string, unknown> // JSON Schema fragment for extra validation
+export type OrbitErrorCode = (typeof ORBIT_ERROR_CODES)[number]
+
+export interface OrbitErrorShape {
+  code: OrbitErrorCode
+  message: string
+  field?: string
+  request_id?: string
+  doc_url?: string
+  hint?: string
+  recovery?: string
+  retryable?: boolean
+  details?: Record<string, unknown>
+}
+```
+
+### 4.2 Pagination and Envelopes
+
+```typescript
+// packages/core/src/types/pagination.ts
+export interface CursorPage {
+  limit?: number
+  cursor?: string
 }
 
-type EntityType =
+export interface PageMeta {
+  request_id: string
+  cursor: string | null
+  next_cursor: string | null
+  has_more: boolean
+  version: string
+}
+
+export interface EnvelopeLinks {
+  self: string
+  next?: string
+}
+
+export interface OrbitEnvelope<T> {
+  data: T
+  meta: PageMeta
+  links: EnvelopeLinks
+}
+
+export interface PaginatedResult<T> {
+  data: T[]
+  nextCursor: string | null
+  hasMore: boolean
+}
+```
+
+```typescript
+// packages/core/src/types/entities.ts
+export type OrbitObjectType =
+  | 'organizations'
+  | 'organization_memberships'
+  | 'users'
+  | 'api_keys'
   | 'contacts'
   | 'companies'
   | 'deals'
+  | 'pipelines'
+  | 'stages'
   | 'activities'
   | 'tasks'
   | 'notes'
@@ -67,1646 +269,1200 @@ type EntityType =
   | 'payments'
   | 'contracts'
   | 'sequences'
-  | 'pipelines'
-  | 'stages'
+  | 'sequence_steps'
+  | 'sequence_enrollments'
+  | 'sequence_events'
   | 'tags'
-  | string // custom entity names added via addEntity()
+  | 'entity_tags'
+  | 'custom_field_definitions'
+  | 'webhooks'
+  | 'webhook_deliveries'
+  | 'imports'
+  | 'schema_migrations'
+  | 'audit_logs'
+  | 'idempotency_keys'
+```
 
-interface MigrationResult {
-  success: boolean
-  migrationId: string                 // e.g. "20260401_120000_add_field_contacts_wedding_date"
-  appliedAt: Date | null              // null when dryRun: true
-  sql: string[]                       // SQL statements that were (or would be) executed
-  warnings: string[]                  // Non-fatal issues (e.g. index recommendation)
-  errors: string[]                    // Populated when success: false
-  rollbackSql: string[]               // SQL to undo this migration
-  typesRegenerated: boolean
+### 4.3 Search, Filters, and Sorting
+
+```typescript
+// packages/core/src/types/api.ts
+export type SortDirection = 'asc' | 'desc'
+
+export interface SortSpec {
+  field: string
+  direction: SortDirection
 }
 
-type SchemaOperationType = 'add_field' | 'add_entity' | 'promote_field' | 'rename_field' | 'drop_field' | 'drop_entity'
-
-interface SchemaOperation {
-  type: SchemaOperationType
-  entityType?: EntityType
-  entityName?: string
-  field?: FieldDefinition
-  fieldName?: string
+export interface ListQuery {
+  limit?: number
+  cursor?: string
+  include?: string[]
+  sort?: SortSpec[]
+  filter?: Record<string, unknown>
 }
 
-interface SchemaDescription {
-  entityType: EntityType
-  tableName: string                   // e.g. "crm_app.contacts"
-  columns: ColumnDescription[]
-  customFields: FieldDefinition[]
-  indexes: IndexDescription[]
-  rlsPolicies: RlsPolicyDescription[]
-}
-
-interface ColumnDescription {
-  name: string
-  type: string                        // Postgres type string
-  nullable: boolean
-  defaultValue: string | null
-  isPrimaryKey: boolean
-  isForeignKey: boolean
-  references?: { table: string, column: string }
-}
-
-interface Migration {
-  id: string
-  appliedAt: Date
-  description: string
-  entityType: EntityType | null
-  operationType: SchemaOperationType
-  sql: string[]
-  rollbackSql: string[]
-  appliedBy: string | null            // user_id or 'system'
+export interface SearchQuery extends ListQuery {
+  query?: string
 }
 ```
 
-### 9.3 How `addField` Works (Step by Step)
+## 5. Drizzle Schema Definitions
+
+All first-party tables live in schema `orbit`. Every table includes:
+
+- `id text primary key`
+- `organization_id text not null references orbit.organizations(id)`
+- `created_at timestamptz not null default now()`
+- `updated_at timestamptz not null default now()`
+
+For `organizations`, `organization_id` is self-referential and must equal `id`. This looks unusual, but it keeps the invariant the user requested: every table carries `organization_id` referencing `organizations`.
+
+### 5.1 Shared Column Helpers
+
+```typescript
+// packages/core/src/schema/helpers.ts
+import {
+  boolean,
+  foreignKey,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgSchema,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core'
+
+export const orbit = pgSchema('orbit')
+
+export const timestamps = {
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}
+
+export const customFieldsColumn = jsonb('custom_fields').$type<Record<string, unknown>>().notNull().default({})
+
+export const money = (name: string) => numeric(name, { precision: 18, scale: 2 })
+export const metadata = () => jsonb('metadata').$type<Record<string, unknown>>().notNull().default({})
+
+export { boolean, foreignKey, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uniqueIndex }
+```
+
+### 5.2 Exact Table Definitions
+
+```typescript
+// packages/core/src/schema/tables.ts
+import { sql } from 'drizzle-orm'
+import {
+  boolean,
+  customFieldsColumn,
+  foreignKey,
+  index,
+  integer,
+  jsonb,
+  metadata,
+  money,
+  orbit,
+  primaryKey,
+  text,
+  timestamps,
+  uniqueIndex,
+} from './helpers'
+
+export const organizations = orbit.table(
+  'organizations',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    plan: text('plan').notNull().default('community'),
+    isActive: boolean('is_active').notNull().default(true),
+    settings: jsonb('settings').$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.organizationId],
+      foreignColumns: [table.id],
+      name: 'organizations_organization_id_fkey',
+    }),
+    uniqueIndex('organizations_slug_idx').on(table.slug),
+  ],
+)
+
+export const users = orbit.table(
+  'users',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    email: text('email').notNull(),
+    name: text('name').notNull(),
+    role: text('role').notNull().default('viewer'),
+    avatarUrl: text('avatar_url'),
+    externalAuthId: text('external_auth_id'),
+    isActive: boolean('is_active').notNull().default(true),
+    metadata: metadata(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('users_org_email_idx').on(table.organizationId, table.email),
+    index('users_external_auth_idx').on(table.externalAuthId),
+  ],
+)
+
+export const organizationMemberships = orbit.table(
+  'organization_memberships',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    userId: text('user_id').notNull().references(() => users.id),
+    role: text('role').notNull(),
+    invitedByUserId: text('invited_by_user_id').references(() => users.id),
+    joinedAt: timestamp('joined_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('memberships_org_user_idx').on(table.organizationId, table.userId),
+  ],
+)
+
+export const apiKeys = orbit.table(
+  'api_keys',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    name: text('name').notNull(),
+    keyHash: text('key_hash').notNull(),
+    keyPrefix: text('key_prefix').notNull(),
+    scopes: jsonb('scopes').$type<string[]>().notNull().default([]),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdByUserId: text('created_by_user_id').references(() => users.id),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('api_keys_hash_idx').on(table.keyHash),
+    uniqueIndex('api_keys_prefix_idx').on(table.keyPrefix),
+  ],
+)
+
+export const companies = orbit.table(
+  'companies',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    name: text('name').notNull(),
+    domain: text('domain'),
+    industry: text('industry'),
+    size: integer('size'),
+    website: text('website'),
+    notes: text('notes'),
+    assignedToUserId: text('assigned_to_user_id').references(() => users.id),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('companies_org_domain_idx').on(table.organizationId, table.domain),
+    index('companies_assigned_to_idx').on(table.assignedToUserId),
+  ],
+)
+
+export const contacts = orbit.table(
+  'contacts',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    name: text('name').notNull(),
+    email: text('email'),
+    phone: text('phone'),
+    title: text('title'),
+    sourceChannel: text('source_channel'),
+    status: text('status').notNull().default('lead'),
+    assignedToUserId: text('assigned_to_user_id').references(() => users.id),
+    companyId: text('company_id').references(() => companies.id),
+    leadScore: integer('lead_score').notNull().default(0),
+    isHot: boolean('is_hot').notNull().default(false),
+    lastContactedAt: timestamp('last_contacted_at', { withTimezone: true }),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('contacts_org_email_idx').on(table.organizationId, table.email),
+    index('contacts_company_idx').on(table.companyId),
+    index('contacts_assigned_to_idx').on(table.assignedToUserId),
+  ],
+)
+
+export const pipelines = orbit.table(
+  'pipelines',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    name: text('name').notNull(),
+    isDefault: boolean('is_default').notNull().default(false),
+    description: text('description'),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('pipelines_org_name_idx').on(table.organizationId, table.name),
+  ],
+)
+
+export const stages = orbit.table(
+  'stages',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    pipelineId: text('pipeline_id').notNull().references(() => pipelines.id),
+    name: text('name').notNull(),
+    stageOrder: integer('stage_order').notNull(),
+    probability: integer('probability').notNull().default(0),
+    color: text('color'),
+    isWon: boolean('is_won').notNull().default(false),
+    isLost: boolean('is_lost').notNull().default(false),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('stages_pipeline_order_idx').on(table.pipelineId, table.stageOrder),
+    uniqueIndex('stages_pipeline_name_idx').on(table.pipelineId, table.name),
+  ],
+)
+
+export const deals = orbit.table(
+  'deals',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    title: text('title').notNull(),
+    value: money('value'),
+    currency: text('currency').notNull().default('USD'),
+    stageId: text('stage_id').references(() => stages.id),
+    pipelineId: text('pipeline_id').references(() => pipelines.id),
+    probability: integer('probability').notNull().default(0),
+    expectedCloseDate: timestamp('expected_close_date', { withTimezone: true }),
+    contactId: text('contact_id').references(() => contacts.id),
+    companyId: text('company_id').references(() => companies.id),
+    assignedToUserId: text('assigned_to_user_id').references(() => users.id),
+    status: text('status').notNull().default('open'),
+    wonAt: timestamp('won_at', { withTimezone: true }),
+    lostAt: timestamp('lost_at', { withTimezone: true }),
+    lostReason: text('lost_reason'),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    index('deals_stage_idx').on(table.stageId),
+    index('deals_pipeline_idx').on(table.pipelineId),
+    index('deals_contact_idx').on(table.contactId),
+    index('deals_company_idx').on(table.companyId),
+  ],
+)
+
+export const activities = orbit.table(
+  'activities',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    type: text('type').notNull(),
+    subject: text('subject'),
+    body: text('body'),
+    direction: text('direction').notNull().default('internal'),
+    contactId: text('contact_id').references(() => contacts.id),
+    dealId: text('deal_id').references(() => deals.id),
+    companyId: text('company_id').references(() => companies.id),
+    durationMinutes: integer('duration_minutes'),
+    outcome: text('outcome'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    loggedByUserId: text('logged_by_user_id').references(() => users.id),
+    metadata: metadata(),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    index('activities_contact_idx').on(table.contactId),
+    index('activities_deal_idx').on(table.dealId),
+    index('activities_company_idx').on(table.companyId),
+    index('activities_occurred_at_idx').on(table.occurredAt),
+  ],
+)
+
+export const tasks = orbit.table(
+  'tasks',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    title: text('title').notNull(),
+    description: text('description'),
+    dueDate: timestamp('due_date', { withTimezone: true }),
+    priority: text('priority').notNull().default('medium'),
+    isCompleted: boolean('is_completed').notNull().default(false),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    contactId: text('contact_id').references(() => contacts.id),
+    dealId: text('deal_id').references(() => deals.id),
+    companyId: text('company_id').references(() => companies.id),
+    assignedToUserId: text('assigned_to_user_id').references(() => users.id),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    index('tasks_due_date_idx').on(table.dueDate),
+    index('tasks_assigned_to_idx').on(table.assignedToUserId),
+  ],
+)
+
+export const notes = orbit.table(
+  'notes',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    content: text('content').notNull(),
+    contactId: text('contact_id').references(() => contacts.id),
+    dealId: text('deal_id').references(() => deals.id),
+    companyId: text('company_id').references(() => companies.id),
+    createdByUserId: text('created_by_user_id').references(() => users.id),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    index('notes_contact_idx').on(table.contactId),
+    index('notes_deal_idx').on(table.dealId),
+  ],
+)
+
+export const products = orbit.table(
+  'products',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    name: text('name').notNull(),
+    price: money('price').notNull(),
+    currency: text('currency').notNull().default('USD'),
+    description: text('description'),
+    isActive: boolean('is_active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    index('products_sort_order_idx').on(table.sortOrder),
+  ],
+)
+
+export const payments = orbit.table(
+  'payments',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    amount: money('amount').notNull(),
+    currency: text('currency').notNull().default('USD'),
+    status: text('status').notNull(),
+    method: text('method'),
+    dealId: text('deal_id').references(() => deals.id),
+    contactId: text('contact_id').references(() => contacts.id),
+    externalId: text('external_id'),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    metadata: metadata(),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('payments_external_id_idx').on(table.organizationId, table.externalId),
+    index('payments_status_idx').on(table.status),
+  ],
+)
+
+export const contracts = orbit.table(
+  'contracts',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    title: text('title').notNull(),
+    content: text('content'),
+    status: text('status').notNull().default('draft'),
+    signedAt: timestamp('signed_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    dealId: text('deal_id').references(() => deals.id),
+    contactId: text('contact_id').references(() => contacts.id),
+    companyId: text('company_id').references(() => companies.id),
+    externalSignatureId: text('external_signature_id'),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    index('contracts_status_idx').on(table.status),
+  ],
+)
+
+export const sequences = orbit.table(
+  'sequences',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    name: text('name').notNull(),
+    description: text('description'),
+    triggerEvent: text('trigger_event'),
+    status: text('status').notNull().default('draft'),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('sequences_org_name_idx').on(table.organizationId, table.name),
+  ],
+)
+
+export const sequenceSteps = orbit.table(
+  'sequence_steps',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    sequenceId: text('sequence_id').notNull().references(() => sequences.id),
+    stepOrder: integer('step_order').notNull(),
+    actionType: text('action_type').notNull(),
+    delayMinutes: integer('delay_minutes').notNull().default(0),
+    templateSubject: text('template_subject'),
+    templateBody: text('template_body'),
+    taskTitle: text('task_title'),
+    taskDescription: text('task_description'),
+    metadata: metadata(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('sequence_steps_order_idx').on(table.sequenceId, table.stepOrder),
+  ],
+)
+
+export const sequenceEnrollments = orbit.table(
+  'sequence_enrollments',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    sequenceId: text('sequence_id').notNull().references(() => sequences.id),
+    contactId: text('contact_id').notNull().references(() => contacts.id),
+    status: text('status').notNull().default('active'),
+    currentStepOrder: integer('current_step_order').notNull().default(0),
+    enrolledAt: timestamp('enrolled_at', { withTimezone: true }).defaultNow().notNull(),
+    exitedAt: timestamp('exited_at', { withTimezone: true }),
+    exitReason: text('exit_reason'),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('sequence_enrollments_active_idx').on(table.sequenceId, table.contactId, table.status),
+  ],
+)
+
+export const sequenceEvents = orbit.table(
+  'sequence_events',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    sequenceEnrollmentId: text('sequence_enrollment_id').notNull().references(() => sequenceEnrollments.id),
+    sequenceStepId: text('sequence_step_id').references(() => sequenceSteps.id),
+    eventType: text('event_type').notNull(),
+    payload: metadata(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index('sequence_events_enrollment_idx').on(table.sequenceEnrollmentId),
+  ],
+)
+
+export const tags = orbit.table(
+  'tags',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    name: text('name').notNull(),
+    color: text('color'),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('tags_org_name_idx').on(table.organizationId, table.name),
+  ],
+)
+
+export const entityTags = orbit.table(
+  'entity_tags',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    tagId: text('tag_id').notNull().references(() => tags.id),
+    entityType: text('entity_type').notNull(),
+    entityId: text('entity_id').notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('entity_tags_unique_idx').on(table.organizationId, table.tagId, table.entityType, table.entityId),
+    index('entity_tags_lookup_idx').on(table.organizationId, table.entityType, table.entityId),
+  ],
+)
+
+export const customFieldDefinitions = orbit.table(
+  'custom_field_definitions',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    entityType: text('entity_type').notNull(),
+    fieldName: text('field_name').notNull(),
+    fieldType: text('field_type').notNull(),
+    label: text('label').notNull(),
+    description: text('description'),
+    isRequired: boolean('is_required').notNull().default(false),
+    isIndexed: boolean('is_indexed').notNull().default(false),
+    isPromoted: boolean('is_promoted').notNull().default(false),
+    promotedColumnName: text('promoted_column_name'),
+    defaultValue: jsonb('default_value').$type<unknown>(),
+    options: jsonb('options').$type<string[]>().notNull().default([]),
+    validation: jsonb('validation').$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('custom_fields_unique_idx').on(table.organizationId, table.entityType, table.fieldName),
+  ],
+)
+
+export const webhooks = orbit.table(
+  'webhooks',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    url: text('url').notNull(),
+    description: text('description'),
+    events: jsonb('events').$type<string[]>().notNull().default([]),
+    secretEncrypted: text('secret_encrypted').notNull(),
+    status: text('status').notNull().default('active'),
+    lastTriggeredAt: timestamp('last_triggered_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index('webhooks_status_idx').on(table.status),
+  ],
+)
+
+export const webhookDeliveries = orbit.table(
+  'webhook_deliveries',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    webhookId: text('webhook_id').notNull().references(() => webhooks.id),
+    eventId: text('event_id').notNull(),
+    eventType: text('event_type').notNull(),
+    payload: metadata(),
+    signature: text('signature').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    responseStatus: integer('response_status'),
+    responseBody: text('response_body'),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('webhook_deliveries_event_idx').on(table.webhookId, table.eventId),
+    index('webhook_deliveries_next_attempt_idx').on(table.nextAttemptAt),
+  ],
+)
+
+export const imports = orbit.table(
+  'imports',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    entityType: text('entity_type').notNull(),
+    fileName: text('file_name').notNull(),
+    totalRows: integer('total_rows').notNull().default(0),
+    createdRows: integer('created_rows').notNull().default(0),
+    updatedRows: integer('updated_rows').notNull().default(0),
+    skippedRows: integer('skipped_rows').notNull().default(0),
+    failedRows: integer('failed_rows').notNull().default(0),
+    status: text('status').notNull().default('pending'),
+    rollbackData: jsonb('rollback_data').$type<Record<string, unknown>>().notNull().default({}),
+    startedByUserId: text('started_by_user_id').references(() => users.id),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index('imports_entity_idx').on(table.entityType),
+  ],
+)
+
+export const schemaMigrations = orbit.table(
+  'schema_migrations',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    description: text('description').notNull(),
+    entityType: text('entity_type'),
+    operationType: text('operation_type').notNull(),
+    sqlStatements: jsonb('sql_statements').$type<string[]>().notNull().default([]),
+    rollbackStatements: jsonb('rollback_statements').$type<string[]>().notNull().default([]),
+    appliedByUserId: text('applied_by_user_id').references(() => users.id),
+    approvedByUserId: text('approved_by_user_id').references(() => users.id),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index('schema_migrations_applied_at_idx').on(table.appliedAt),
+  ],
+)
+
+export const auditLogs = orbit.table(
+  'audit_logs',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    actorUserId: text('actor_user_id').references(() => users.id),
+    actorApiKeyId: text('actor_api_key_id').references(() => apiKeys.id),
+    entityType: text('entity_type').notNull(),
+    entityId: text('entity_id').notNull(),
+    action: text('action').notNull(),
+    before: jsonb('before').$type<Record<string, unknown>>(),
+    after: jsonb('after').$type<Record<string, unknown>>(),
+    requestId: text('request_id'),
+    metadata: metadata(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index('audit_logs_entity_idx').on(table.organizationId, table.entityType, table.entityId),
+    index('audit_logs_occurred_at_idx').on(table.occurredAt),
+  ],
+)
+
+export const idempotencyKeys = orbit.table(
+  'idempotency_keys',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    key: text('key').notNull(),
+    method: text('method').notNull(),
+    path: text('path').notNull(),
+    requestHash: text('request_hash').notNull(),
+    responseCode: integer('response_code'),
+    responseBody: jsonb('response_body').$type<unknown>(),
+    lockedUntil: timestamp('locked_until', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('idempotency_unique_idx').on(table.organizationId, table.key, table.method, table.path),
+  ],
+)
+```
+
+Notes:
+
+- `entity_tags` is the required polymorphic tag join table
+- `users` is core-owned; adapters may sync from external auth systems but the table remains canonical for Orbit joins
+- `webhook_deliveries` belongs in core because retries and signatures must stay consistent across API and integrations
+
+## 6. Zod Validation
+
+Every base table gets generated Zod schemas from `drizzle-zod`, then extended with runtime custom field definitions.
+
+```typescript
+// packages/core/src/schema/zod.ts
+import { createInsertSchema, createSelectSchema, createUpdateSchema } from 'drizzle-zod'
+import { z } from 'zod'
+import {
+  activities,
+  companies,
+  contacts,
+  deals,
+  products,
+  tasks,
+} from './tables'
+
+export const contactSelectSchema = createSelectSchema(contacts)
+export const contactInsertSchema = createInsertSchema(contacts, {
+  email: z.string().email().optional().nullable(),
+  phone: z.string().min(5).optional().nullable(),
+})
+export const contactUpdateSchema = createUpdateSchema(contacts)
+
+export const companySelectSchema = createSelectSchema(companies)
+export const dealSelectSchema = createSelectSchema(deals)
+export const activityInsertSchema = createInsertSchema(activities)
+export const taskInsertSchema = createInsertSchema(tasks)
+export const productInsertSchema = createInsertSchema(products)
+```
+
+Validation rules:
+
+- IDs: parse with `assertOrbitId`
+- Currency codes: three-character uppercase ISO 4217 strings
+- `stage.isWon` and `stage.isLost` cannot both be `true`
+- `deals.wonAt` requires stage or status that resolves to won
+- `custom_fields` keys must match `custom_field_definitions`
+- promoted custom fields must not be duplicated under `custom_fields`
+
+## 7. Custom Fields System
+
+Custom fields are JSONB-backed first, promoted later only when needed.
+
+Rules:
+
+- Each extensible entity keeps `custom_fields jsonb not null default '{}'`
+- Schema metadata lives in `custom_field_definitions`
+- Reads always merge promoted columns and JSONB-backed fields into one logical SDK shape
+- Writes reject unknown custom fields unless `allowUnknownCustomFields` is explicitly enabled for import flows
+
+```typescript
+// packages/core/src/types/schema.ts
+export type CustomFieldType =
+  | 'text'
+  | 'number'
+  | 'boolean'
+  | 'date'
+  | 'datetime'
+  | 'select'
+  | 'multi_select'
+  | 'url'
+  | 'email'
+  | 'phone'
+  | 'currency'
+  | 'relation'
+
+export interface CustomFieldDefinition {
+  id: string
+  organizationId: string
+  entityType: string
+  fieldName: string
+  fieldType: CustomFieldType
+  label: string
+  description?: string
+  isRequired: boolean
+  isIndexed: boolean
+  isPromoted: boolean
+  promotedColumnName?: string
+  defaultValue?: unknown
+  options: string[]
+  validation: Record<string, unknown>
+}
+```
 
 ```typescript
 // packages/core/src/schema-engine/add-field.ts
+import { and, eq } from 'drizzle-orm'
+import { generateId } from '../ids/generate-id'
+import { customFieldDefinitions } from '../schema/tables'
+import type { CustomFieldDefinition } from '../types/schema'
+import type { OrbitDatabase } from '../adapters/interface'
 
-import { db } from '../db'
-import { fieldDefinitions, schemaMigrations } from '../drizzle/schema'
-import { validateFieldDefinition } from './validate'
-import { generateFieldSql } from './sql-gen'
-import { regenerateZodSchema } from './type-gen'
-import { generateMigrationId } from '../utils/ids'
-import { eq, and } from 'drizzle-orm'
-import type { FieldDefinition, EntityType, MigrationResult } from '@orbit-ai/core/types'
-
-export async function addField(
-  entityType: EntityType,
-  field: FieldDefinition,
-  context: OrbitContext
-): Promise<MigrationResult> {
-  const migrationId = generateMigrationId('add_field', entityType, field.name)
-
-  // Step 1: Validate the field definition
-  const validationErrors = validateFieldDefinition(field)
-  if (validationErrors.length > 0) {
-    return {
-      success: false,
-      migrationId,
-      appliedAt: null,
-      sql: [],
-      warnings: [],
-      errors: validationErrors,
-      rollbackSql: [],
-      typesRegenerated: false
-    }
-  }
-
-  // Step 2: Check for name collision in field_definitions for this entity + org
-  const existing = await db
-    .select()
-    .from(fieldDefinitions)
-    .where(
-      and(
-        eq(fieldDefinitions.entityType, entityType),
-        eq(fieldDefinitions.fieldName, field.name),
-        eq(fieldDefinitions.organizationId, context.organizationId)
-      )
-    )
-    .limit(1)
-
-  if (existing.length > 0) {
-    return {
-      success: false,
-      migrationId,
-      appliedAt: null,
-      sql: [],
-      warnings: [],
-      errors: [`Field "${field.name}" already exists on entity "${entityType}"`],
-      rollbackSql: [],
-      typesRegenerated: false
-    }
-  }
-
-  // Step 3: Insert the field_definition row (this registers the field in the
-  // JSONB registry — the field is immediately available as a typed custom field
-  // stored in the entity's custom_fields JSONB column)
-  await db.insert(fieldDefinitions).values({
-    id: generateId('field'),
-    organizationId: context.organizationId,
-    entityType,
-    fieldName: field.name,
-    fieldType: field.type,
-    label: field.label ?? field.name,
-    required: field.required ?? false,
-    defaultValue: field.defaultValue ?? null,
-    options: field.options ?? null,
-    relatedEntity: field.relatedEntity ?? null,
-    validation: field.validation ?? null,
-    isPromoted: false,                // not a real column yet
-    createdAt: new Date()
+export async function addCustomField(
+  db: OrbitDatabase,
+  input: Omit<CustomFieldDefinition, 'id'>,
+): Promise<CustomFieldDefinition> {
+  const existing = await db.query.customFieldDefinitions.findFirst({
+    where: and(
+      eq(customFieldDefinitions.organizationId, input.organizationId),
+      eq(customFieldDefinitions.entityType, input.entityType),
+      eq(customFieldDefinitions.fieldName, input.fieldName),
+    ),
   })
 
-  // Step 4: Update JSONB validation — rebuild the JSON Schema for custom_fields
-  // on this entity so that required fields and option constraints are enforced
-  const updatedSchema = await buildJsonSchema(entityType, context.organizationId)
-  await setCustomFieldsJsonSchema(entityType, updatedSchema)
-
-  // Step 5: Generate the Zod schema for this entity (includes custom fields)
-  // and write it to packages/core/src/generated/{entityType}.custom.ts
-  const typesRegenerated = await regenerateZodSchema(entityType, context.organizationId)
-
-  // Step 6: Log the migration
-  const appliedAt = new Date()
-  await db.insert(schemaMigrations).values({
-    id: migrationId,
-    organizationId: context.organizationId,
-    appliedAt,
-    description: `Add field "${field.name}" (${field.type}) to ${entityType}`,
-    entityType,
-    operationType: 'add_field',
-    sql: [],                          // no DDL for JSONB-backed field
-    rollbackSql: [],
-    appliedBy: context.userId
-  })
-
-  return {
-    success: true,
-    migrationId,
-    appliedAt,
-    sql: [],
-    warnings: [],
-    errors: [],
-    rollbackSql: [],
-    typesRegenerated
-  }
-}
-```
-
-### 9.4 How `addEntity` Works (Step by Step)
-
-```typescript
-// packages/core/src/schema-engine/add-entity.ts
-
-import { generateTableSql, generateRlsSql } from './sql-gen'
-import { generateDrizzleDefinition } from './drizzle-gen'
-import { generateTypeFile } from './type-gen'
-import type { FieldDefinition, MigrationResult } from '@orbit-ai/core/types'
-
-export async function addEntity(
-  name: string,
-  fields: FieldDefinition[],
-  context: OrbitContext
-): Promise<MigrationResult> {
-  const migrationId = generateMigrationId('add_entity', name)
-  const warnings: string[] = []
-
-  // Step 1: Validate entity name (snake_case, no reserved words, no collision)
-  const nameErrors = validateEntityName(name)
-  if (nameErrors.length > 0) {
-    return { success: false, migrationId, appliedAt: null, sql: [], warnings, errors: nameErrors, rollbackSql: [], typesRegenerated: false }
+  if (existing) {
+    throw new Error(`Custom field "${input.entityType}.${input.fieldName}" already exists`)
   }
 
-  // Step 2: Generate Drizzle table definition (in-memory, not written to disk yet)
-  const drizzleTable = generateDrizzleDefinition(name, fields)
-  // Always includes: id, organization_id, created_at, updated_at, custom_fields
-
-  // Step 3: Generate migration SQL
-  // e.g. CREATE TABLE crm_app.{name} (id TEXT PRIMARY KEY, organization_id UUID NOT NULL, ...)
-  const sql = generateTableSql(name, fields, { schema: 'crm_app' })
-
-  // Step 4: Generate RLS policies
-  // - Enable RLS on the table
-  // - SELECT/INSERT/UPDATE/DELETE policies using get_my_org_id()
-  const rlsSql = generateRlsSql(name, { mode: context.tenancyMode })
-  const allSql = [...sql, ...rlsSql]
-
-  // Step 5: Check for dry-run
-  if (context.dryRun) {
-    return {
-      success: true,
-      migrationId,
-      appliedAt: null,
-      sql: allSql,
-      warnings,
-      errors: [],
-      rollbackSql: generateDropTableSql(name),
-      typesRegenerated: false
-    }
+  const row: CustomFieldDefinition = {
+    id: generateId('customField'),
+    ...input,
   }
 
-  // Step 6: Apply the SQL (on Neon: branch first, then apply)
-  if (context.adapter === 'neon') {
-    await neonBranchBeforeMigrate(migrationId)
-    warnings.push('Neon branch created before migration. Review and merge at console.neon.tech.')
-  }
-
-  for (const statement of allSql) {
-    await context.raw(statement)
-  }
-
-  // Step 7: Generate TypeScript types file
-  // Writes packages/core/src/generated/entities/{name}.ts
-  await generateTypeFile(name, fields)
-
-  // Step 8: Register entity in the entity registry
-  await registerCustomEntity(name, context.organizationId)
-
-  // Step 9: Log migration
-  const appliedAt = new Date()
-  await db.insert(schemaMigrations).values({
-    id: migrationId,
-    organizationId: context.organizationId,
-    appliedAt,
-    description: `Add entity "${name}" with ${fields.length} fields`,
-    entityType: name,
-    operationType: 'add_entity',
-    sql: allSql,
-    rollbackSql: generateDropTableSql(name),
-    appliedBy: context.userId
-  })
-
-  return {
-    success: true,
-    migrationId,
-    appliedAt,
-    sql: allSql,
-    warnings,
-    errors: [],
-    rollbackSql: generateDropTableSql(name),
-    typesRegenerated: true
-  }
+  await db.insert(customFieldDefinitions).values(row)
+  return row
 }
 ```
 
-### 9.5 Safety Guardrails
+Promotion rules:
 
-**Non-destructive by default.** Agents cannot execute DROP TABLE, DROP COLUMN, or ALTER COLUMN TYPE without explicit opt-in:
+- `promoteField` creates a real column with the same logical name when supported
+- SQLite promotion may recreate the table; `orbit doctor` must warn about this
+- field drops and renames are destructive and blocked unless explicit approval exists
+
+## 8. Storage Adapter Interface
+
+The adapter layer is what allows one service layer to run on Supabase, Neon, raw Postgres, or SQLite.
 
 ```typescript
-// DROP TABLE requires { destructive: true } AND human approval in production
-await schema.apply({ force: true }) // still blocked on 'production' environment
-
-// Only allowed when:
-// 1. context.environment !== 'production', OR
-// 2. ORBIT_ALLOW_DESTRUCTIVE=true env var is set, OR
-// 3. human approval has been recorded (via orbit migrate --approve <id>)
-
-function guardDestructive(operation: SchemaOperation, context: OrbitContext): void {
-  const isDestructive = ['drop_field', 'drop_entity'].includes(operation.type)
-    || (operation.type === 'rename_field')  // rename = drop + add in SQLite
-
-  if (isDestructive && context.environment === 'production') {
-    if (!context.destructiveApproved) {
-      throw new OrbitError({
-        code: 'SCHEMA_DESTRUCTIVE_BLOCKED',
-        message: `Operation "${operation.type}" is destructive and blocked in production.`,
-        hint: 'Run `orbit migrate --approve ${migrationId}` to unlock, or set ORBIT_ALLOW_DESTRUCTIVE=true.',
-        recovery: 'Use promoteField() or addField() instead of dropping columns.'
-      })
-    }
-  }
-}
-```
-
-**Branch-before-migrate on Neon.** When the storage adapter is Neon, every schema migration first creates a Neon branch:
-
-```typescript
-// packages/core/src/adapters/neon/branch.ts
-export async function neonBranchBeforeMigrate(migrationId: string): Promise<string> {
-  const branchName = `orbit-migration-${migrationId}`
-  // Uses Neon Management API to create branch from main
-  const branch = await neonApi.createBranch({ name: branchName, parentBranch: 'main' })
-  return branch.id
-}
-```
-
-**Type-checking for incompatible changes.** Before promoting a JSONB field to a column, the engine checks for data incompatibility:
-
-```typescript
-// Before ALTER COLUMN: scan existing custom_fields values for type violations
-async function checkTypeCompatibility(
-  entityType: EntityType,
-  fieldName: string,
-  targetType: FieldType
-): Promise<string[]> {
-  const violations = await db.execute(sql`
-    SELECT id, custom_fields->>${fieldName} AS val
-    FROM crm_app.${sql.identifier(entityType)}
-    WHERE custom_fields->>${fieldName} IS NOT NULL
-      AND NOT (custom_fields->>${fieldName} ~ ${typePattern(targetType)})
-    LIMIT 10
-  `)
-  return violations.rows.map(r => `Row ${r.id}: value "${r.val}" is not a valid ${targetType}`)
-}
-```
-
-**Human approval gate for production.** The CLI `orbit migrate` command requires explicit confirmation for any DDL in a production environment. The approval is recorded with a signature in `schema_migrations` before the SQL runs.
-
-### 9.6 Migration File Format and Storage
-
-Migrations are stored in two places simultaneously:
-
-1. **Database table** `crm_app.schema_migrations` — canonical record, queryable, org-scoped
-2. **Filesystem** `{project}/.orbit/migrations/` — human-readable, git-committable
-
-```
-.orbit/migrations/
-  20260401_120000_add_field_contacts_wedding_date.json
-  20260402_083000_add_entity_event_notes.json
-  20260403_140500_promote_field_contacts_lead_score.json
-```
-
-Migration file format:
-
-```json
-{
-  "id": "20260401_120000_add_field_contacts_wedding_date",
-  "description": "Add field \"wedding_date\" (date) to contacts",
-  "entityType": "contacts",
-  "operationType": "add_field",
-  "appliedAt": "2026-04-01T12:00:00.000Z",
-  "appliedBy": "user_01HX123",
-  "sql": [],
-  "rollbackSql": [],
-  "fieldDefinition": {
-    "name": "wedding_date",
-    "type": "date",
-    "label": "Wedding Date",
-    "required": false
-  }
-}
-```
-
-### 9.7 TypeScript Type Regeneration
-
-After any schema change, types are regenerated via `regenerateZodSchema()`:
-
-```typescript
-// packages/core/src/schema-engine/type-gen.ts
-import { createSelectSchema, createInsertSchema } from 'drizzle-zod'
-import { contacts } from '../drizzle/schema'
-import type { FieldDefinition } from '@orbit-ai/core/types'
-
-export async function regenerateZodSchema(
-  entityType: EntityType,
-  organizationId: string
-): Promise<boolean> {
-  // 1. Load all field_definitions for this entity + org
-  const customFields = await loadFieldDefinitions(entityType, organizationId)
-
-  // 2. Build Zod extension for custom_fields
-  const customFieldsZod = buildCustomFieldsZod(customFields)
-
-  // 3. Extend the base Drizzle-generated schema
-  const baseSelect = createSelectSchema(getTable(entityType))
-  const extended = baseSelect.extend({
-    custom_fields: customFieldsZod
-  })
-
-  // 4. Write generated file (for SDK and API type exports)
-  const code = generateZodFileContent(entityType, extended, customFields)
-  await writeFile(
-    `packages/core/src/generated/${entityType}.zod.ts`,
-    code
-  )
-
-  return true
-}
-
-function buildCustomFieldsZod(fields: FieldDefinition[]): z.ZodObject<z.ZodRawShape> {
-  const shape: z.ZodRawShape = {}
-  for (const field of fields) {
-    shape[field.name] = fieldTypeToZod(field)
-  }
-  return z.object(shape).passthrough()
-}
-
-function fieldTypeToZod(field: FieldDefinition): z.ZodTypeAny {
-  const base: Record<FieldType, z.ZodTypeAny> = {
-    text: z.string(),
-    number: z.number(),
-    boolean: z.boolean(),
-    date: z.string().date(),
-    datetime: z.string().datetime(),
-    select: field.options ? z.enum(field.options as [string, ...string[]]) : z.string(),
-    multi_select: field.options ? z.array(z.enum(field.options as [string, ...string[]])) : z.array(z.string()),
-    url: z.string().url(),
-    email: z.string().email(),
-    phone: z.string(),
-    currency: z.number().nonnegative(),
-    relation: z.string()             // stores the related entity ID
-  }
-  const zodType = base[field.type] ?? z.unknown()
-  return field.required ? zodType : zodType.nullable().optional()
-}
-```
-
----
-
-## 10. Entity Operations (CRUD)
-
-Every entity exposed by Orbit AI is accessed through a uniform `EntityOperations<T>` interface. The underlying implementation uses Drizzle query builders and injects `organization_id` automatically from the `OrbitContext`.
-
-### 10.1 Interface
-
-```typescript
-import type { Filter, SortOptions, ListOptions, SearchQuery, PaginatedResult } from '@orbit-ai/core/types'
-
-interface EntityOperations<T, TInsert = Partial<T>> {
-  create(data: TInsert): Promise<T>
-  get(id: string): Promise<T | null>
-  update(id: string, data: Partial<TInsert>): Promise<T>
-  delete(id: string): Promise<void>
-  list(options?: ListOptions<T>): Promise<PaginatedResult<T>>
-  search(query: SearchQuery): Promise<PaginatedResult<T>>
-  count(filters?: Filter[]): Promise<number>
-}
-```
-
-### 10.2 `ListOptions` Type
-
-```typescript
-interface ListOptions<T = unknown> {
-  filters?: Filter[]
-  sort?: SortOptions[]
-  limit?: number                      // Default: 25, max: 100
-  cursor?: string                     // Opaque cursor from previous response
-  include?: RelationshipKey[]         // Relationships to load (e.g. ['company', 'deals'])
-}
-
-type FilterOperator =
-  | 'eq' | 'neq'
-  | 'gt' | 'gte' | 'lt' | 'lte'
-  | 'like' | 'ilike'
-  | 'in' | 'not_in'
-  | 'is_null' | 'is_not_null'
-  | 'contains'                        // for JSONB arrays
-
-interface Filter {
-  field: string
-  op: FilterOperator
-  value?: unknown                     // absent for is_null / is_not_null
-}
-
-interface SortOptions {
-  field: string
-  direction: 'asc' | 'desc'
-}
-
-type RelationshipKey = 'company' | 'deals' | 'activities' | 'tasks' | 'notes' | 'tags' | 'recent_activities' | string
-```
-
-### 10.3 Filter to Drizzle Mapping
-
-```typescript
-// packages/core/src/entity/filters.ts
-import { eq, ne, gt, gte, lt, lte, like, ilike, inArray, notInArray, isNull, isNotNull, sql } from 'drizzle-orm'
-import type { AnyPgColumn } from 'drizzle-orm/pg-core'
-
-function applyFilter(column: AnyPgColumn, filter: Filter): SQL {
-  const { op, value } = filter
-  switch (op) {
-    case 'eq':         return eq(column, value)
-    case 'neq':        return ne(column, value)
-    case 'gt':         return gt(column, value)
-    case 'gte':        return gte(column, value)
-    case 'lt':         return lt(column, value)
-    case 'lte':        return lte(column, value)
-    case 'like':       return like(column, escapeLike(String(value)))
-    case 'ilike':      return ilike(column, escapeLike(String(value)))
-    case 'in':         return inArray(column, value as unknown[])
-    case 'not_in':     return notInArray(column, value as unknown[])
-    case 'is_null':    return isNull(column)
-    case 'is_not_null':return isNotNull(column)
-    case 'contains':   return sql`${column} @> ${JSON.stringify(value)}`
-    default:
-      throw new OrbitError({ code: 'INVALID_FILTER_OP', message: `Unknown filter operator: ${op}` })
-  }
-}
-
-// Always escape user input before passing to LIKE/ILIKE
-function escapeLike(value: string): string {
-  return value.replace(/[%_\\]/g, (c) => `\\${c}`)
-}
-```
-
-### 10.4 Relationship Loading
-
-```typescript
-// include: ['company', 'deals', 'recent_activities']
-// Relationship loading is eager, not lazy — N relations = N additional queries,
-// batched after the main list query to avoid N+1 per row.
-
-async function loadRelationships<T extends { id: string }>(
-  rows: T[],
-  include: RelationshipKey[],
-  context: OrbitContext
-): Promise<T[]> {
-  if (include.length === 0 || rows.length === 0) return rows
-
-  const ids = rows.map(r => r.id)
-  const loaded: Record<string, Record<RelationshipKey, unknown>> = {}
-
-  // Batch-load each requested relationship
-  await Promise.all(include.map(async (rel) => {
-    switch (rel) {
-      case 'company': {
-        const companyIds = [...new Set(
-          (rows as Array<{ company_id?: string | null }>)
-            .map(r => r.company_id)
-            .filter(Boolean) as string[]
-        )]
-        if (companyIds.length === 0) return
-        const companies = await db
-          .select()
-          .from(companiesTable)
-          .where(
-            and(
-              inArray(companiesTable.id, companyIds),
-              eq(companiesTable.organizationId, context.organizationId)
-            )
-          )
-        const byId = Object.fromEntries(companies.map(c => [c.id, c]))
-        for (const row of rows) {
-          const r = row as Record<string, unknown>
-          loaded[r.id as string] ??= {} as Record<RelationshipKey, unknown>
-          loaded[r.id as string].company = byId[r.company_id as string] ?? null
-        }
-        break
-      }
-
-      case 'recent_activities': {
-        // Load last 10 activities per contact in a single IN query + client-side grouping
-        const activities = await db
-          .select()
-          .from(activitiesTable)
-          .where(
-            and(
-              inArray(activitiesTable.contactId, ids),
-              eq(activitiesTable.organizationId, context.organizationId)
-            )
-          )
-          .orderBy(desc(activitiesTable.occurredAt))
-          .limit(ids.length * 10)     // over-fetch, group client-side
-        const byContactId = groupBy(activities, a => a.contactId)
-        for (const id of ids) {
-          loaded[id] ??= {} as Record<RelationshipKey, unknown>
-          loaded[id].recent_activities = (byContactId[id] ?? []).slice(0, 10)
-        }
-        break
-      }
-
-      case 'deals': {
-        const deals = await db
-          .select()
-          .from(dealsTable)
-          .where(
-            and(
-              inArray(dealsTable.contactId, ids),
-              eq(dealsTable.organizationId, context.organizationId)
-            )
-          )
-        const byContactId = groupBy(deals, d => d.contactId)
-        for (const id of ids) {
-          loaded[id] ??= {} as Record<RelationshipKey, unknown>
-          loaded[id].deals = byContactId[id] ?? []
-        }
-        break
-      }
-
-      // ... tags, tasks, notes follow the same pattern
-    }
-  }))
-
-  // Merge loaded relationships back into rows
-  return rows.map(row => ({
-    ...row,
-    ...loaded[(row as Record<string, unknown>).id as string]
-  }))
-}
-```
-
-### 10.5 Cursor-Based Pagination
-
-```typescript
-// packages/core/src/entity/pagination.ts
-
-interface CursorPayload {
-  id: string
-  createdAt: string                   // ISO 8601
-}
-
-function encodeCursor(row: { id: string, createdAt: Date }): string {
-  const payload: CursorPayload = { id: row.id, createdAt: row.createdAt.toISOString() }
-  return Buffer.from(JSON.stringify(payload)).toString('base64url')
-}
-
-function decodeCursor(cursor: string): CursorPayload {
-  try {
-    return JSON.parse(Buffer.from(cursor, 'base64url').toString('utf-8')) as CursorPayload
-  } catch {
-    throw new OrbitError({ code: 'INVALID_CURSOR', message: 'Cursor is malformed or expired.' })
-  }
-}
-
-// In list() implementation: fetch limit + 1 rows to determine has_more
-async function buildPaginatedResult<T extends { id: string, createdAt: Date }>(
-  rows: T[],
-  limit: number
-): Promise<PaginatedResult<T>> {
-  const hasMore = rows.length > limit
-  const data = hasMore ? rows.slice(0, limit) : rows
-  const lastRow = data[data.length - 1]
-  return {
-    data,
-    meta: {
-      cursor: lastRow ? encodeCursor(lastRow) : null,
-      has_more: hasMore,
-      count: data.length
-    }
-  }
-}
-
-// Cursor used as WHERE clause: (created_at, id) < (cursor.createdAt, cursor.id)
-// This gives stable pagination even when new rows are inserted during paging.
-function applyCursorWhere(cursor: CursorPayload): SQL {
-  return sql`(created_at, id) < (${cursor.createdAt}::timestamptz, ${cursor.id})`
-}
-```
-
-### 10.6 Custom Fields Merging
-
-Custom fields are stored in the `custom_fields JSONB` column and are transparently merged into the entity response. No special handling needed by callers.
-
-```typescript
-// The Drizzle select already includes custom_fields as a column.
-// The Zod schema (regenerated by schema engine) validates and types it.
-// At the API response layer, custom_fields is spread into the response object
-// so callers see: { id, name, email, ..., wedding_date: "2026-06-15" }
-// rather than: { id, name, email, ..., custom_fields: { wedding_date: "2026-06-15" } }
-
-function flattenCustomFields<T extends { custom_fields?: Record<string, unknown> | null }>(
-  row: T
-): Omit<T, 'custom_fields'> & Record<string, unknown> {
-  const { custom_fields, ...rest } = row
-  return { ...rest, ...(custom_fields ?? {}) }
-}
-```
-
-### 10.7 Automatic Audit Logging and `organization_id` Injection
-
-Every `create()`, `update()`, and `delete()` call on any entity automatically:
-
-1. Injects `organization_id` from `OrbitContext` — callers never pass it manually
-2. Writes a row to `crm_app.audit_log` with the before/after snapshot
-
-```typescript
-// packages/core/src/entity/base.ts
-
-export function createEntityOperations<T extends BaseEntity, TInsert>(
-  table: PgTable,
-  entityType: EntityType,
-  context: OrbitContext
-): EntityOperations<T, TInsert> {
-  return {
-    async create(data: TInsert): Promise<T> {
-      const id = generateId(entityType)
-      const row = await db
-        .insert(table)
-        .values({
-          ...data,
-          id,
-          organization_id: context.organizationId,  // always injected
-          created_at: new Date(),
-          updated_at: new Date()
-        })
-        .returning()
-        .then(rows => rows[0] as T)
-
-      await writeAuditLog({
-        entityType,
-        entityId: id,
-        action: 'create',
-        before: null,
-        after: row,
-        userId: context.userId,
-        organizationId: context.organizationId
-      })
-
-      return row
-    },
-
-    async update(id: string, data: Partial<TInsert>): Promise<T> {
-      const before = await this.get(id)
-      if (!before) {
-        throw new OrbitError({ code: 'NOT_FOUND', message: `${entityType} ${id} not found` })
-      }
-
-      const after = await db
-        .update(table)
-        .set({ ...data, updated_at: new Date() })
-        .where(
-          and(
-            eq((table as Record<string, AnyPgColumn>).id, id),
-            eq((table as Record<string, AnyPgColumn>).organization_id, context.organizationId)
-          )
-        )
-        .returning()
-        .then(rows => rows[0] as T)
-
-      await writeAuditLog({
-        entityType,
-        entityId: id,
-        action: 'update',
-        before,
-        after,
-        userId: context.userId,
-        organizationId: context.organizationId
-      })
-
-      return after
-    },
-
-    async delete(id: string): Promise<void> {
-      const before = await this.get(id)
-      if (!before) {
-        throw new OrbitError({ code: 'NOT_FOUND', message: `${entityType} ${id} not found` })
-      }
-
-      await db
-        .delete(table)
-        .where(
-          and(
-            eq((table as Record<string, AnyPgColumn>).id, id),
-            eq((table as Record<string, AnyPgColumn>).organization_id, context.organizationId)
-          )
-        )
-
-      await writeAuditLog({
-        entityType,
-        entityId: id,
-        action: 'delete',
-        before,
-        after: null,
-        userId: context.userId,
-        organizationId: context.organizationId
-      })
-    },
-
-    // list() and search() always add .where(eq(table.organization_id, context.organizationId))
-    async list(options?: ListOptions<T>): Promise<PaginatedResult<T>> {
-      const limit = Math.min(options?.limit ?? 25, 100)
-      const filters = options?.filters ?? []
-      const sorts = options?.sort ?? [{ field: 'created_at', direction: 'desc' }]
-
-      let query = db.select().from(table)
-        .where(
-          and(
-            eq((table as Record<string, AnyPgColumn>).organization_id, context.organizationId),
-            options?.cursor ? applyCursorWhere(decodeCursor(options.cursor)) : undefined,
-            ...filters.map(f => applyFilter((table as Record<string, AnyPgColumn>)[f.field], f))
-          )
-        )
-        .orderBy(...sorts.map(s =>
-          s.direction === 'asc'
-            ? asc((table as Record<string, AnyPgColumn>)[s.field])
-            : desc((table as Record<string, AnyPgColumn>)[s.field])
-        ))
-        .limit(limit + 1)
-
-      const rows = await query as T[]
-      const paged = await buildPaginatedResult(rows, limit)
-
-      if (options?.include?.length) {
-        paged.data = await loadRelationships(paged.data, options.include, context)
-      }
-
-      return paged
-    }
-  }
-}
-```
-
----
-
-## 11. Audit Logging
-
-### 11.1 `audit_log` Table Schema
-
-```typescript
-// packages/core/src/drizzle/schema/audit-log.ts
-import { pgTable, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core'
-
-export const auditLog = pgTable('audit_log', {
-  id:             text('id').primaryKey(),        // ulid prefixed: "audit_01HX..."
-  organizationId: text('organization_id').notNull(),
-  entityType:     text('entity_type').notNull(),   // 'contacts', 'deals', etc.
-  entityId:       text('entity_id').notNull(),
-  action:         text('action').notNull(),         // 'create' | 'update' | 'delete'
-  before:         jsonb('before'),                  // null on create
-  after:          jsonb('after'),                   // null on delete
-  changes:        text('changes').array(),          // field names that changed (update only)
-  userId:         text('user_id'),                  // null for system/agent operations
-  userEmail:      text('user_email'),               // denormalized for readability
-  ipAddress:      text('ip_address'),               // from request context if available
-  userAgent:      text('user_agent'),
-  requestId:      text('request_id'),               // correlates to API request
-  createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
-}, (t) => [
-  index('audit_log_entity_idx').on(t.entityType, t.entityId),
-  index('audit_log_org_idx').on(t.organizationId, t.createdAt.desc()),
-  index('audit_log_user_idx').on(t.userId)
-])
-```
-
-### 11.2 Auto-Logging Implementation
-
-Every mutation routed through `EntityOperations.create()`, `update()`, or `delete()` calls `writeAuditLog()` internally. Callers never invoke it directly.
-
-```typescript
-// packages/core/src/audit/write.ts
-
-interface AuditEntry {
-  entityType: EntityType
-  entityId: string
-  action: 'create' | 'update' | 'delete'
-  before: Record<string, unknown> | null
-  after: Record<string, unknown> | null
-  userId: string | null
-  organizationId: string
+// packages/core/src/adapters/interface.ts
+import type { SQL, InferInsertModel, InferSelectModel } from 'drizzle-orm'
+import type { PgDatabase } from 'drizzle-orm/pg-core'
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import type { customFieldDefinitions } from '../schema/tables'
+
+export type OrbitDatabase = PgDatabase<Record<string, never>> | BetterSQLite3Database<Record<string, never>>
+
+export interface OrbitAuthContext {
+  userId?: string
+  orgId: string
+  apiKeyId?: string
   requestId?: string
 }
 
-async function writeAuditLog(entry: AuditEntry): Promise<void> {
-  const changes = computeChanges(entry.before, entry.after)
+export interface IUserResolver {
+  resolveByExternalAuthId(externalAuthId: string, orgId: string): Promise<string | null>
+  upsertFromAuth(input: {
+    orgId: string
+    externalAuthId: string
+    email: string
+    name: string
+    avatarUrl?: string
+  }): Promise<string>
+}
 
-  await db.insert(auditLog).values({
-    id: generateId('audit'),
-    organizationId: entry.organizationId,
-    entityType: entry.entityType,
-    entityId: entry.entityId,
-    action: entry.action,
-    before: entry.before,
-    after: entry.after,
-    changes,
-    userId: entry.userId,             // null is valid for system/AI actions
-    requestId: entry.requestId ?? null,
-    createdAt: new Date()
+export interface StorageAdapter {
+  readonly name: 'supabase' | 'neon' | 'postgres' | 'sqlite'
+  readonly dialect: 'postgres' | 'sqlite'
+  readonly supportsRls: boolean
+  readonly supportsBranching: boolean
+  readonly supportsJsonbIndexes: boolean
+  readonly database: OrbitDatabase
+  readonly users: IUserResolver
+
+  connect(): Promise<void>
+  disconnect(): Promise<void>
+  migrate(): Promise<void>
+  transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>): Promise<T>
+  execute(statement: SQL): Promise<unknown>
+  enableTenantContext(context: OrbitAuthContext): Promise<void>
+  clearTenantContext(): Promise<void>
+  createBranch?(name: string): Promise<{ id: string; name: string }>
+  mergeBranch?(id: string): Promise<void>
+  getSchemaSnapshot(): Promise<{
+    customFields: InferSelectModel<typeof customFieldDefinitions>[]
+    tables: string[]
+  }>
+}
+```
+
+Adapter-specific requirements:
+
+- Supabase: uses Postgres RLS and may sync `users` from `auth.users`
+- Neon: same as raw Postgres plus `createBranch` and `mergeBranch`
+- Raw Postgres: full SQL support, no Supabase auth assumptions
+- SQLite: application-level tenant enforcement, no database RLS, schema changes may require table recreation
+
+## 9. RLS Auto-Generation
+
+RLS is generated for every tenant table on Postgres-family adapters. SQLite skips policy DDL and enforces org filters in repositories.
+
+```typescript
+// packages/core/src/schema-engine/rls.ts
+const TENANT_TABLES = [
+  'users',
+  'organization_memberships',
+  'api_keys',
+  'contacts',
+  'companies',
+  'deals',
+  'pipelines',
+  'stages',
+  'activities',
+  'tasks',
+  'notes',
+  'products',
+  'payments',
+  'contracts',
+  'sequences',
+  'sequence_steps',
+  'sequence_enrollments',
+  'sequence_events',
+  'tags',
+  'entity_tags',
+  'custom_field_definitions',
+  'webhooks',
+  'webhook_deliveries',
+  'imports',
+  'schema_migrations',
+  'audit_logs',
+  'idempotency_keys',
+] as const
+
+export function generatePostgresRlsSql(schema = 'orbit'): string[] {
+  const statements = [
+    `create or replace function ${schema}.current_org_id() returns text language sql stable as $$ select current_setting('app.current_org_id', true) $$;`,
+  ]
+
+  for (const table of TENANT_TABLES) {
+    statements.push(
+      `alter table ${schema}.${table} enable row level security;`,
+      `create policy ${table}_select on ${schema}.${table} for select using (organization_id = ${schema}.current_org_id());`,
+      `create policy ${table}_insert on ${schema}.${table} for insert with check (organization_id = ${schema}.current_org_id());`,
+      `create policy ${table}_update on ${schema}.${table} for update using (organization_id = ${schema}.current_org_id()) with check (organization_id = ${schema}.current_org_id());`,
+      `create policy ${table}_delete on ${schema}.${table} for delete using (organization_id = ${schema}.current_org_id());`,
+    )
+  }
+
+  return statements
+}
+```
+
+Tenant context rules:
+
+- API and SDK direct-DB mode call `set_config('app.current_org_id', $1, true)` before queries
+- `organization_id` must always be injected by the service layer, never trusted from public callers
+- repositories still include explicit `where organization_id = ctx.orgId` filters even when RLS is enabled
+
+## 10. Schema Engine
+
+The schema engine is the moat and must remain non-destructive by default.
+
+```typescript
+// packages/core/src/schema-engine/engine.ts
+import type { StorageAdapter } from '../adapters/interface'
+import type { CustomFieldDefinition } from '../types/schema'
+
+export interface SchemaOperationResult {
+  migrationId: string
+  sql: string[]
+  rollbackSql: string[]
+  warnings: string[]
+}
+
+export interface SchemaEngine {
+  addField(input: Omit<CustomFieldDefinition, 'id'>): Promise<SchemaOperationResult>
+  addEntity(input: {
+    organizationId: string
+    name: string
+    label: string
+    fields: Array<{ name: string; type: string; nullable?: boolean }>
+  }): Promise<SchemaOperationResult>
+  promoteField(input: {
+    organizationId: string
+    entityType: string
+    fieldName: string
+  }): Promise<SchemaOperationResult>
+  preview(input: { organizationId: string; operations: unknown[] }): Promise<SchemaOperationResult>
+  apply(migrationId: string): Promise<void>
+  rollback(migrationId: string): Promise<void>
+  describe(organizationId: string, entityType?: string): Promise<Record<string, unknown>>
+}
+
+export class OrbitSchemaEngine implements SchemaEngine {
+  constructor(private readonly adapter: StorageAdapter) {}
+  async addField(): Promise<SchemaOperationResult> {
+    throw new Error('implemented in add-field.ts')
+  }
+  async addEntity(): Promise<SchemaOperationResult> {
+    throw new Error('implemented in add-entity.ts')
+  }
+  async promoteField(): Promise<SchemaOperationResult> {
+    throw new Error('implemented in promote-field.ts')
+  }
+  async preview(): Promise<SchemaOperationResult> {
+    throw new Error('implemented in preview.ts')
+  }
+  async apply(): Promise<void> {
+    throw new Error('implemented in apply.ts')
+  }
+  async rollback(): Promise<void> {
+    throw new Error('implemented in rollback.ts')
+  }
+  async describe(): Promise<Record<string, unknown>> {
+    throw new Error('implemented in describe.ts')
+  }
+}
+```
+
+Safety rules:
+
+- `addField` is metadata-only unless `promoteImmediately` is explicitly requested
+- `drop_field`, `drop_entity`, and type changes are blocked in production without approval
+- Neon migrations must branch first
+- migration records live in DB and `.orbit/migrations/*.json`
+
+## 11. Entity Operations
+
+Every entity service implements a common contract and injects `organization_id` automatically.
+
+```typescript
+// packages/core/src/services/entity-service.ts
+import type { PaginatedResult, SearchQuery } from '../types/api'
+import type { OrbitAuthContext } from '../adapters/interface'
+
+export interface EntityService<TCreate, TUpdate, TRecord> {
+  create(ctx: OrbitAuthContext, input: TCreate): Promise<TRecord>
+  get(ctx: OrbitAuthContext, id: string): Promise<TRecord | null>
+  update(ctx: OrbitAuthContext, id: string, input: TUpdate): Promise<TRecord>
+  delete(ctx: OrbitAuthContext, id: string): Promise<void>
+  list(ctx: OrbitAuthContext, query: SearchQuery): Promise<PaginatedResult<TRecord>>
+  search(ctx: OrbitAuthContext, query: SearchQuery): Promise<PaginatedResult<TRecord>>
+}
+```
+
+```typescript
+// packages/core/src/services/index.ts
+import type { StorageAdapter } from '../adapters/interface'
+
+export function createCoreServices(adapter: StorageAdapter) {
+  return {
+    contacts: createContactService(adapter),
+    companies: createCompanyService(adapter),
+    deals: createDealService(adapter),
+    pipelines: createPipelineService(adapter),
+    stages: createStageService(adapter),
+    activities: createActivityService(adapter),
+    tasks: createTaskService(adapter),
+    notes: createNoteService(adapter),
+    products: createProductService(adapter),
+    payments: createPaymentService(adapter),
+    contracts: createContractService(adapter),
+    sequences: createSequenceService(adapter),
+    sequenceSteps: createSequenceStepService(adapter),
+    sequenceEnrollments: createSequenceEnrollmentService(adapter),
+    sequenceEvents: createSequenceEventService(adapter),
+    tags: createTagService(adapter),
+    webhooks: createWebhookService(adapter),
+    imports: createImportService(adapter),
+    users: createUserService(adapter),
+    schema: new OrbitSchemaEngine(adapter),
+    contactContext: createContactContextService(adapter),
+  }
+}
+```
+
+Required first-party services:
+
+- `contacts`
+- `companies`
+- `deals`
+- `pipelines`
+- `stages`
+- `activities`
+- `tasks`
+- `notes`
+- `products`
+- `payments`
+- `contracts`
+- `sequences`
+- `sequence_steps`
+- `sequence_enrollments`
+- `sequence_events`
+- `tags`
+- `webhooks`
+- `imports`
+- `schema`
+- `users`
+
+Every service must:
+
+- validate input through Zod
+- enforce tenant scope
+- write audit logs on mutation
+- support cursor pagination
+- respect idempotency for create/update/delete entry points
+
+## 12. Audit Logging
+
+Every mutation writes an `audit_logs` row with before/after JSON.
+
+```typescript
+// packages/core/src/services/audit-service.ts
+import { generateId } from '../ids/generate-id'
+import { auditLogs } from '../schema/tables'
+import type { OrbitDatabase, OrbitAuthContext } from '../adapters/interface'
+
+export async function writeAuditLog(
+  db: OrbitDatabase,
+  ctx: OrbitAuthContext,
+  input: {
+    entityType: string
+    entityId: string
+    action: 'create' | 'update' | 'delete' | 'move' | 'assign'
+    before?: Record<string, unknown> | null
+    after?: Record<string, unknown> | null
+  },
+): Promise<void> {
+  await db.insert(auditLogs).values({
+    id: generateId('auditLog'),
+    organizationId: ctx.orgId,
+    actorUserId: ctx.userId,
+    actorApiKeyId: ctx.apiKeyId,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    action: input.action,
+    before: input.before ?? null,
+    after: input.after ?? null,
+    requestId: ctx.requestId,
+    occurredAt: new Date(),
   })
 }
 ```
 
-### 11.3 Before/After Diff
+## 13. `getContactContext()`
+
+This query is shared by CLI `orbit context`, MCP assistants, and future workflow automation.
 
 ```typescript
-// packages/core/src/audit/diff.ts
+// packages/core/src/services/contact-context.ts
+export interface ContactContextResult {
+  contact: Record<string, unknown>
+  company: Record<string, unknown> | null
+  openDeals: Record<string, unknown>[]
+  openTasks: Record<string, unknown>[]
+  recentActivities: Record<string, unknown>[]
+  tags: Array<{ id: string; name: string; color: string | null }>
+  lastContactDate: string | null
+}
 
-function computeChanges(
-  before: Record<string, unknown> | null,
-  after: Record<string, unknown> | null
-): string[] {
-  if (!before || !after) return []    // create or delete — no field diff
-
-  const allKeys = new Set([...Object.keys(before), ...Object.keys(after)])
-  const changed: string[] = []
-
-  for (const key of allKeys) {
-    if (key === 'updated_at') continue  // always changes, not meaningful
-    if (!deepEqual(before[key], after[key])) {
-      changed.push(key)
-    }
-  }
-
-  return changed.sort()
+export interface ContactContextService {
+  getContactContext(
+    ctx: { orgId: string },
+    input: { contactId?: string; email?: string },
+  ): Promise<ContactContextResult | null>
 }
 ```
 
-### 11.4 `getAuditHistory()`
+The implementation must return:
 
-```typescript
-// packages/core/src/audit/query.ts
+- contact record
+- associated company
+- last 10 activities sorted by `occurred_at desc`
+- all open tasks sorted by due date
+- all open deals sorted by `updated_at desc`
+- applied tags
+- derived `lastContactDate` as max of activity occurred date and contact last contacted date
 
-async function getAuditHistory(
-  entityType: EntityType,
-  entityId: string,
-  context: OrbitContext,
-  options?: { limit?: number, cursor?: string }
-): Promise<PaginatedResult<typeof auditLog.$inferSelect>> {
-  const limit = options?.limit ?? 50
-  const rows = await db
-    .select()
-    .from(auditLog)
-    .where(
-      and(
-        eq(auditLog.organizationId, context.organizationId),
-        eq(auditLog.entityType, entityType),
-        eq(auditLog.entityId, entityId),
-        options?.cursor ? applyCursorWhere(decodeCursor(options.cursor)) : undefined
-      )
-    )
-    .orderBy(desc(auditLog.createdAt))
-    .limit(limit + 1)
+## 14. AGENTS.MD and Generated Artifacts
 
-  return buildPaginatedResult(rows, limit)
-}
+`@orbit-ai/core` must generate machine-readable docs for each entity into:
+
+```text
+packages/core/src/entities/<entity>/AGENTS.MD
 ```
 
-### 11.5 `undoAction()`
-
-Reverses a specific audit log entry by replaying the `before` snapshot. Only works for `update` actions (cannot un-delete or un-create without data loss risks).
-
-```typescript
-// packages/core/src/audit/undo.ts
-
-async function undoAction(
-  auditId: string,
-  context: OrbitContext
-): Promise<{ success: boolean, restoredEntity: unknown }> {
-  const entry = await db
-    .select()
-    .from(auditLog)
-    .where(
-      and(
-        eq(auditLog.id, auditId),
-        eq(auditLog.organizationId, context.organizationId)
-      )
-    )
-    .limit(1)
-    .then(rows => rows[0])
-
-  if (!entry) {
-    throw new OrbitError({ code: 'NOT_FOUND', message: `Audit entry ${auditId} not found` })
-  }
-
-  if (entry.action !== 'update') {
-    throw new OrbitError({
-      code: 'UNDO_NOT_SUPPORTED',
-      message: `Cannot undo action "${entry.action}". Only "update" actions are reversible.`,
-      hint: 'Use create() or delete() manually to reverse creates and deletes.',
-      recovery: null
-    })
-  }
-
-  if (!entry.before) {
-    throw new OrbitError({ code: 'UNDO_NO_SNAPSHOT', message: 'Before snapshot is missing from this audit entry.' })
-  }
-
-  // Restore using the entity operations layer (which will itself write a new audit entry)
-  const ops = createEntityOperations(
-    getTable(entry.entityType as EntityType),
-    entry.entityType as EntityType,
-    context
-  )
-
-  const restored = await ops.update(entry.entityId, entry.before as Record<string, unknown>)
-
-  return { success: true, restoredEntity: restored }
-}
-```
-
----
-
-## 12. `getContactContext()`
-
-The "pre-flight briefing" function — returns a full dossier on a contact in a single function call. Used by `orbit context <email>` in the CLI and as a building block for MCP agents.
-
-### 12.1 Return Type
-
-```typescript
-interface ContactContext {
-  contact: Contact
-  company: Company | null
-  deals: Deal[]                       // open (not won, not lost) deals only
-  recentActivities: Activity[]        // last 10, ordered by occurred_at desc
-  openTasks: Task[]                   // is_completed = false, ordered by due_date asc
-  tags: Tag[]
-  lastContactDate: Date | null        // most recent activity.occurred_at
-  stats: {
-    totalDeals: number
-    totalValue: number                // sum of deal.value across ALL deals
-    wonDeals: number
-    lostDeals: number
-    winRate: number                   // wonDeals / (wonDeals + lostDeals), 0 if no closed deals
-    avgDealValue: number              // totalValue / totalDeals, 0 if no deals
-  }
-}
-```
-
-### 12.2 Implementation
-
-```typescript
-// packages/core/src/context/contact-context.ts
-import { db } from '../db'
-import { contacts, companies, deals, activities, tasks, tags, entityTags, stages } from '../drizzle/schema'
-import { eq, and, isNull, desc, asc, inArray, sum, count } from 'drizzle-orm'
-import type { OrbitContext } from '@orbit-ai/core/types'
-
-export async function getContactContext(
-  idOrEmail: string,
-  context: OrbitContext
-): Promise<ContactContext> {
-  const orgId = context.organizationId
-
-  // Step 1: Resolve the contact (by ID or email) — single query
-  const isEmail = idOrEmail.includes('@')
-  const contact = await db
-    .select()
-    .from(contacts)
-    .where(
-      and(
-        eq(contacts.organizationId, orgId),
-        isEmail
-          ? eq(contacts.email, idOrEmail)
-          : eq(contacts.id, idOrEmail)
-      )
-    )
-    .limit(1)
-    .then(rows => rows[0] ?? null)
-
-  if (!contact) {
-    throw new OrbitError({
-      code: 'NOT_FOUND',
-      message: `Contact not found: ${idOrEmail}`,
-      hint: 'Check the email address or contact ID.',
-      recovery: 'Use orbit contacts search to find the correct identifier.'
-    })
-  }
-
-  // Steps 2-7: Run all remaining queries in parallel — no N+1
-  const [
-    company,
-    allDeals,
-    recentActivities,
-    openTasks,
-    contactTags,
-    dealStats
-  ] = await Promise.all([
-    // 2. Company (nullable)
-    contact.companyId
-      ? db.select().from(companies)
-          .where(and(eq(companies.id, contact.companyId), eq(companies.organizationId, orgId)))
-          .limit(1)
-          .then(rows => rows[0] ?? null)
-      : Promise.resolve(null),
-
-    // 3. All deals (open + closed, for stats + open deal list)
-    db.select({
-        id: deals.id,
-        title: deals.title,
-        value: deals.value,
-        stageId: deals.stageId,
-        wonAt: deals.wonAt,
-        lostAt: deals.lostAt,
-        lostReason: deals.lostReason,
-        expectedCloseDate: deals.expectedCloseDate,
-        assignedTo: deals.assignedTo,
-        createdAt: deals.createdAt
-      })
-      .from(deals)
-      .where(and(eq(deals.contactId, contact.id), eq(deals.organizationId, orgId)))
-      .orderBy(desc(deals.createdAt)),
-
-    // 4. Recent activities (last 10)
-    db.select()
-      .from(activities)
-      .where(and(eq(activities.contactId, contact.id), eq(activities.organizationId, orgId)))
-      .orderBy(desc(activities.occurredAt))
-      .limit(10),
-
-    // 5. Open tasks
-    db.select()
-      .from(tasks)
-      .where(
-        and(
-          eq(tasks.contactId, contact.id),
-          eq(tasks.organizationId, orgId),
-          eq(tasks.isCompleted, false)
-        )
-      )
-      .orderBy(asc(tasks.dueDate)),
-
-    // 6. Tags (via entity_tags join)
-    db.select({ tag: tags })
-      .from(entityTags)
-      .innerJoin(tags, eq(entityTags.tagId, tags.id))
-      .where(
-        and(
-          eq(entityTags.entityType, 'contacts'),
-          eq(entityTags.entityId, contact.id)
-        )
-      )
-      .then(rows => rows.map(r => r.tag)),
-
-    // 7. Deal aggregates in a single SQL query (avoids loading all deal rows just for stats)
-    db.select({
-        totalDeals: count(deals.id),
-        totalValue: sum(deals.value),
-        wonDeals: count(deals.wonAt),
-        lostDeals: count(deals.lostAt)
-      })
-      .from(deals)
-      .where(and(eq(deals.contactId, contact.id), eq(deals.organizationId, orgId)))
-      .then(rows => rows[0] ?? { totalDeals: 0, totalValue: 0, wonDeals: 0, lostDeals: 0 })
-  ])
-
-  // Derive computed fields
-  const openDeals = allDeals.filter(d => !d.wonAt && !d.lostAt)
-  const lastActivityDate = recentActivities[0]?.occurredAt ?? null
-  const wonCount = Number(dealStats.wonDeals)
-  const lostCount = Number(dealStats.lostDeals)
-  const totalDeals = Number(dealStats.totalDeals)
-  const totalValue = Number(dealStats.totalValue ?? 0)
-
-  return {
-    contact,
-    company,
-    deals: openDeals,
-    recentActivities,
-    openTasks,
-    tags: contactTags,
-    lastContactDate: lastActivityDate,
-    stats: {
-      totalDeals,
-      totalValue,
-      wonDeals: wonCount,
-      lostDeals: lostCount,
-      winRate: (wonCount + lostCount) > 0 ? wonCount / (wonCount + lostCount) : 0,
-      avgDealValue: totalDeals > 0 ? totalValue / totalDeals : 0
-    }
-  }
-}
-```
-
-The implementation runs exactly 7 queries total regardless of how many deals, activities, or tasks the contact has. The parallel `Promise.all` means wall-clock time equals the slowest individual query, not their sum.
-
----
-
-## 13. Full-Text Search
-
-### 13.1 Architecture
-
-Orbit AI uses Postgres `tsvector` columns for full-text search across contacts, companies, deals, and notes. Each searchable entity maintains a `search_vector tsvector` column updated by a database trigger on every insert and update.
-
-### 13.2 `searchAll()` Function
-
-```typescript
-// packages/core/src/search/search-all.ts
-import { sql } from 'drizzle-orm'
-import type { OrbitContext, EntityType } from '@orbit-ai/core/types'
-
-interface SearchResult {
-  entityType: EntityType
-  id: string
-  name: string                        // best display name for the result
-  snippet: string                     // headline from ts_headline()
-  rank: number                        // ts_rank score
-  metadata: Record<string, unknown>   // entity-specific summary fields
-}
-
-interface SearchOptions {
-  entityTypes?: EntityType[]          // default: all searchable entities
-  limit?: number                      // default: 20
-}
-
-const SEARCHABLE_ENTITIES: EntityType[] = ['contacts', 'companies', 'deals', 'notes']
-
-export async function searchAll(
-  query: string,
-  options: SearchOptions = {},
-  context: OrbitContext
-): Promise<SearchResult[]> {
-  const entityTypes = options.entityTypes ?? SEARCHABLE_ENTITIES
-  const limit = options.limit ?? 20
-  const orgId = context.organizationId
-
-  // Convert raw query to tsquery (plainto_tsquery is safe for user input — no syntax errors)
-  // websearch_to_tsquery requires Postgres 11+ and handles "quoted phrases" and -exclusions
-  const tsQuery = sql`websearch_to_tsquery('english', ${query})`
-
-  const subqueries = entityTypes.map(entityType => {
-    const tableRef = sql.identifier('crm_app', entityType)
-    const nameCol = getDisplayNameColumn(entityType)  // 'name' for most, 'title' for deals/notes
-    return sql`
-      SELECT
-        ${entityType} AS entity_type,
-        id,
-        ${nameCol} AS name,
-        ts_headline('english', ${getSearchableText(entityType)}, ${tsQuery},
-          'MaxFragments=1,MaxWords=20,MinWords=5') AS snippet,
-        ts_rank(search_vector, ${tsQuery}) AS rank,
-        ${buildMetadataJson(entityType)} AS metadata
-      FROM ${tableRef}
-      WHERE organization_id = ${orgId}
-        AND search_vector @@ ${tsQuery}
-    `
-  })
-
-  const unionQuery = sql.join(subqueries, sql` UNION ALL `)
-  const results = await db.execute<SearchResult>(
-    sql`SELECT * FROM (${unionQuery}) sub ORDER BY rank DESC LIMIT ${limit}`
-  )
-
-  return results.rows
-}
-```
-
-### 13.3 `tsvector` Trigger Maintenance
-
-Each searchable table has a `search_vector` column and a trigger that keeps it current:
-
-```sql
--- Generated by schema engine for each searchable entity
--- contacts example:
-ALTER TABLE crm_app.contacts
-  ADD COLUMN IF NOT EXISTS search_vector tsvector
-    GENERATED ALWAYS AS (
-      setweight(to_tsvector('english', coalesce(name, '')), 'A') ||
-      setweight(to_tsvector('english', coalesce(email, '')), 'B') ||
-      setweight(to_tsvector('english', coalesce(phone, '')), 'C') ||
-      setweight(to_tsvector('english', coalesce(notes, '')), 'D')
-    ) STORED;
-
-CREATE INDEX IF NOT EXISTS contacts_search_vector_idx
-  ON crm_app.contacts USING gin(search_vector);
-
--- deals example:
-ALTER TABLE crm_app.deals
-  ADD COLUMN IF NOT EXISTS search_vector tsvector
-    GENERATED ALWAYS AS (
-      setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
-      setweight(to_tsvector('english', coalesce(lost_reason, '')), 'D')
-    ) STORED;
-```
-
-The `GENERATED ALWAYS AS ... STORED` syntax (Postgres 12+) eliminates the need for a separate trigger — the column is automatically recomputed on every write. The GIN index makes `@@` queries fast even on large tables.
-
-### 13.4 Search Result Ranking
-
-Results are ranked by `ts_rank()` which factors in:
-- **Weight classes**: `A` (name/title) ranks higher than `D` (body text)
-- **Term frequency**: multiple matches in a document score higher
-- **Document length normalization**: configurable via rank option `1` (divide by 1 + log(length))
-
-All results across entity types are merged into a single list sorted by `rank DESC`, so a highly-matching deal name appears above a weakly-matching contact note.
-
-### 13.5 SQLite Fallback
-
-When using the SQLite adapter (local development), `tsvector` is not available. The search falls back to `LIKE`-based matching with reduced performance:
-
-```typescript
-// packages/core/src/search/sqlite-search.ts
-
-export async function searchAllSqlite(
-  query: string,
-  options: SearchOptions,
-  context: OrbitContext
-): Promise<SearchResult[]> {
-  const terms = query.trim().split(/\s+/).filter(Boolean)
-  const likePattern = `%${terms.join('%')}%`
-
-  // SQLite: sequential LIKE scan — no ranking, no snippets
-  // Performance degrades on > 10,000 rows; acceptable for local dev
-  const results: SearchResult[] = []
-
-  if (!options.entityTypes || options.entityTypes.includes('contacts')) {
-    const rows = await sqliteDb.all<{ id: string, name: string, email: string }>(
-      `SELECT id, name, email FROM contacts
-       WHERE organization_id = ?
-         AND (name LIKE ? OR email LIKE ? OR phone LIKE ? OR notes LIKE ?)
-       LIMIT ?`,
-      [context.organizationId, likePattern, likePattern, likePattern, likePattern, options.limit ?? 20]
-    )
-    results.push(...rows.map(r => ({
-      entityType: 'contacts' as EntityType,
-      id: r.id,
-      name: r.name,
-      snippet: '',
-      rank: 0,
-      metadata: { email: r.email }
-    })))
-  }
-
-  // ... repeat for other entity types
-
-  return results.slice(0, options.limit ?? 20)
-}
-```
-
-The `orbit doctor` command warns when running on SQLite: `"Full-text search is using LIKE fallback on SQLite. Performance will degrade above 10,000 records. Use --db neon or --db supabase for production workloads."`
-
----
-
-## 14. Multi-Tenancy
-
-### 14.1 `organization_id` Enforcement
-
-Every table created by the schema engine — both built-in entities and custom entities added via `addEntity()` — includes `organization_id` as a non-nullable foreign key:
-
-```typescript
-// packages/core/src/drizzle/mixins.ts
-import { text, timestamp, jsonb } from 'drizzle-orm/pg-core'
-
-// Every entity table includes these columns
-export const baseColumns = {
-  id:             text('id').primaryKey(),
-  organizationId: text('organization_id').notNull(),
-  createdAt:      timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt:      timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  customFields:   jsonb('custom_fields').default({})
-}
-```
-
-The schema engine's `generateTableSql()` function always includes `baseColumns` and a foreign key reference to `organizations(id)`. There is no way to create an entity without `organization_id` through the public API.
-
-### 14.2 `OrbitContext`
-
-The runtime context object is threaded through every operation. All queries and mutations are scoped to it automatically.
-
-```typescript
-// packages/core/src/types/context.ts
-
-type TenancyMode = 'multi-tenant' | 'single-tenant'
-type Environment = 'development' | 'production' | 'test'
-type AdapterType = 'supabase' | 'neon' | 'postgres' | 'sqlite'
-
-interface OrbitContext {
-  organizationId: string              // required; all queries scoped to this
-  userId: string | null               // null for system/agent operations
-  userRole: 'admin' | 'editor' | 'viewer' | 'system'
-  tenancyMode: TenancyMode
-  environment: Environment
-  adapter: AdapterType
-  requestId?: string                  // for API request tracing
-  destructiveApproved?: boolean       // set to true only after human confirms
-  dryRun?: boolean                    // schema operations: generate SQL but don't apply
-}
-```
-
-### 14.3 Context Injection Patterns
-
-Context is never global state. It is passed explicitly or bound at client construction time:
-
-```typescript
-// Direct usage (inside a server action or cron job):
-const context: OrbitContext = {
-  organizationId: org.id,
-  userId: user.id,
-  userRole: profile.role,
-  tenancyMode: 'multi-tenant',
-  environment: process.env.NODE_ENV === 'production' ? 'production' : 'development',
-  adapter: 'supabase'
-}
-const contactOps = createEntityOperations(contacts, 'contacts', context)
-
-// SDK usage (context bound at client construction):
-const crm = new OrbitClient({
-  apiKey: process.env.ORBIT_API_KEY,
-  organizationId: 'org_01HX...',
-  userId: 'user_01HX...'
-})
-// All crm.contacts.* calls use the bound context automatically
-```
-
-### 14.4 Initialization Modes
-
-```bash
-# Multi-tenant (default): every table has organization_id, RLS enforced
-orbit init --mode multi-tenant --db supabase
-
-# Single-tenant: organization_id column still exists (schema is compatible),
-# but no RLS policies are generated — one org, one user
-orbit init --mode single-tenant --db neon
-```
-
-The `--mode` flag is stored in `.orbit/config.json` and determines:
-- Whether RLS policies are generated (multi-tenant: yes, single-tenant: no)
-- Whether `OrbitContext.organizationId` is required at runtime (both modes: yes, but single-tenant mode creates a default org automatically)
-
-### 14.5 Migration from Single-Tenant to Multi-Tenant
-
-```typescript
-// packages/core/src/migrations/to-multi-tenant.ts
-
-export async function migrateToMultiTenant(
-  defaultOrgName: string,
-  context: OrbitContext
-): Promise<MigrationResult> {
-  // 1. Create the organizations table (if not already present)
-  // 2. Create a default organization row
-  // 3. Backfill organization_id = <default org id> on all existing rows
-  // 4. Add NOT NULL constraint to organization_id columns
-  // 5. Generate and apply RLS policies for all entities
-  // 6. Update .orbit/config.json: mode = 'multi-tenant'
-
-  const steps: string[] = []
-
-  const defaultOrgId = generateId('org')
-  steps.push(
-    `INSERT INTO crm_app.organizations (id, name, created_at) VALUES ('${defaultOrgId}', '${defaultOrgName}', now());`
-  )
-
-  for (const entityType of BUILT_IN_ENTITIES) {
-    steps.push(
-      `UPDATE crm_app.${entityType} SET organization_id = '${defaultOrgId}' WHERE organization_id IS NULL;`,
-      `ALTER TABLE crm_app.${entityType} ALTER COLUMN organization_id SET NOT NULL;`
-    )
-  }
-
-  for (const entityType of BUILT_IN_ENTITIES) {
-    const rlsSql = generateRlsSql(entityType, { mode: 'multi-tenant' })
-    steps.push(...rlsSql)
-  }
-
-  if (!context.dryRun) {
-    for (const stmt of steps) {
-      await context.raw(stmt)
-    }
-  }
-
-  return {
-    success: true,
-    migrationId: generateMigrationId('migrate_to_multi_tenant'),
-    appliedAt: context.dryRun ? null : new Date(),
-    sql: steps,
-    warnings: ['All existing records have been assigned to the default organization. Review and redistribute if needed.'],
-    errors: [],
-    rollbackSql: [],                  // no safe rollback — document this limitation
-    typesRegenerated: false
-  }
-}
-```
-
-### 14.6 RLS by Adapter
-
-| Adapter | RLS Enforcement | Mechanism |
-|---|---|---|
-| **Supabase** | Database-level (strongest) | `get_my_org_id()` SECURITY DEFINER function; RLS policies on every table |
-| **Neon / raw Postgres** | Database-level | Session variable `SET LOCAL orbit.org_id = '...'`; RLS policies read `current_setting('orbit.org_id')` |
-| **SQLite** | Application-level only | No RLS support in SQLite; WHERE clause injected by `createEntityOperations()` for every query |
-
-For Supabase, the schema engine generates:
-
-```sql
--- Generated by generateRlsSql() for multi-tenant mode
-ALTER TABLE crm_app.contacts ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "contacts_select" ON crm_app.contacts
-  FOR SELECT USING (organization_id = get_my_org_id());
-
-CREATE POLICY "contacts_insert" ON crm_app.contacts
-  FOR INSERT WITH CHECK (organization_id = get_my_org_id());
-
-CREATE POLICY "contacts_update" ON crm_app.contacts
-  FOR UPDATE USING (organization_id = get_my_org_id())
-  WITH CHECK (organization_id = get_my_org_id());
-
-CREATE POLICY "contacts_delete" ON crm_app.contacts
-  FOR DELETE USING (organization_id = get_my_org_id());
-```
-
-For Neon and raw Postgres:
-
-```sql
-ALTER TABLE crm_app.contacts ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "contacts_select" ON crm_app.contacts
-  FOR SELECT USING (organization_id = current_setting('orbit.org_id', true));
--- ... insert, update, delete policies follow the same pattern
-```
-
-For SQLite, no DDL is generated. The `orbit doctor` command warns: `"SQLite adapter: multi-tenancy is enforced at the application layer only. RLS is not available. Never expose this instance to untrusted clients."`
-
----
-
-## 15. Migration from Current Orbit CRM
-
-This section documents how to extract data and schema from the current Orbit CRM (`smb-sale-crm-app`, `crm_app` schema) into Orbit AI's entity model.
-
-### 15.1 Table Mapping
-
-| Current Table (`crm_app`) | Orbit AI Entity | Migration Notes |
-|---|---|---|
-| `leads` | `contacts` + `deals` | Split: contact fields (name, email, phone, company, source, score) go to `contacts`; deal fields (budget, stage, expected_close) go to `deals`. Each lead becomes one contact + optionally one deal. |
-| `communications` | `activities` | Rename table. Add `type` discriminator column with values `call`, `email`, `sms`, `whatsapp`, `meeting`, `note`. Map existing `medium` column to `type`. |
-| `pipeline_config` | `pipelines` + `stages` | One row in `pipeline_config` becomes one row in `pipelines`. Each stage name becomes a row in `stages`. Add `is_won = false` and `is_lost = false` to all stages; manually mark terminal stages after migration. |
-| `service_packages` | `products` | Rename table. Column mapping: `name → name`, `price → price`, `description → description`. Add `currency = 'USD'` default and `is_active = true` default. |
-| `follow_up_tasks` | `tasks` | Rename table. Add `priority` column defaulting to `'medium'`. Map `is_done → is_completed`. |
-| `quotes` | (deferred to v1.1) | Keep in `crm_app.quotes`; not migrated to Orbit AI entity model in v1.0. |
-| `contracts` | `contracts` | Keep. Add `title` column (default to `"Contract for " || contact_name`). |
-| `payments` | `payments` | Keep. Add `currency` column defaulting to `'USD'`. |
-| `tags` | `tags` | Keep. Tags are already global-scope. |
-| `lead_tags` | `entity_tags` | Rename. Add `entity_type = 'contacts'` column for all migrated rows. This table becomes polymorphic. |
-| `sequences` | `sequences` | Keep. |
-| `sequence_steps` | `sequence_steps` | Keep. |
-| `sequence_enrollments` | `sequence_enrollments` | Keep. Simplify: remove fields not needed by core engine. |
-| `sequence_events` | (merged into activities) | Sequence send/open/click events become `activities` rows with `type = 'email'`. |
-| `profiles` + `org_members` | `users` + `org_members` | `profiles` becomes `users`. `id` references `auth.users.id` on Supabase adapter; on raw Postgres, managed directly. |
-| `organizations` | `organizations` | Keep. SaaS billing fields (`stripe_customer_id`, `plan`, `trial_ends_at`) remain. |
-| `audit_log` | `audit_log` | Keep. Add `before` and `after` JSONB columns (existing rows get `before = null`, `after = null`). Add `changes` text array column. |
-| `app_settings` | (deferred to v1.1) | Config system is a separate subsystem. Existing `app_settings` rows remain accessible but are not part of the Orbit AI entity model in v1.0. |
-| `booking_pages`, `booking_slots`, `bookings`, `working_hours` | (deferred to v1.1) | Booking subsystem kept as-is in v1.0. Will be extracted as `@orbit-ai/integrations/booking` in v1.1. |
-| `marketing_*` (6 tables) | (deferred to v1.1) | Marketing analytics is kept as-is. Will be extracted as `@orbit-ai/integrations/analytics` in v1.1. |
-| `import_history` | `import_history` | Keep. Already matches the core import/export model. |
-| `push_subscriptions` | (not migrated) | Platform-specific. Not part of the CRM data model. |
-| `google_tokens` | (not migrated) | Belongs to `@orbit-ai/integrations/google`. |
-| `chat_sessions` | (not migrated) | AI chat sessions are application-layer state, not CRM entities. |
-| `cron_state` | (not migrated) | Infrastructure table; stays in the Next.js app layer. |
-| `field_definitions` | `field_definitions` | New table (does not exist in current Orbit CRM). Created by schema engine at `orbit init`. |
-| `schema_migrations` | `schema_migrations` | New table. Tracks all schema engine operations. |
-
-### 15.2 `leads` Split Migration Script
-
-The `leads` split is the most complex migration step. Each `leads` row produces one `contacts` row and, if the lead has deal-specific data, one `deals` row.
-
-```typescript
-// packages/core/src/migrations/from-orbit-crm/split-leads.ts
-
-export async function splitLeads(context: OrbitContext): Promise<{ contacts: number, deals: number }> {
-  const leads = await legacyDb.select().from(legacyLeads)
-    .where(eq(legacyLeads.organizationId, context.organizationId))
-
-  let contactCount = 0
-  let dealCount = 0
-
-  for (const lead of leads) {
-    // Map lead → contact
-    const contactId = generateId('contact')
-    await db.insert(contacts).values({
-      id: contactId,
-      organizationId: context.organizationId,
-      name: lead.name,
-      email: lead.email ?? null,
-      phone: lead.phone ?? null,
-      title: lead.jobTitle ?? null,
-      sourceChannel: lead.source ?? null,
-      assignedTo: lead.assignedTo ?? null,
-      leadScore: lead.score ?? 0,
-      isHot: lead.isHot ?? false,
-      notes: lead.notes ?? null,
-      createdAt: lead.createdAt,
-      updatedAt: lead.updatedAt,
-      customFields: {}
-    })
-    contactCount++
-
-    // Map lead → deal (only if deal-relevant data present)
-    const hasDealData = lead.budget || lead.stage || lead.expectedClose
-    if (hasDealData) {
-      const stageId = await resolveOrCreateStage(lead.stage, context)
-      await db.insert(deals).values({
-        id: generateId('deal'),
-        organizationId: context.organizationId,
-        title: `Deal with ${lead.name}`,
-        value: lead.budget ?? null,
-        stageId,
-        contactId,
-        assignedTo: lead.assignedTo ?? null,
-        expectedCloseDate: lead.expectedClose ?? null,
-        createdAt: lead.createdAt,
-        updatedAt: lead.updatedAt,
-        customFields: {}
-      })
-      dealCount++
-    }
-  }
-
-  return { contacts: contactCount, deals: dealCount }
-}
-```
-
-### 15.3 `lead_tags` Generalization
-
-```sql
--- Convert lead_tags to polymorphic entity_tags
-ALTER TABLE crm_app.lead_tags RENAME TO entity_tags;
-ALTER TABLE crm_app.entity_tags ADD COLUMN entity_type text NOT NULL DEFAULT 'contacts';
-ALTER TABLE crm_app.entity_tags RENAME COLUMN lead_id TO entity_id;
-
--- Drop the old default (entity_type is now managed by application)
-ALTER TABLE crm_app.entity_tags ALTER COLUMN entity_type DROP DEFAULT;
-```
-
-### 15.4 `audit_log` Column Additions
-
-```sql
--- Add before/after diff columns to existing audit_log
-ALTER TABLE crm_app.audit_log
-  ADD COLUMN IF NOT EXISTS before jsonb,
-  ADD COLUMN IF NOT EXISTS after  jsonb,
-  ADD COLUMN IF NOT EXISTS changes text[];
-
--- Existing rows have no snapshot data — that is acceptable
--- New rows written by Orbit AI will always populate before/after/changes
-```
-
-### 15.5 Verification Query
-
-After running the migration, use this query to verify the split was complete:
-
-```sql
--- Should return 0 if all leads have been migrated to contacts
-SELECT COUNT(*) FROM crm_app.leads l
-LEFT JOIN crm_app.contacts c ON c.organization_id = l.organization_id
-  AND c.email = l.email
-WHERE c.id IS NULL
-  AND l.organization_id = '<your-org-id>';
-```
+Each file must include:
+
+- field list and types
+- required relationships
+- common filters and sorts
+- examples of create/update payloads
+- schema-safe extension notes for agents
+
+Generated files after schema change:
+
+- `src/generated/<entity>.zod.ts`
+- `src/generated/<entity>.types.ts`
+- `.orbit/migrations/<timestamp>_<operation>.json`
+- updated `AGENTS.MD` snippets if a custom field is added
+
+## 15. Acceptance Criteria
+
+Implementation is complete only when all of the following are true:
+
+1. `pnpm --filter @orbit-ai/core build` succeeds with no generated-type drift.
+2. Base migrations create every table in this spec with `organization_id text not null`.
+3. Postgres adapters generate and apply RLS SQL for every tenant table.
+4. SQLite adapter enforces tenant filters in repositories and documents migration limitations.
+5. `addField`, `addEntity`, and `promoteField` produce reversible migration records.
+6. Cursor pagination and error/envelope types are imported unchanged by API, SDK, CLI, and MCP packages.
+7. `getContactContext()` returns the exact dossier shape required by CLI and MCP.
+8. Every entity directory contains `AGENTS.MD`.
