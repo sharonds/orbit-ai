@@ -78,37 +78,58 @@ When `orbit schema add-field contacts wedding_date date --nullable` runs:
 
 **Agent safety**: Agents can ADD columns/tables. They cannot DROP or rename without explicit `--destructive` flag. On Neon, branch-before-migrate is automatic.
 
-### Base Entities
+### Core Data Model
 
-The 12 base entities every Orbit AI project starts with:
+Orbit uses one project-scoped database. Inside that database, the developer may run:
+
+- single-organization mode
+- multi-organization mode
+
+The canonical object model is larger than the original CRM surface. Core first-party types include:
 
 ```
-contacts, companies, deals, pipeline_stages, activities,
-products, payments, contracts, channels, sequences, tags, notes
+organizations, organization_memberships, users, api_keys,
+contacts, companies, deals, pipelines, stages, activities, tasks,
+notes, products, payments, contracts, sequences, sequence_steps,
+sequence_enrollments, sequence_events, tags, entity_tags,
+custom_field_definitions, webhooks, webhook_deliveries, imports,
+schema_migrations, audit_logs, idempotency_keys
 ```
 
-Each entity has:
-- Standard fields (id, created_at, updated_at, organization_id)
-- `custom_fields JSONB` for flexible extension without DDL
-- Auto-generated RLS policies scoped to `organization_id`
-- TypeScript types auto-generated from Drizzle schema
+Entity IDs are text columns using type-prefixed ULIDs such as `org_`, `contact_`, and `deal_`.
+
+Tenant-scoped tables include:
+- `id`
+- `organization_id`
+- `created_at`
+- `updated_at`
+
+Some entity types also include `custom_fields jsonb` when the spec marks them extensible.
 
 ### Multi-Tenancy
 
-All data is scoped by `organization_id`. The SDK accepts `context: { userId, orgId }` from the developer's auth provider (Supabase Auth, Clerk, NextAuth, custom). Orbit AI does NOT own the auth layer.
+Orbit AI does not own the auth layer. The embedding app or hosted runtime provides trusted context.
+
+All tenant data is scoped by `organization_id`. The SDK accepts `context: { userId, orgId }` from the developer's auth provider (Supabase Auth, Clerk, NextAuth, custom).
 
 ```typescript
 const crm = new OrbitClient({
   apiKey: process.env.ORBIT_API_KEY,
-  context: { userId: 'user_123', orgId: 'org_456' }
+  context: { userId: 'user_01ABC...', orgId: 'org_01ABC...' }
 })
 ```
 
 RLS policies are auto-generated per entity. The pattern:
 ```sql
 CREATE POLICY "org_members_only" ON contacts
-  USING (organization_id = current_setting('app.current_org_id')::uuid);
+  USING (organization_id = orbit.current_org_id());
 ```
+
+Important rules:
+- `organizations` is bootstrap-scoped and intentionally does not have `organization_id`
+- tenant-scoped Postgres-family work must run inside `withTenantContext(...)`
+- repositories still filter on `organization_id` even when RLS is enabled
+- request paths may not use privileged migration or bypass credentials
 
 ### Agent-Safe Migrations
 
@@ -120,16 +141,21 @@ Branch-before-migrate (Neon): When using the Neon adapter, the schema engine aut
 
 ### MCP Server
 
-The `@orbit-ai/mcp` package exposes all CRM operations as MCP tools. Tools follow the naming pattern `orbit.<entity>.<operation>`.
+The `@orbit-ai/mcp` package exposes 23 core tools across 8 tiers.
 
-Available tools:
-- `orbit.contacts.create`, `orbit.contacts.list`, `orbit.contacts.get`, `orbit.contacts.update`, `orbit.contacts.delete`
-- `orbit.companies.*` (same operations)
-- `orbit.deals.create`, `orbit.deals.list`, `orbit.deals.get`, `orbit.deals.update`, `orbit.deals.delete`, `orbit.deals.move`
-- `orbit.pipeline.view`, `orbit.pipeline.configure`
-- `orbit.activities.log`, `orbit.activities.list`
-- `orbit.schema.describe`, `orbit.schema.addField`, `orbit.schema.addEntity`, `orbit.schema.migrate`
-- `orbit.analytics.summary`, `orbit.analytics.funnel`
+The default pattern is Attio-style universal tools with `object_type` parameters rather than one dedicated tool per entity. Example core tools include:
+- `search_records`
+- `get_record`
+- `create_record`
+- `update_record`
+- `delete_record`
+- `list_tasks`
+- `create_note`
+- `get_schema`
+- `create_custom_field`
+- `import_records`
+
+Connector packages may register namespaced extension tools in composite runtimes, but they do not change the 23-tool core contract.
 
 Transport: stdio (local agents) and HTTP (hosted, `mcp.orbit-ai.dev/your-project`).
 
@@ -137,9 +163,11 @@ Transport: stdio (local agents) and HTTP (hosted, `mcp.orbit-ai.dev/your-project
 
 Every CLI command supports `--json` for structured output. Agents should always use `--json` mode.
 
+CLI JSON must follow the reconciled shared-envelope rules from the specs. It may not invent metadata separately from the SDK/API contract.
+
 ```bash
 orbit --json contacts list
-# Returns: { "data": [...], "pagination": { "cursor": "...", "total": 42 } }
+# Returns a structured envelope or first-page JSON contract aligned with the SDK/API specs
 
 orbit --json schema describe
 # Returns: { "entities": { "contacts": { "fields": [...], "relationships": [...] } } }
@@ -183,17 +211,20 @@ pnpm run typecheck    # TypeScript type checking
 2. All apps under `apps/` are deployable applications
 3. All examples under `examples/` are standalone demos
 4. Never import across package boundaries using relative paths — always use the package name
-5. Every new table in any adapter MUST include `organization_id uuid NOT NULL` and an RLS policy
+5. Every new tenant-scoped table MUST include `organization_id text NOT NULL`; bootstrap tables are explicitly exempt
+6. Postgres-family tenant tables must receive generated RLS coverage; SQLite relies on app-layer tenant enforcement and is not a production isolation boundary
 
 ### Adding a New Entity
 
-1. Add the Drizzle schema definition in `packages/core/src/schema/<entity>.ts`
-2. Add the entity type to `packages/core/src/types.ts`
-3. Add CRUD operations in `packages/core/src/entities/<entity>.ts`
-4. Add REST routes in `packages/api/src/routes/<entity>.ts`
-5. Add MCP tools in `packages/mcp/src/tools/<entity>.ts`
-6. Add CLI commands in `packages/cli/src/commands/<entity>.ts`
-7. Add an `AGENTS.MD` file in `packages/core/src/entities/<entity>/AGENTS.MD`
+1. Update `packages/core/src/schema/tables.ts` and `packages/core/src/schema/relations.ts`
+2. Register the ID prefix in `packages/core/src/ids/prefixes.ts`
+3. Add the object type to `packages/core/src/types/entities.ts`
+4. Add entity repository, service, and validators under `packages/core/src/entities/<entity>/`
+5. Update generated Zod/types and any required search or serializer registration
+6. Add REST route coverage in `packages/api` if the entity is part of the public API surface
+7. Confirm MCP coverage through the 23 core tools or add an allowed extension/semantic tool only if the spec requires it
+8. Add CLI coverage where the command surface requires it
+9. Add `packages/core/src/entities/<entity>/AGENTS.MD`
 
 ### Adding a New Storage Adapter
 
@@ -204,7 +235,7 @@ pnpm run typecheck    # TypeScript type checking
 
 ### Migration Guidelines
 
-- Never use raw SQL strings — always use Drizzle's programmatic API
+- Prefer Drizzle definitions and builders as the source of truth; handwritten SQL should be limited to explicitly documented cases such as generated Postgres RLS statements
 - All migrations are transaction-wrapped
 - Every migration MUST have a reverse migration
 - Migration files are stored in `packages/core/src/migrations/`
@@ -225,9 +256,13 @@ pnpm run typecheck    # TypeScript type checking
 
 ## Current Status
 
-This repository is pre-alpha. No packages are published to npm. The foundation (monorepo structure, strategy documents) is being established. Development begins with `packages/core`.
+This repository is pre-alpha. No packages are published to npm. The planning, security, and execution baseline now exists. Active implementation starts with `packages/core` slice 1.
 
-See `docs/strategy/orbit-ai-prd.md` for the full product plan and `docs/strategy/orbit-ai-ard.md` for technical architecture decisions.
+See:
+- `docs/KB.md` for the current working hub
+- `docs/strategy/orbit-ai-prd.md` for the product plan
+- `docs/strategy/orbit-ai-ard.md` for technical architecture decisions
+- `docs/execution/core-implementation-plan.md` for the active core execution order
 
 ---
 
@@ -236,5 +271,7 @@ See `docs/strategy/orbit-ai-prd.md` for the full product plan and `docs/strategy
 - This is NOT the `smb-sale-crm-app` repository. That is a separate Next.js CRM application. This repository is the Orbit AI infrastructure project.
 - All schema definitions use Drizzle ORM syntax — not Prisma, not MikroORM, not raw SQL strings.
 - The `--json` flag is available on every CLI command. Use it in agent context.
-- MCP tool names follow the pattern `orbit.<entity>.<operation>` — e.g., `orbit.contacts.create`, not `createContact`.
+- Prefer the canonical docs over this file if they conflict, and then update this file.
+- MCP uses the 23-tool core model with universal `object_type` parameters plus optional namespaced extensions.
+- IDs are type-prefixed ULIDs stored in text columns, not UUID columns.
 - License is MIT. The packages are safe to embed in commercial SaaS products.
