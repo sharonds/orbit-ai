@@ -1,5 +1,7 @@
 import type { SQL } from 'drizzle-orm'
 
+import type { CustomFieldDefinition } from '../types/schema.js'
+
 export type AdapterName = 'supabase' | 'neon' | 'postgres' | 'sqlite'
 export type AdapterDialect = 'postgres' | 'sqlite'
 
@@ -54,7 +56,7 @@ export const DEFAULT_ADAPTER_AUTHORITY_MODEL: AdapterAuthorityModel = {
 }
 
 export interface SchemaSnapshot {
-  customFields: Array<Record<string, unknown>>
+  customFields: CustomFieldDefinition[]
   tables: string[]
 }
 
