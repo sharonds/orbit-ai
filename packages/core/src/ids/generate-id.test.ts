@@ -8,4 +8,8 @@ describe('generateId', () => {
     expect(id.startsWith('contact_')).toBe(true)
     expect(id).toHaveLength('contact_'.length + 26)
   })
+
+  it('creates unique ids across successive calls', () => {
+    expect(generateId('contact')).not.toBe(generateId('contact'))
+  })
 })

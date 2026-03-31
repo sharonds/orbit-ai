@@ -20,4 +20,10 @@ describe('assertOrbitId', () => {
       'Invalid ULID body for contact ID',
     )
   })
+
+  it('rejects lowercase ulid bodies', () => {
+    expect(() => assertOrbitId('contact_01aryz6s41yyyyyyyyyyyyyyyy', 'contact')).toThrow(
+      'Invalid ULID body for contact ID',
+    )
+  })
 })

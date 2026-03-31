@@ -1,6 +1,7 @@
 export * from './adapters/interface.js'
 export * from './ids/generate-id.js'
 export * from './ids/parse-id.js'
+export * from './ids/prefixes.js'
 export * from './schema/tables.js'
 export * from './schema/zod.js'
 export * from './schema-engine/engine.js'
