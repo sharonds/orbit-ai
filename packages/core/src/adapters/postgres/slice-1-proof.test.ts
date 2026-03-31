@@ -2,7 +2,7 @@ import { getTableConfig } from 'drizzle-orm/pg-core'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { OrbitDatabase } from '../interface.js'
-import { buildClearTenantContextStatement, buildSetTenantContextStatement, withTenantContext } from './tenant-context.js'
+import { buildSetTenantContextStatement, withTenantContext } from './tenant-context.js'
 import { apiKeys, organizationMemberships, organizations, users } from '../../schema/tables.js'
 
 describe('slice 1 postgres-family proof', () => {
@@ -35,6 +35,6 @@ describe('slice 1 postgres-family proof', () => {
 
     expect(result).toBe('orbit.users')
     expect(execute).toHaveBeenNthCalledWith(1, buildSetTenantContextStatement('org_01ABCDEF0123456789ABCDEF01'))
-    expect(execute).toHaveBeenNthCalledWith(2, buildClearTenantContextStatement())
+    expect(execute).toHaveBeenCalledTimes(1)
   })
 })
