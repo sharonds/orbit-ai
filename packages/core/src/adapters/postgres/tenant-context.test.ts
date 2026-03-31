@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { buildClearTenantContextStatement, buildSetTenantContextStatement, withTenantContext } from './tenant-context.js'
 import type { OrbitDatabase } from '../interface.js'
+import {
+  buildClearTenantContextStatement,
+  buildSetTenantContextStatement,
+  withTenantContext,
+} from './tenant-context.js'
 
 describe('withTenantContext', () => {
   it('sets and clears transaction-local org context around the callback', async () => {
