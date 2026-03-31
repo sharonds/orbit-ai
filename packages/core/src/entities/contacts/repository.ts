@@ -1,6 +1,15 @@
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
-import type { OrbitAuthContext } from '../../adapters/interface.js'
+import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import {
+  createTenantSqliteRepository,
+  fromSqliteBoolean,
+  fromSqliteDate,
+  fromSqliteJson,
+  toSqliteBoolean,
+  toSqliteDate,
+  toSqliteJson,
+} from '../../repositories/sqlite/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import { contactRecordSchema, type ContactRecord } from './validators.js'
 
@@ -68,4 +77,70 @@ export function createInMemoryContactRepository(seed: ContactRecord[] = []): Con
       })
     },
   }
+}
+
+export function createSqliteContactRepository(adapter: StorageAdapter): ContactRepository {
+  return createTenantSqliteRepository<ContactRecord>(adapter, {
+    tableName: 'contacts',
+    columns: [
+      'id',
+      'organization_id',
+      'name',
+      'email',
+      'phone',
+      'title',
+      'source_channel',
+      'status',
+      'assigned_to_user_id',
+      'company_id',
+      'lead_score',
+      'is_hot',
+      'last_contacted_at',
+      'custom_fields',
+      'created_at',
+      'updated_at',
+    ],
+    searchableFields: ['name', 'email', 'phone', 'title', 'source_channel'],
+    defaultSort: [{ field: 'created_at', direction: 'desc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        organization_id: record.organizationId,
+        name: record.name,
+        email: record.email ?? null,
+        phone: record.phone ?? null,
+        title: record.title,
+        source_channel: record.sourceChannel,
+        status: record.status,
+        assigned_to_user_id: record.assignedToUserId ?? null,
+        company_id: record.companyId ?? null,
+        lead_score: record.leadScore,
+        is_hot: toSqliteBoolean(record.isHot),
+        last_contacted_at: toSqliteDate(record.lastContactedAt),
+        custom_fields: toSqliteJson(record.customFields),
+        created_at: toSqliteDate(record.createdAt),
+        updated_at: toSqliteDate(record.updatedAt),
+      }
+    },
+    deserialize(row) {
+      return contactRecordSchema.parse({
+        id: row.id,
+        organizationId: row.organization_id,
+        name: row.name,
+        email: row.email ?? null,
+        phone: row.phone ?? null,
+        title: row.title ?? null,
+        sourceChannel: row.source_channel ?? null,
+        status: row.status,
+        assignedToUserId: row.assigned_to_user_id ?? null,
+        companyId: row.company_id ?? null,
+        leadScore: row.lead_score,
+        isHot: fromSqliteBoolean(row.is_hot),
+        lastContactedAt: fromSqliteDate(row.last_contacted_at),
+        customFields: fromSqliteJson(row.custom_fields, {}),
+        createdAt: fromSqliteDate(row.created_at),
+        updatedAt: fromSqliteDate(row.updated_at),
+      })
+    },
+  })
 }

@@ -21,6 +21,9 @@ function createTestAdapter(): StorageAdapter {
     async execute(_statement: ReturnType<typeof sql>) {
       return undefined
     },
+    async query() {
+      return []
+    },
   }
 
   return {
@@ -53,6 +56,9 @@ function createTestAdapter(): StorageAdapter {
     },
     async execute(statement) {
       return runtimeDb.execute(statement)
+    },
+    async query(statement) {
+      return runtimeDb.query(statement)
     },
     async withTenantContext(_context, fn) {
       return fn(runtimeDb)

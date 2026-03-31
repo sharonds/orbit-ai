@@ -1,3 +1,5 @@
+import type { StorageAdapter } from '../../adapters/interface.js'
+import { createBootstrapSqliteRepository, fromSqliteDate, toSqliteDate } from '../../repositories/sqlite/shared.js'
 import { runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
@@ -30,4 +32,48 @@ export function createInMemoryOrganizationMembershipRepository(
       })
     },
   }
+}
+
+export function createSqliteOrganizationMembershipRepository(
+  adapter: StorageAdapter,
+): OrganizationMembershipRepository {
+  return createBootstrapSqliteRepository<OrganizationMembershipRecord>(adapter, {
+    tableName: 'organization_memberships',
+    columns: [
+      'id',
+      'organization_id',
+      'user_id',
+      'role',
+      'invited_by_user_id',
+      'joined_at',
+      'created_at',
+      'updated_at',
+    ],
+    searchableFields: ['role'],
+    defaultSort: [{ field: 'created_at', direction: 'desc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        organization_id: record.organizationId,
+        user_id: record.userId,
+        role: record.role,
+        invited_by_user_id: record.invitedByUserId ?? null,
+        joined_at: toSqliteDate(record.joinedAt),
+        created_at: toSqliteDate(record.createdAt),
+        updated_at: toSqliteDate(record.updatedAt),
+      }
+    },
+    deserialize(row) {
+      return organizationMembershipRecordSchema.parse({
+        id: row.id,
+        organizationId: row.organization_id,
+        userId: row.user_id,
+        role: row.role,
+        invitedByUserId: row.invited_by_user_id ?? null,
+        joinedAt: fromSqliteDate(row.joined_at),
+        createdAt: fromSqliteDate(row.created_at),
+        updatedAt: fromSqliteDate(row.updated_at),
+      })
+    },
+  })
 }

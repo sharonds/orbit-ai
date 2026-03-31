@@ -1,4 +1,11 @@
-import type { OrbitAuthContext } from '../../adapters/interface.js'
+import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import {
+  createTenantSqliteRepository,
+  fromSqliteBoolean,
+  fromSqliteDate,
+  toSqliteBoolean,
+  toSqliteDate,
+} from '../../repositories/sqlite/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
@@ -67,4 +74,35 @@ export function createInMemoryPipelineRepository(seed: PipelineRecord[] = []): P
       })
     },
   }
+}
+
+export function createSqlitePipelineRepository(adapter: StorageAdapter): PipelineRepository {
+  return createTenantSqliteRepository<PipelineRecord>(adapter, {
+    tableName: 'pipelines',
+    columns: ['id', 'organization_id', 'name', 'is_default', 'description', 'created_at', 'updated_at'],
+    searchableFields: ['name', 'description'],
+    defaultSort: [{ field: 'created_at', direction: 'desc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        organization_id: record.organizationId,
+        name: record.name,
+        is_default: toSqliteBoolean(record.isDefault),
+        description: record.description,
+        created_at: toSqliteDate(record.createdAt),
+        updated_at: toSqliteDate(record.updatedAt),
+      }
+    },
+    deserialize(row) {
+      return pipelineRecordSchema.parse({
+        id: row.id,
+        organizationId: row.organization_id,
+        name: row.name,
+        isDefault: fromSqliteBoolean(row.is_default),
+        description: row.description ?? null,
+        createdAt: fromSqliteDate(row.created_at),
+        updatedAt: fromSqliteDate(row.updated_at),
+      })
+    },
+  })
 }

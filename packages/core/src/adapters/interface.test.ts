@@ -112,6 +112,7 @@ describe('adapter authority model', () => {
     const runtimeDb = {
       transaction: async (fn: (tx: OrbitDatabase) => Promise<string>) => fn(runtimeDb),
       execute: async () => undefined,
+      query: async () => [],
     } satisfies OrbitDatabase
     const migrationDb = asMigrationDatabase(runtimeDb)
 

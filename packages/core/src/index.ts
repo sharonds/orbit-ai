@@ -1,5 +1,7 @@
 export * from './adapters/interface.js'
 export * from './adapters/sqlite/adapter.js'
+export * from './adapters/sqlite/database.js'
+export * from './adapters/sqlite/schema.js'
 export * from './entities/companies/service.js'
 export * from './entities/companies/repository.js'
 export * from './entities/contacts/service.js'
