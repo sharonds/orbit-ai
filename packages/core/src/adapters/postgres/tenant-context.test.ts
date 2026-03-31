@@ -1,14 +1,21 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import type { OrbitDatabase } from '../interface.js'
-import {
-  buildClearTenantContextStatement,
-  buildSetTenantContextStatement,
-  withTenantContext,
-} from './tenant-context.js'
+import { buildSetTenantContextStatement, withTenantContext } from './tenant-context.js'
 
 describe('withTenantContext', () => {
-  it('sets and clears transaction-local org context around the callback', async () => {
+  it('validates org ids before opening the transaction', async () => {
+    const db = {
+      transaction: vi.fn(),
+    } as unknown as OrbitDatabase
+
+    await expect(withTenantContext(db, { orgId: '' }, async () => 'ok')).rejects.toThrow(
+      'Expected organization ID with prefix "org_"',
+    )
+    expect(db.transaction).not.toHaveBeenCalled()
+  })
+
+  it('sets transaction-local org context around the callback', async () => {
     const execute = vi.fn(async () => undefined)
     const tx = { execute } as unknown as OrbitDatabase
     const db = {
@@ -23,10 +30,10 @@ describe('withTenantContext', () => {
     expect(result).toBe('ok')
     expect(db.transaction).toHaveBeenCalledTimes(1)
     expect(execute).toHaveBeenNthCalledWith(1, buildSetTenantContextStatement('org_01ABCDEF0123456789ABCDEF01'))
-    expect(execute).toHaveBeenNthCalledWith(2, buildClearTenantContextStatement())
+    expect(execute).toHaveBeenCalledTimes(1)
   })
 
-  it('clears the org context even when the callback throws', async () => {
+  it('does not mask callback errors with redundant cleanup', async () => {
     const execute = vi.fn(async () => undefined)
     const tx = { execute } as unknown as OrbitDatabase
     const db = {
@@ -40,6 +47,6 @@ describe('withTenantContext', () => {
     ).rejects.toThrow('boom')
 
     expect(execute).toHaveBeenNthCalledWith(1, buildSetTenantContextStatement('org_01ABCDEF0123456789ABCDEF01'))
-    expect(execute).toHaveBeenNthCalledWith(2, buildClearTenantContextStatement())
+    expect(execute).toHaveBeenCalledTimes(1)
   })
 })

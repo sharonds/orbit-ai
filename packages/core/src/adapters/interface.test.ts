@@ -13,7 +13,7 @@ describe('adapter authority model', () => {
     const lookup: ApiKeyAuthLookup = {
       id: 'key_01ABCDEF0123456789ABCDEF01',
       organizationId: 'org_01ABCDEF0123456789ABCDEF01',
-      permissions: ['contacts:read'],
+      scopes: ['contacts:read'],
       revokedAt: null,
       expiresAt: null,
     }
@@ -22,8 +22,8 @@ describe('adapter authority model', () => {
       'expiresAt',
       'id',
       'organizationId',
-      'permissions',
       'revokedAt',
+      'scopes',
     ])
   })
 
@@ -36,7 +36,7 @@ describe('adapter authority model', () => {
         return {
           id: 'key_01ABCDEF0123456789ABCDEF01',
           organizationId: 'org_01ABCDEF0123456789ABCDEF01',
-          permissions: ['contacts:read'],
+          scopes: ['contacts:read'],
           revokedAt: null,
           expiresAt: null,
         }
@@ -46,7 +46,7 @@ describe('adapter authority model', () => {
     await expect(adapter.lookupApiKeyForAuth(expectedHash)).resolves.toEqual({
       id: 'key_01ABCDEF0123456789ABCDEF01',
       organizationId: 'org_01ABCDEF0123456789ABCDEF01',
-      permissions: ['contacts:read'],
+      scopes: ['contacts:read'],
       revokedAt: null,
       expiresAt: null,
     })

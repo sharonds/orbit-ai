@@ -1,4 +1,4 @@
-import { boolean, customFieldsColumn, index, integer, jsonb, metadata, orbit, text, timestamp, timestamps, uniqueIndex } from './helpers.js'
+import { boolean, index, jsonb, metadata, orbit, text, timestamp, timestamps, uniqueIndex } from './helpers.js'
 
 export const organizations = orbit.table(
   'organizations',
