@@ -37,7 +37,7 @@ Completed:
 What this means:
 
 - broad documentation reconciliation is complete
-- package implementation can begin after the immediate execution-enablement tasks below
+- package implementation can begin now from the core execution plan
 - the next real implementation target is `@orbit-ai/core`
 
 ## 3. Frozen Baseline
@@ -101,12 +101,14 @@ Create only:
 
 1. `orbit-tenant-safety-review`
 2. `orbit-schema-change`
+3. `orbit-core-slice-review`
 
 Reason:
 
 - they directly reduce the top two categories of pre-core mistakes:
   - tenant-isolation regressions
   - schema drift and unsafe migration work
+- they add a completed-diff review gate for core slice 1 work outside schema changes
 
 ### Task D. Prepare Core Execution Plan
 
@@ -129,20 +131,20 @@ It should break core into:
 
 Status:
 
-- in progress
+- complete
 
 Outputs:
 
 - KB hub
 - execution-grade implementation plan
-- first two Orbit skills
+- first three Orbit skills
 - core-only implementation plan
 
 Exit criteria:
 
 - the KB is accepted as the current working hub
 - this implementation plan is accepted as the execution baseline
-- the first two skills exist and validate
+- the first three skills exist and validate
 - the core implementation plan is ready to drive work
 
 ### Phase 1. Core Foundations
@@ -375,10 +377,14 @@ Recommended overlap:
 Use these skills during execution:
 
 - Phase 0:
-  - none required yet, but create the first two skills
+  - minimum pre-core skills:
+    - `orbit-tenant-safety-review`
+    - `orbit-schema-change`
+    - `orbit-core-slice-review`
 - Phases 1-3:
   - `orbit-tenant-safety-review`
   - `orbit-schema-change`
+  - `orbit-core-slice-review`
 - Phases 4-6:
   - add `orbit-api-sdk-parity`
 - Phase 7:
@@ -436,7 +442,7 @@ The KB should be updated whenever:
 
 Most likely execution risks:
 
-- core implementation starts before the first two safety skills exist
+- core implementation starts before the minimum pre-core skills exist
 - API/SDK/CLI behavior drifts during parallel work
 - schema engine work outruns the security model
 - connector extraction starts before the secret-handling model is proven
@@ -447,7 +453,7 @@ Most likely execution risks:
 Next actions in order:
 
 1. accept this execution-grade implementation plan
-2. create `docs/execution/core-implementation-plan.md`
-3. create `orbit-tenant-safety-review`
-4. create `orbit-schema-change`
+2. use `docs/execution/core-implementation-plan.md` as the active core execution driver
+3. confirm the three pre-core execution skills validate
+4. assign slice-1 workstreams with non-overlapping ownership
 5. begin `@orbit-ai/core` implementation from Phase 1

@@ -50,17 +50,19 @@ Create skills in this order:
 
 1. `orbit-tenant-safety-review`
 2. `orbit-schema-change`
-3. `orbit-api-sdk-parity`
-4. `orbit-mcp-tool-authoring`
-5. `orbit-integration-extraction`
-6. `orbit-docs-consistency`
-7. `orbit-release-readiness`
+3. `orbit-core-slice-review`
+4. `orbit-api-sdk-parity`
+5. `orbit-mcp-tool-authoring`
+6. `orbit-integration-extraction`
+7. `orbit-docs-consistency`
+8. `orbit-release-readiness`
 
 Reason for this order:
 
 - Skills 1-2 reduce the highest-risk architectural mistakes before package work expands.
-- Skills 3-5 reduce cross-package drift during implementation.
-- Skills 6-7 help stabilize docs and release quality once implementation is underway.
+- Skill 3 adds a completed-diff validation gate for core slice work that is not itself a schema change.
+- Skills 4-6 reduce cross-package drift during implementation.
+- Skills 7-8 help stabilize docs and release quality once implementation is underway.
 
 ## 4. Skill Backlog
 
@@ -147,7 +149,45 @@ Out of scope:
 
 - connector-specific provider mapping details unless they materially alter core schema
 
-### 4.3 `orbit-api-sdk-parity`
+### 4.3 `orbit-core-slice-review`
+
+Purpose:
+
+- Review completed `@orbit-ai/core` milestone and slice diffs against the execution plan, acceptance criteria, and test evidence.
+
+When it should trigger:
+
+- after any integrated core slice lands
+- before Milestone 3 starts
+- when a core diff changes IDs, shared types, envelope helpers, bootstrap tables, adapter boundaries, or slice-level validation evidence
+
+Primary inputs:
+
+- changed core files
+- [core-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-implementation-plan.md)
+- [01-core.md](/Users/sharonsciammas/orbit-ai/docs/specs/01-core.md)
+- build and test evidence for the slice
+
+Required outputs:
+
+- findings-first review note
+- pass/fail validation matrix against the slice or milestone definition of done
+- explicit note on whether the work is safe to expand into the next milestone group
+
+Validation rule:
+
+- the skill must confirm:
+  - the changed diff matches the intended workstream ownership
+  - required tests/build/typecheck evidence exists
+  - Postgres-family slice proofs are present when the plan requires them
+  - shared-type and envelope work does not drift from the core spec
+
+Out of scope:
+
+- schema planning before code exists
+- API/SDK/CLI parity review outside the core slice boundary
+
+### 4.4 `orbit-api-sdk-parity`
 
 Purpose:
 
@@ -188,7 +228,7 @@ Out of scope:
 
 - MCP-specific semantic tool design unless it depends directly on API/SDK parity
 
-### 4.4 `orbit-mcp-tool-authoring`
+### 4.5 `orbit-mcp-tool-authoring`
 
 Purpose:
 
@@ -231,7 +271,7 @@ Out of scope:
 
 - generic LLM prompt writing unrelated to Orbit tool selection
 
-### 4.5 `orbit-integration-extraction`
+### 4.6 `orbit-integration-extraction`
 
 Purpose:
 
@@ -275,7 +315,7 @@ Out of scope:
 
 - generic OAuth advice not tied to Orbit’s connector model
 
-### 4.6 `orbit-docs-consistency`
+### 4.7 `orbit-docs-consistency`
 
 Purpose:
 
@@ -317,7 +357,7 @@ Out of scope:
 
 - grammar-only editing
 
-### 4.7 `orbit-release-readiness`
+### 4.8 `orbit-release-readiness`
 
 Purpose:
 
@@ -365,18 +405,19 @@ Create first:
 
 1. `orbit-tenant-safety-review`
 2. `orbit-schema-change`
+3. `orbit-core-slice-review`
 
 Why:
 
-- These two guard the most expensive mistakes before implementation accelerates.
+- These three guard the most expensive mistakes before implementation accelerates.
 
 ### Phase B: Cross-Package Contract Skills
 
 Create next:
 
-3. `orbit-api-sdk-parity`
-4. `orbit-mcp-tool-authoring`
-5. `orbit-integration-extraction`
+4. `orbit-api-sdk-parity`
+5. `orbit-mcp-tool-authoring`
+6. `orbit-integration-extraction`
 
 Why:
 
@@ -386,8 +427,8 @@ Why:
 
 Create later:
 
-6. `orbit-docs-consistency`
-7. `orbit-release-readiness`
+7. `orbit-docs-consistency`
+8. `orbit-release-readiness`
 
 Why:
 
@@ -409,6 +450,8 @@ Recommended bundled resources by skill:
   References: threat model, security architecture, core/API spec excerpts
 - `orbit-schema-change`
   References: entity inventory, ID rules, schema-engine rules, interface impact checklist
+- `orbit-core-slice-review`
+  References: core execution plan, slice validation matrix, workstream ownership split
 - `orbit-api-sdk-parity`
   References: API/SDK/CLI parity checklist template
 - `orbit-mcp-tool-authoring`
@@ -420,16 +463,21 @@ Recommended bundled resources by skill:
 
 This plan is complete when:
 
-1. The first two skills are created from this document.
-2. Each created skill has a deterministic validation path.
-3. No two Orbit skills have overlapping primary ownership.
-4. The implementation plan can reference these skills by name during execution.
+1. The three pre-core skills are created from this document.
+2. The initial core execution gate includes `orbit-core-slice-review`.
+3. Each created skill has a deterministic validation path.
+4. No two Orbit skills have overlapping primary ownership.
+5. The implementation plan can reference these skills by name during execution.
 
 ## 8. Immediate Next Action
 
-Create `orbit-tenant-safety-review` first.
+The minimum pre-core skill set is now:
+
+1. `orbit-tenant-safety-review`
+2. `orbit-schema-change`
+3. `orbit-core-slice-review`
 
 Reason:
 
-- It directly addresses Orbit’s top threat: tenant isolation failure.
-- It will be useful immediately across core, API, adapter, and integration work.
+- it covers tenant-boundary review, schema review, and completed-slice validation
+- it is sufficient to start `@orbit-ai/core` slice 1 safely
