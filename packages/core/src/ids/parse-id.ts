@@ -16,5 +16,6 @@ export function assertOrbitId(value: string, kind: OrbitIdKind): string {
     throw new Error(`Invalid ULID body for ${kind} ID`)
   }
 
+  // Format validation only; callers must still do an authorization-aware lookup.
   return value
 }
