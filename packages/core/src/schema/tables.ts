@@ -1,4 +1,4 @@
-import { boolean, index, jsonb, metadata, orbit, text, timestamp, timestamps, uniqueIndex } from './helpers.js'
+import { boolean, customFieldsColumn, index, integer, jsonb, metadata, money, orbit, text, timestamp, timestamps, uniqueIndex } from './helpers.js'
 
 export const organizations = orbit.table(
   'organizations',
@@ -64,4 +64,114 @@ export const apiKeys = orbit.table(
     ...timestamps,
   },
   (table) => [uniqueIndex('api_keys_hash_idx').on(table.keyHash), uniqueIndex('api_keys_prefix_idx').on(table.keyPrefix)],
+)
+
+export const companies = orbit.table(
+  'companies',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    name: text('name').notNull(),
+    domain: text('domain'),
+    industry: text('industry'),
+    size: integer('size'),
+    website: text('website'),
+    notes: text('notes'),
+    assignedToUserId: text('assigned_to_user_id').references(() => users.id),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('companies_org_domain_idx').on(table.organizationId, table.domain),
+    index('companies_assigned_to_idx').on(table.assignedToUserId),
+  ],
+)
+
+export const contacts = orbit.table(
+  'contacts',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    name: text('name').notNull(),
+    email: text('email'),
+    phone: text('phone'),
+    title: text('title'),
+    sourceChannel: text('source_channel'),
+    status: text('status').notNull().default('lead'),
+    assignedToUserId: text('assigned_to_user_id').references(() => users.id),
+    companyId: text('company_id').references(() => companies.id),
+    leadScore: integer('lead_score').notNull().default(0),
+    isHot: boolean('is_hot').notNull().default(false),
+    lastContactedAt: timestamp('last_contacted_at', { withTimezone: true }),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('contacts_org_email_idx').on(table.organizationId, table.email),
+    index('contacts_company_idx').on(table.companyId),
+    index('contacts_assigned_to_idx').on(table.assignedToUserId),
+  ],
+)
+
+export const pipelines = orbit.table(
+  'pipelines',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    name: text('name').notNull(),
+    isDefault: boolean('is_default').notNull().default(false),
+    description: text('description'),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex('pipelines_org_name_idx').on(table.organizationId, table.name)],
+)
+
+export const stages = orbit.table(
+  'stages',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    pipelineId: text('pipeline_id').notNull().references(() => pipelines.id),
+    name: text('name').notNull(),
+    stageOrder: integer('stage_order').notNull(),
+    probability: integer('probability').notNull().default(0),
+    color: text('color'),
+    isWon: boolean('is_won').notNull().default(false),
+    isLost: boolean('is_lost').notNull().default(false),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('stages_pipeline_order_idx').on(table.pipelineId, table.stageOrder),
+    uniqueIndex('stages_pipeline_name_idx').on(table.pipelineId, table.name),
+  ],
+)
+
+export const deals = orbit.table(
+  'deals',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    title: text('title').notNull(),
+    value: money('value'),
+    currency: text('currency').notNull().default('USD'),
+    stageId: text('stage_id').references(() => stages.id),
+    pipelineId: text('pipeline_id').references(() => pipelines.id),
+    probability: integer('probability').notNull().default(0),
+    expectedCloseDate: timestamp('expected_close_date', { withTimezone: true }),
+    contactId: text('contact_id').references(() => contacts.id),
+    companyId: text('company_id').references(() => companies.id),
+    assignedToUserId: text('assigned_to_user_id').references(() => users.id),
+    status: text('status').notNull().default('open'),
+    wonAt: timestamp('won_at', { withTimezone: true }),
+    lostAt: timestamp('lost_at', { withTimezone: true }),
+    lostReason: text('lost_reason'),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    index('deals_stage_idx').on(table.stageId),
+    index('deals_pipeline_idx').on(table.pipelineId),
+    index('deals_contact_idx').on(table.contactId),
+    index('deals_company_idx').on(table.companyId),
+  ],
 )

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_ADAPTER_AUTHORITY_MODEL, type ApiKeyAuthLookup, type StorageAdapter } from './interface.js'
+import {
+  DEFAULT_ADAPTER_AUTHORITY_MODEL,
+  asMigrationDatabase,
+  type ApiKeyAuthLookup,
+  type OrbitDatabase,
+  type StorageAdapter,
+} from './interface.js'
 
 describe('adapter authority model', () => {
   it('declares runtime and migration authority as separate modes', () => {
@@ -100,5 +106,28 @@ describe('adapter authority model', () => {
       ],
       tables: ['organizations', 'users', 'organization_memberships', 'api_keys'],
     })
+  })
+
+  it('brands migration authority separately from the runtime database handle', async () => {
+    const runtimeDb = {
+      transaction: async (fn: (tx: OrbitDatabase) => Promise<string>) => fn(runtimeDb),
+      execute: async () => undefined,
+    } satisfies OrbitDatabase
+    const migrationDb = asMigrationDatabase(runtimeDb)
+
+    const adapter: Pick<StorageAdapter, 'runWithMigrationAuthority' | 'unsafeRawDatabase'> = {
+      unsafeRawDatabase: runtimeDb,
+      async runWithMigrationAuthority(fn) {
+        return fn(migrationDb)
+      },
+    }
+
+    const result = await adapter.runWithMigrationAuthority(async (db) => {
+      expect(db).toBe(migrationDb)
+      expect(db).toBe(adapter.unsafeRawDatabase)
+      return 'ok'
+    })
+
+    expect(result).toBe('ok')
   })
 })

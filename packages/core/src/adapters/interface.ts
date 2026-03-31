@@ -6,8 +6,22 @@ export type AdapterName = 'supabase' | 'neon' | 'postgres' | 'sqlite'
 export type AdapterDialect = 'postgres' | 'sqlite'
 
 export interface OrbitDatabase {
+  /**
+   * Implementors must wrap the callback in a real transaction boundary.
+   * Postgres-family adapters must issue BEGIN/COMMIT or equivalent.
+   */
   transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>): Promise<T>
   execute(statement: SQL): Promise<unknown>
+}
+
+declare const MIGRATION_DATABASE_BRAND: unique symbol
+
+export type MigrationDatabase = OrbitDatabase & {
+  readonly [MIGRATION_DATABASE_BRAND]: true
+}
+
+export function asMigrationDatabase(db: OrbitDatabase): MigrationDatabase {
+  return db as MigrationDatabase
 }
 
 export interface OrbitAuthContext {
@@ -67,13 +81,17 @@ export interface StorageAdapter {
   readonly supportsBranching: boolean
   readonly supportsJsonbIndexes: boolean
   readonly authorityModel: AdapterAuthorityModel
-  readonly database: OrbitDatabase
+  /**
+   * Escape hatch for adapter internals only.
+   * Request-path code should prefer `withTenantContext()` or `runWithMigrationAuthority()`.
+   */
+  readonly unsafeRawDatabase: OrbitDatabase
   readonly users: IUserResolver
 
   connect(): Promise<void>
   disconnect(): Promise<void>
   migrate(): Promise<void>
-  runWithMigrationAuthority<T>(fn: (db: OrbitDatabase) => Promise<T>): Promise<T>
+  runWithMigrationAuthority<T>(fn: (db: MigrationDatabase) => Promise<T>): Promise<T>
   lookupApiKeyForAuth(keyHash: string): Promise<ApiKeyAuthLookup | null>
   transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>): Promise<T>
   execute(statement: SQL): Promise<unknown>
