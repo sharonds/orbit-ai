@@ -1,3 +1,32 @@
-export const ID_PREFIXES = {} as const
+export const ID_PREFIXES = {
+  organization: 'org',
+  membership: 'mbr',
+  user: 'user',
+  apiKey: 'key',
+  contact: 'contact',
+  company: 'company',
+  deal: 'deal',
+  pipeline: 'pipeline',
+  stage: 'stage',
+  activity: 'activity',
+  task: 'task',
+  note: 'note',
+  product: 'product',
+  payment: 'payment',
+  contract: 'contract',
+  sequence: 'sequence',
+  sequenceStep: 'seqstep',
+  sequenceEnrollment: 'seqenr',
+  sequenceEvent: 'seqevt',
+  tag: 'tag',
+  entityTag: 'etag',
+  customField: 'field',
+  webhook: 'webhook',
+  webhookDelivery: 'whdel',
+  importJob: 'import',
+  migration: 'migration',
+  auditLog: 'audit',
+  idempotencyKey: 'idem',
+} as const
 
 export type OrbitIdKind = keyof typeof ID_PREFIXES

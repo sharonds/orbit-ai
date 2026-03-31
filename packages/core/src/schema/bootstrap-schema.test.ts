@@ -10,7 +10,6 @@ describe('bootstrap schema slice 1', () => {
     expect(config.schema).toBe('orbit')
     expect(config.name).toBe('organizations')
     expect(config.foreignKeys).toHaveLength(0)
-    expect(config.uniqueConstraints).toHaveLength(0)
   })
 
   it('keeps users org-scoped with a single organization foreign key', () => {

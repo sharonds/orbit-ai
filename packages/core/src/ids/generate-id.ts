@@ -1,5 +1,8 @@
-import type { OrbitIdKind } from './prefixes.js'
+import { ulid } from 'ulid'
 
-export function generateId(_kind: OrbitIdKind): string {
-  throw new Error('ID generation is not implemented yet')
+import type { OrbitIdKind } from './prefixes.js'
+import { ID_PREFIXES } from './prefixes.js'
+
+export function generateId(kind: OrbitIdKind): string {
+  return `${ID_PREFIXES[kind]}_${ulid()}`
 }
