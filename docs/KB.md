@@ -32,16 +32,19 @@ Completed:
 - skills plan
 - docs reconciliation and validation reports
 - `@orbit-ai/core` slice 1
+- `@orbit-ai/core` slice 2 foundations and hardening
+- `@orbit-ai/core` Wave 1 service surface
 
 Current focus:
 
 - maintain the repo knowledge base as the live hub
-- move from completed slice 2 and follow-up hardening into the next core service-wave planning step
+- accept the local Wave 1 service-surface execution and close the remaining persistence-gap decision
 - keep execution docs and skills aligned with implementation progress
 
 Not started yet:
 
-- broad package implementation beyond core slice 1
+- adapter-backed core repository execution beyond the current in-memory Wave 1 proof
+- broad package implementation beyond `@orbit-ai/core`
 
 ## Frozen Decisions
 
@@ -83,6 +86,8 @@ Use these files first:
   - [core-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-implementation-plan.md)
   - [core-slice-1-remediation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-slice-1-remediation-plan.md)
   - [core-slice-2-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-slice-2-plan.md)
+  - [core-wave-1-services-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-wave-1-services-plan.md)
+  - [core-wave-1-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-review.md)
   - [orbit-skills-plan.md](/Users/sharonsciammas/orbit-ai/docs/skills/orbit-skills-plan.md)
 
 ## What Is Next
@@ -93,12 +98,14 @@ Immediate next actions:
    - `orbit-tenant-safety-review`
    - `orbit-schema-change`
    - `orbit-core-slice-review`
-2. Start slice 1 from [core-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-implementation-plan.md) using the defined workstreams:
-   - completed on branch `core-slice-1-execution`
+2. Core execution baseline already completed:
+   - slice 1 on `core-slice-1-execution`
+   - slice 2 on `core-slice-2-execution`
+   - Wave 1 service surface locally on `core-wave-1-services`
 3. Next:
-   - accept the slice-2 branch and follow-up hardening outcome
-   - create the next core service-wave plan for Wave 1 services
-   - keep tenant-safety review in the loop for repository work
+   - accept [core-wave-1-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-review.md)
+   - decide whether the next core slice is adapter-backed repository integration or Wave 2 planning
+   - keep API/SDK execution blocked until the persistence bridge decision is explicit
 
 ## Open Items
 
@@ -108,6 +115,7 @@ These are still open, but they do not block the KB:
 - raw Postgres support milestone after the first adapter wave
 - public release sequencing across packages
 - contribution and open-source governance docs
+- whether the adapter-backed repository bridge lands before or alongside core Wave 2
 
 ## Decision Log
 
@@ -128,6 +136,9 @@ These are still open, but they do not block the KB:
 - 2026-03-31: Recorded the remediation review outcome in [core-slice-1-remediation-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-slice-1-remediation-review.md); slice 1 remediation is now ready for acceptance and slice 2 is unblocked.
 - 2026-03-31: Executed core slice 2 on branch `core-slice-2-execution`, added the operational schema bridge plus query and repository primitives, and recorded the review outcome in [core-slice-2-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-slice-2-review.md).
 - 2026-03-31: Closed the slice-2 hardening follow-ups on branch `core-slice-2-execution`: added `MigrationDatabase`, restricted the raw adapter handle to `unsafeRawDatabase`, added prefix invariant coverage, strengthened the tenant-context proof harness, and landed a baseline SQLite adapter.
+- 2026-03-31: Created [core-wave-1-services-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-wave-1-services-plan.md) to execute the first core service layer in three slices, starting with service contracts plus `companies` and `contacts`.
+- 2026-03-31: Executed the local Wave 1 service surface on branch `core-wave-1-services`, including tenant CRUD for the first seven services, admin/system reads, `search`, `contactContext`, and `createCoreServices(adapter, overrides)`.
+- 2026-03-31: Recorded the Wave 1 review outcome in [core-wave-1-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-review.md); the remaining medium gap is adapter-backed persistence, not tenant safety or service-surface correctness.
 
 ## Working Rule
 
