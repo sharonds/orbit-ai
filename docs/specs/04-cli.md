@@ -337,6 +337,10 @@ function resolveAdapter(flags: {
       return createPostgresAdapter({ databaseUrl: flags.databaseUrl ?? process.env.DATABASE_URL! })
   }
 }
+
+function requiredConfig(path: string): never {
+  throw new Error(`Missing required Orbit CLI config: ${path}`)
+}
 ```
 
 ## 7. Output Formatting

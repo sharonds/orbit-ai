@@ -631,6 +631,15 @@ Resource coverage requirements:
 - system entities may use admin resources under `client.admin.*` in a later phase, but `webhooks`, `imports`, `users`, `tags`, `stages`, and all sequence sub-entities are part of MVP
 - resource-specific non-CRUD methods must be added wherever the API defines workflow routes; this includes batch, enroll/unenroll, attach/detach, import/export, and move/stats/context operations
 
+Minimum parity checklist:
+
+- `contacts`: `context`, `import`, `export`, `batch`
+- `deals`: `move`, `pipeline`, `stats`, `batch`
+- `sequences`: `enroll`, `unenroll`
+- `tags`: `attach`, `detach`
+- `schema`: `listObjects`, `describeObject`, `addField`, `updateField`, `previewMigration`
+- `search`: `query`
+
 ## 9. Retry Policy
 
 ```typescript
