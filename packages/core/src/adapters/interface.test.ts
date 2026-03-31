@@ -51,4 +51,54 @@ describe('adapter authority model', () => {
       expiresAt: null,
     })
   })
+
+  it('keeps getSchemaSnapshot aligned with the custom field definition contract', async () => {
+    const adapter: Pick<StorageAdapter, 'getSchemaSnapshot'> = {
+      async getSchemaSnapshot() {
+        return {
+          customFields: [
+            {
+              id: 'field_01ABCDEF0123456789ABCDEF01',
+              organizationId: 'org_01ABCDEF0123456789ABCDEF01',
+              entityType: 'contacts',
+              fieldName: 'wedding_date',
+              fieldType: 'date',
+              label: 'Wedding Date',
+              description: 'Optional custom date field',
+              isRequired: false,
+              isIndexed: false,
+              isPromoted: false,
+              promotedColumnName: undefined,
+              defaultValue: undefined,
+              options: [],
+              validation: {},
+            },
+          ],
+          tables: ['organizations', 'users', 'organization_memberships', 'api_keys'],
+        }
+      },
+    }
+
+    await expect(adapter.getSchemaSnapshot()).resolves.toEqual({
+      customFields: [
+        {
+          id: 'field_01ABCDEF0123456789ABCDEF01',
+          organizationId: 'org_01ABCDEF0123456789ABCDEF01',
+          entityType: 'contacts',
+          fieldName: 'wedding_date',
+          fieldType: 'date',
+          label: 'Wedding Date',
+          description: 'Optional custom date field',
+          isRequired: false,
+          isIndexed: false,
+          isPromoted: false,
+          promotedColumnName: undefined,
+          defaultValue: undefined,
+          options: [],
+          validation: {},
+        },
+      ],
+      tables: ['organizations', 'users', 'organization_memberships', 'api_keys'],
+    })
+  })
 })
