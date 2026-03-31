@@ -12,6 +12,7 @@ export interface OrbitDatabase {
    */
   transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>): Promise<T>
   execute(statement: SQL): Promise<unknown>
+  query<T extends Record<string, unknown>>(statement: SQL): Promise<T[]>
 }
 
 declare const MIGRATION_DATABASE_BRAND: unique symbol
@@ -95,6 +96,7 @@ export interface StorageAdapter {
   lookupApiKeyForAuth(keyHash: string): Promise<ApiKeyAuthLookup | null>
   transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>): Promise<T>
   execute(statement: SQL): Promise<unknown>
+  query<T extends Record<string, unknown>>(statement: SQL): Promise<T[]>
   withTenantContext<T>(context: OrbitAuthContext, fn: (db: OrbitDatabase) => Promise<T>): Promise<T>
   createBranch?(name: string): Promise<{ id: string; name: string }>
   mergeBranch?(id: string): Promise<void>

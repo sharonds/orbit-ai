@@ -1,6 +1,7 @@
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
-import type { OrbitAuthContext } from '../../adapters/interface.js'
+import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import { createTenantSqliteRepository, fromSqliteDate, fromSqliteJson, toSqliteDate, toSqliteJson } from '../../repositories/sqlite/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import { companyRecordSchema, type CompanyRecord } from './validators.js'
 
@@ -68,4 +69,58 @@ export function createInMemoryCompanyRepository(seed: CompanyRecord[] = []): Com
       })
     },
   }
+}
+
+export function createSqliteCompanyRepository(adapter: StorageAdapter): CompanyRepository {
+  return createTenantSqliteRepository<CompanyRecord>(adapter, {
+    tableName: 'companies',
+    columns: [
+      'id',
+      'organization_id',
+      'name',
+      'domain',
+      'industry',
+      'size',
+      'website',
+      'notes',
+      'assigned_to_user_id',
+      'custom_fields',
+      'created_at',
+      'updated_at',
+    ],
+    searchableFields: ['name', 'domain', 'industry', 'website', 'notes'],
+    defaultSort: [{ field: 'created_at', direction: 'desc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        organization_id: record.organizationId,
+        name: record.name,
+        domain: record.domain,
+        industry: record.industry,
+        size: record.size,
+        website: record.website ?? null,
+        notes: record.notes,
+        assigned_to_user_id: record.assignedToUserId ?? null,
+        custom_fields: toSqliteJson(record.customFields),
+        created_at: toSqliteDate(record.createdAt),
+        updated_at: toSqliteDate(record.updatedAt),
+      }
+    },
+    deserialize(row) {
+      return companyRecordSchema.parse({
+        id: row.id,
+        organizationId: row.organization_id,
+        name: row.name,
+        domain: row.domain ?? null,
+        industry: row.industry ?? null,
+        size: row.size ?? null,
+        website: row.website ?? null,
+        notes: row.notes ?? null,
+        assignedToUserId: row.assigned_to_user_id ?? null,
+        customFields: fromSqliteJson(row.custom_fields, {}),
+        createdAt: fromSqliteDate(row.created_at),
+        updatedAt: fromSqliteDate(row.updated_at),
+      })
+    },
+  })
 }

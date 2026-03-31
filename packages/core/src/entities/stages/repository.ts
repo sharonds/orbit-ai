@@ -1,4 +1,11 @@
-import type { OrbitAuthContext } from '../../adapters/interface.js'
+import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import {
+  createTenantSqliteRepository,
+  fromSqliteBoolean,
+  fromSqliteDate,
+  toSqliteBoolean,
+  toSqliteDate,
+} from '../../repositories/sqlite/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
@@ -67,4 +74,55 @@ export function createInMemoryStageRepository(seed: StageRecord[] = []): StageRe
       })
     },
   }
+}
+
+export function createSqliteStageRepository(adapter: StorageAdapter): StageRepository {
+  return createTenantSqliteRepository<StageRecord>(adapter, {
+    tableName: 'stages',
+    columns: [
+      'id',
+      'organization_id',
+      'pipeline_id',
+      'name',
+      'stage_order',
+      'probability',
+      'color',
+      'is_won',
+      'is_lost',
+      'created_at',
+      'updated_at',
+    ],
+    searchableFields: ['name', 'color'],
+    defaultSort: [{ field: 'stage_order', direction: 'asc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        organization_id: record.organizationId,
+        pipeline_id: record.pipelineId,
+        name: record.name,
+        stage_order: record.stageOrder,
+        probability: record.probability,
+        color: record.color,
+        is_won: toSqliteBoolean(record.isWon),
+        is_lost: toSqliteBoolean(record.isLost),
+        created_at: toSqliteDate(record.createdAt),
+        updated_at: toSqliteDate(record.updatedAt),
+      }
+    },
+    deserialize(row) {
+      return stageRecordSchema.parse({
+        id: row.id,
+        organizationId: row.organization_id,
+        pipelineId: row.pipeline_id,
+        name: row.name,
+        stageOrder: row.stage_order,
+        probability: row.probability,
+        color: row.color ?? null,
+        isWon: fromSqliteBoolean(row.is_won),
+        isLost: fromSqliteBoolean(row.is_lost),
+        createdAt: fromSqliteDate(row.created_at),
+        updatedAt: fromSqliteDate(row.updated_at),
+      })
+    },
+  })
 }

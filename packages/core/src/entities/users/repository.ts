@@ -1,4 +1,13 @@
-import type { OrbitAuthContext } from '../../adapters/interface.js'
+import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import {
+  createTenantSqliteRepository,
+  fromSqliteBoolean,
+  fromSqliteDate,
+  fromSqliteJson,
+  toSqliteBoolean,
+  toSqliteDate,
+  toSqliteJson,
+} from '../../repositories/sqlite/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
@@ -67,4 +76,55 @@ export function createInMemoryUserRepository(seed: UserRecord[] = []): UserRepos
       })
     },
   }
+}
+
+export function createSqliteUserRepository(adapter: StorageAdapter): UserRepository {
+  return createTenantSqliteRepository<UserRecord>(adapter, {
+    tableName: 'users',
+    columns: [
+      'id',
+      'organization_id',
+      'email',
+      'name',
+      'role',
+      'avatar_url',
+      'external_auth_id',
+      'is_active',
+      'metadata',
+      'created_at',
+      'updated_at',
+    ],
+    searchableFields: ['email', 'name', 'role', 'external_auth_id'],
+    defaultSort: [{ field: 'created_at', direction: 'desc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        organization_id: record.organizationId,
+        email: record.email,
+        name: record.name,
+        role: record.role,
+        avatar_url: record.avatarUrl,
+        external_auth_id: record.externalAuthId,
+        is_active: toSqliteBoolean(record.isActive),
+        metadata: toSqliteJson(record.metadata),
+        created_at: toSqliteDate(record.createdAt),
+        updated_at: toSqliteDate(record.updatedAt),
+      }
+    },
+    deserialize(row) {
+      return userRecordSchema.parse({
+        id: row.id,
+        organizationId: row.organization_id,
+        email: row.email,
+        name: row.name,
+        role: row.role,
+        avatarUrl: row.avatar_url ?? null,
+        externalAuthId: row.external_auth_id ?? null,
+        isActive: fromSqliteBoolean(row.is_active),
+        metadata: fromSqliteJson(row.metadata, {}),
+        createdAt: fromSqliteDate(row.created_at),
+        updatedAt: fromSqliteDate(row.updated_at),
+      })
+    },
+  })
 }
