@@ -32,7 +32,7 @@ export interface IUserResolver {
 export interface ApiKeyAuthLookup {
   id: string
   organizationId: string
-  permissions: string[]
+  scopes: string[]
   revokedAt: Date | null
   expiresAt: Date | null
 }

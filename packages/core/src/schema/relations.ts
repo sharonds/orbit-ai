@@ -12,7 +12,12 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     fields: [users.organizationId],
     references: [organizations.id],
   }),
-  memberships: many(organizationMemberships),
+  memberships: many(organizationMemberships, {
+    relationName: 'membershipUser',
+  }),
+  membershipInvites: many(organizationMemberships, {
+    relationName: 'membershipInvitedBy',
+  }),
   apiKeysCreated: many(apiKeys),
 }))
 
@@ -22,10 +27,12 @@ export const organizationMembershipsRelations = relations(organizationMembership
     references: [organizations.id],
   }),
   user: one(users, {
+    relationName: 'membershipUser',
     fields: [organizationMemberships.userId],
     references: [users.id],
   }),
   invitedBy: one(users, {
+    relationName: 'membershipInvitedBy',
     fields: [organizationMemberships.invitedByUserId],
     references: [users.id],
   }),

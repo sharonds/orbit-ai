@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { getTableColumns } from 'drizzle-orm'
 import { apiKeys, organizationMemberships, organizations, users } from './tables.js'
+import * as helpers from './helpers.js'
 
 describe('bootstrap schema slice 1', () => {
   it('keeps organizations bootstrap-scoped', () => {
@@ -41,5 +42,15 @@ describe('bootstrap schema slice 1', () => {
       'createdAt',
       'updatedAt',
     ])
+  })
+
+  it('keeps updatedAt configured for automatic update timestamps', () => {
+    const columns = getTableColumns(users)
+
+    expect(columns.updatedAt.onUpdateFn).toBeTypeOf('function')
+  })
+
+  it('does not expose pgTable through schema helpers', () => {
+    expect('pgTable' in helpers).toBe(false)
   })
 })
