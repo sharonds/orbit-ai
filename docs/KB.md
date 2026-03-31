@@ -2,7 +2,7 @@
 
 Date: 2026-03-31
 Status: Active working hub
-Current baseline commit: `e326e39`
+Current baseline commit: `03bd6e6`
 
 ## What Orbit Is
 
@@ -31,16 +31,17 @@ Completed:
 - focused threat model
 - skills plan
 - docs reconciliation and validation reports
+- `@orbit-ai/core` slice 1
 
 Current focus:
 
 - maintain the repo knowledge base as the live hub
-- begin `@orbit-ai/core` slice 1 with the three pre-core execution skills in place
-- keep execution docs and skills aligned as implementation starts
+- move from completed core slice 1 into Milestone 3 planning and repository primitives
+- keep execution docs and skills aligned with implementation progress
 
 Not started yet:
 
-- package implementation
+- broad package implementation beyond core slice 1
 
 ## Frozen Decisions
 
@@ -91,11 +92,11 @@ Immediate next actions:
    - `orbit-schema-change`
    - `orbit-core-slice-review`
 2. Start slice 1 from [core-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-implementation-plan.md) using the defined workstreams:
-   - Milestone 0
-   - Milestone 1
-   - bootstrap-table portions of Milestone 2
-   - authority-boundary portions of Milestone 4
-3. Stop after slice 1 and run the integrated review gate before moving into repository primitives or wave-1 services.
+   - completed on branch `core-slice-1-execution`
+3. Next:
+   - review and accept slice 1 as complete
+   - start Milestone 3 validation/query primitives
+   - keep tenant-safety review in the loop for repository work
 
 ## Open Items
 
@@ -118,6 +119,7 @@ These are still open, but they do not block the KB:
 - 2026-03-31: Created and reviewed [core-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-implementation-plan.md); the final sub-agent review returned no findings.
 - 2026-03-31: Created the first two execution skills under `.claude/skills/` and tightened them after review to cover CLI contract drift and secret-redaction validation explicitly.
 - 2026-03-31: Reconciled [AGENTS.MD](/Users/sharonsciammas/orbit-ai/AGENTS.MD) with the frozen product and execution baseline, and added `orbit-core-slice-review` so completed core slices have an explicit validation gate.
+- 2026-03-31: Executed `@orbit-ai/core` slice 1 on branch `core-slice-1-execution`, including package bootstrap, prefixed ULID IDs, shared types, bootstrap schema, adapter authority boundary, and the slice-1 validation proof harness.
 
 ## Working Rule
 
