@@ -40,7 +40,7 @@ Current focus:
 
 - maintain the repo knowledge base as the live hub
 - accept the committed Wave 1 and SQLite persistence baseline
-- plan the Postgres-family persistence bridge
+- accept and execute the Postgres-family persistence bridge plan
 - keep API/SDK execution blocked until Postgres-family persistence is explicit
 - keep execution docs and skills aligned with implementation progress
 
@@ -91,6 +91,7 @@ Use these files first:
   - [core-slice-2-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-slice-2-plan.md)
   - [core-wave-1-services-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-wave-1-services-plan.md)
   - [core-persistence-bridge-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-persistence-bridge-plan.md)
+  - [core-postgres-persistence-bridge-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-postgres-persistence-bridge-plan.md)
   - [core-wave-1-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-review.md)
   - [core-persistence-bridge-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-persistence-bridge-review.md)
   - [orbit-skills-plan.md](/Users/sharonsciammas/orbit-ai/docs/skills/orbit-skills-plan.md)
@@ -110,7 +111,7 @@ Immediate next actions:
    - SQLite persistence bridge committed on `core-wave-1-services`
 3. Next:
    - accept [core-persistence-bridge-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-persistence-bridge-review.md)
-   - create the Postgres-family persistence bridge plan
+   - execute [core-postgres-persistence-bridge-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-postgres-persistence-bridge-plan.md) starting with Slice A
    - keep API/SDK execution blocked until that adapter path is explicit
 
 ## Open Items
@@ -148,6 +149,7 @@ These are still open, but they do not block the KB:
 - 2026-03-31: Executed the SQLite persistence bridge on branch `core-wave-1-services`, adding a real SQLite runtime database wrapper, Wave 1 schema bootstrap, SQLite-backed repositories, and persistence proof tests.
 - 2026-03-31: Recorded the bridge review outcome in [core-persistence-bridge-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-persistence-bridge-review.md); the remaining persistence gap is now Postgres-family adapters, not SQLite.
 - 2026-03-31: Committed the Wave 1 service layer as `be48047` and the SQLite persistence bridge as `e7de3a3` on branch `core-wave-1-services`.
+- 2026-03-31: Created [core-postgres-persistence-bridge-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-postgres-persistence-bridge-plan.md) to close the remaining generic Postgres persistence gap before API execution begins.
 
 ## Working Rule
 
