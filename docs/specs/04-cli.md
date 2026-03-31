@@ -13,6 +13,7 @@ Depends on: `@orbit-ai/sdk`, `@orbit-ai/core`, `@orbit-ai/mcp` for embedded serv
 - context briefing and reporting commands
 - consistent output formats: `table`, `json`, `csv`, `tsv`
 - structured errors in `--json` mode
+- `--json` returns real Orbit envelopes via SDK response-aware helpers
 - interactive prompts for humans
 - `orbit mcp serve` to launch the MCP server
 
@@ -343,11 +344,22 @@ function requiredConfig(path: string): never {
 }
 ```
 
+### 6.1 JSON Execution Rule
+
+CLI JSON mode must use SDK response-aware helpers directly:
+
+- list commands call `resource.list(query).firstPage()`
+- CRUD, search, and action commands call `resource.response().<method>()`
+- custom dossier commands such as `orbit context` call the resource-specific `.response()` helper
+- the CLI must never fabricate `meta`, `links`, cursors, or `request_id`
+
 ## 7. Output Formatting
 
 ### 7.1 JSON
 
-- raw envelope from SDK, normalized to CLI metadata
+- emit the real Orbit envelope returned by the SDK
+- list commands use `resource.list(query).firstPage()`
+- CRUD, search, and action commands use `resource.response().<method>()`
 - errors printed as JSON and exit with code `1`
 
 ### 7.2 Table
@@ -383,6 +395,19 @@ export function formatOutput(data: unknown, options: FormatOptions): string {
   }
 }
 ```
+
+```typescript
+// packages/cli/src/output/json.ts
+import type { OrbitEnvelope } from '@orbit-ai/core'
+
+export async function runForCliJson<T>(factory: () => Promise<OrbitEnvelope<T>>) {
+  return factory()
+}
+```
+
+`runForCliJson()` is the canonical JSON execution path for command handlers. `formatOutput(..., { format: 'json' })` is only for serializing an already-correct envelope or error payload.
+
+Command handlers must not call `formatOutput(..., { format: 'json' })` on ad hoc objects.
 
 ## 8. `orbit init`
 
@@ -420,7 +445,7 @@ orbit init --db supabase --org-name "Acme" --yes --json
 
 ## 9. `orbit context`
 
-`orbit context <contact-id|email>` calls `crm.contacts.context()` and renders a dossier.
+`orbit context <contact-id|email>` calls `crm.contacts.context()` in table mode and `crm.contacts.response().context()` in JSON mode.
 
 Table mode sections:
 
@@ -431,7 +456,7 @@ Table mode sections:
 - recent activities
 - tags
 
-JSON mode returns the exact SDK payload unchanged.
+JSON mode returns the exact Orbit envelope from `crm.contacts.response().context(...)`.
 
 ## 10. Ink Views
 
@@ -529,3 +554,4 @@ Package manifest requirements:
 6. CLI delegates all business logic to SDK/core rather than duplicating it.
 7. The registered Commander command tree exactly matches the documented command surface, including `seed`, `log`, `notes`, `sequences`, and `search`.
 8. Hosted API mode and direct DB mode are both configurable and exercised through the same CLI surface.
+9. `--json` mode never fabricates `meta`, `links`, cursors, or `request_id`; it relays the SDK envelope unchanged.

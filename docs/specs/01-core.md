@@ -850,6 +850,8 @@ export const webhooks = orbit.table(
     description: text('description'),
     events: jsonb('events').$type<string[]>().notNull().default([]),
     secretEncrypted: text('secret_encrypted').notNull(),
+    secretLastFour: text('secret_last_four').notNull(),
+    secretCreatedAt: timestamp('secret_created_at', { withTimezone: true }).defaultNow().notNull(),
     status: text('status').notNull().default('active'),
     lastTriggeredAt: timestamp('last_triggered_at', { withTimezone: true }),
     ...timestamps,
@@ -870,11 +872,13 @@ export const webhookDeliveries = orbit.table(
     payload: metadata(),
     signature: text('signature').notNull(),
     idempotencyKey: text('idempotency_key').notNull(),
+    status: text('status').notNull().default('pending'),
     responseStatus: integer('response_status'),
     responseBody: text('response_body'),
     attemptCount: integer('attempt_count').notNull().default(0),
     nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    lastError: text('last_error'),
     ...timestamps,
   },
   (table) => [
@@ -1118,6 +1122,7 @@ export interface OrbitAuthContext {
   userId?: string
   orgId: string
   apiKeyId?: string
+  scopes?: string[]
   requestId?: string
 }
 
@@ -1132,18 +1137,36 @@ export interface IUserResolver {
   }): Promise<string>
 }
 
+export interface ApiKeyAuthLookup {
+  id: string
+  organizationId: string
+  permissions: string[]
+  revokedAt: Date | null
+  expiresAt: Date | null
+}
+
+export interface AdapterAuthorityModel {
+  runtimeAuthority: 'request-scoped'
+  migrationAuthority: 'elevated'
+  requestPathMayUseElevatedCredentials: false
+  notes: string[]
+}
+
 export interface StorageAdapter {
   readonly name: 'supabase' | 'neon' | 'postgres' | 'sqlite'
   readonly dialect: 'postgres' | 'sqlite'
   readonly supportsRls: boolean
   readonly supportsBranching: boolean
   readonly supportsJsonbIndexes: boolean
+  readonly authorityModel: AdapterAuthorityModel
   readonly database: OrbitDatabase
   readonly users: IUserResolver
 
   connect(): Promise<void>
   disconnect(): Promise<void>
   migrate(): Promise<void>
+  runWithMigrationAuthority<T>(fn: (db: OrbitDatabase) => Promise<T>): Promise<T>
+  lookupApiKeyForAuth(keyHash: string): Promise<ApiKeyAuthLookup | null>
   transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>): Promise<T>
   execute(statement: SQL): Promise<unknown>
   withTenantContext<T>(
@@ -1161,10 +1184,19 @@ export interface StorageAdapter {
 
 Adapter-specific requirements:
 
-- Supabase: uses Postgres RLS and may sync `users` from `auth.users`
-- Neon: same as raw Postgres plus `createBranch` and `mergeBranch`
-- Raw Postgres: full SQL support, no Supabase auth assumptions
-- SQLite: application-level tenant enforcement, no database RLS, schema changes may require table recreation
+- Supabase: uses Postgres RLS, may sync `users` from `auth.users`, and implements `lookupApiKeyForAuth()` through a narrowly-scoped database function rather than `service_role`
+- Neon: same as raw Postgres plus `createBranch` and `mergeBranch`; `lookupApiKeyForAuth()` uses the same narrow auth lookup primitive
+- Raw Postgres: full SQL support, no Supabase auth assumptions, and a dedicated auth lookup function for API keys
+- SQLite: application-level tenant enforcement, no database RLS, schema changes may require table recreation, and `lookupApiKeyForAuth()` may read locally because tenant isolation is enforced in-process
+
+Authority rules:
+
+- `adapter.database`, `transaction()`, `execute()`, and `withTenantContext()` are runtime-path primitives and must run with the least-privilege application role for the active request
+- `lookupApiKeyForAuth()` is the only pre-tenant request lookup allowed outside tenant context and must return a minimal auth DTO, not a raw `api_keys` row
+- `migrate()` and `runWithMigrationAuthority()` are migration-only primitives and must never be reachable from generic CRUD, admin list/read, search, import, webhook delivery, SDK direct mode, or MCP request paths; they may run only behind explicit schema mutation flows
+- request handlers must never use Supabase `service_role`, Postgres owners, or other bypass-RLS credentials to satisfy normal API/SDK/MCP/CLI traffic
+- bootstrap routes and `/v1/admin/*` routes change service scope, not database authority; they still run on the runtime role and stay subject to tenant filters or explicit bootstrap-table rules
+- `runWithMigrationAuthority()` owns any elevated connection lifecycle internally and must restore the normal runtime authority before returning
 
 ```typescript
 // packages/core/src/adapters/postgres/tenant-context.ts
@@ -1218,6 +1250,44 @@ Rules:
 ## 9. RLS Auto-Generation
 
 RLS is generated for every tenant table on Postgres-family adapters. SQLite skips policy DDL and enforces org filters in repositories.
+
+`api_keys` keeps tenant-scoped admin reads, but request authentication must use `lookupApiKeyForAuth()` backed by a narrowly-scoped database function or equivalent adapter primitive that returns only auth lookup fields before tenant context exists.
+
+Postgres-family auth lookup hardening contract:
+
+```sql
+create or replace function orbit.lookup_api_key_for_auth(input_key_hash text)
+returns table (
+  id text,
+  organization_id text,
+  permissions jsonb,
+  revoked_at timestamptz,
+  expires_at timestamptz
+)
+language sql
+security definer
+set search_path = orbit, pg_temp
+as $$
+  select
+    id,
+    organization_id,
+    scopes as permissions,
+    revoked_at,
+    expires_at
+  from orbit.api_keys
+  where key_hash = input_key_hash
+  limit 1
+$$;
+
+revoke all on function orbit.lookup_api_key_for_auth(text) from public;
+grant execute on function orbit.lookup_api_key_for_auth(text) to orbit_runtime;
+```
+
+Requirements:
+
+- the function returns only the columns required for request authentication
+- the runtime role may execute this function but may not `select` directly from `orbit.api_keys` outside tenant context
+- adapter implementations must document the equivalent privilege boundary when the target database is not Postgres-family
 
 ```typescript
 // packages/core/src/schema-engine/rls.ts
@@ -1338,12 +1408,31 @@ export class OrbitSchemaEngine implements SchemaEngine {
 }
 ```
 
+Migration apply pattern:
+
+```typescript
+// packages/core/src/schema-engine/apply.ts
+import { sql } from 'drizzle-orm'
+
+export async function applyMigration(
+  adapter: StorageAdapter,
+  migration: { sql: string[]; rollbackSql: string[]; id: string },
+) {
+  await adapter.runWithMigrationAuthority(async (db) => {
+    for (const statement of migration.sql) {
+      await db.execute(sql.raw(statement))
+    }
+  })
+}
+```
+
 Safety rules:
 
 - `addField` is metadata-only unless `promoteImmediately` is explicitly requested
 - `drop_field`, `drop_entity`, and type changes are blocked in production without approval
 - Neon migrations must branch first
 - migration records live in DB and `.orbit/migrations/*.json`
+- schema engine apply/rollback paths are the only layer allowed to use `runWithMigrationAuthority()`, including dedicated schema API routes and CLI migration commands that delegate into the schema engine
 
 ## 11. Entity Operations
 

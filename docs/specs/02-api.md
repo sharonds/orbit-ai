@@ -60,7 +60,7 @@ packages/api/
 
 - Header: `Authorization: Bearer orbit_live_...`
 - API keys resolve to an organization and allowed scopes
-- Request context exposes `orgId`, `apiKeyId`, optional `userId`, and `requestId`
+- Request context exposes `orgId`, `apiKeyId`, authoritative `scopes`, optional `userId`, and `requestId`
 
 ### 3.3 Envelope Format
 
@@ -135,6 +135,7 @@ import { registerHealthRoutes } from './routes/health'
 import type { StorageAdapter } from '@orbit-ai/core'
 
 export interface CreateApiOptions {
+  // Runtime adapter only. The request path must not receive migration or bypass-RLS credentials.
   adapter: StorageAdapter
   version: string
 }
@@ -161,6 +162,13 @@ export function createApi(options: CreateApiOptions) {
   return app
 }
 ```
+
+Runtime-boundary rules:
+
+- `createApi()` must be constructed with a runtime-scoped adapter, not a migrator or bootstrap-only adapter
+- API request paths must not use Supabase `service_role`, Postgres owner roles, or any credential that bypasses normal tenant isolation
+- `/v1/bootstrap/*` and `/v1/admin/*` broaden the service surface, but they do not change the database authority model
+- schema migration execution belongs to the schema engine and dedicated schema routes or CLI migration flow, not generic entity request-serving adapter paths
 
 ## 5. Endpoint Matrix
 
@@ -308,6 +316,47 @@ const listQuerySchema = z.object({
   include: z.string().optional(),
 })
 
+function sanitizePublicRead(entity: string, record: unknown) {
+  if (entity === 'webhooks') return attachSanitizedIncluded(toWebhookRead(record as Record<string, unknown>), record)
+  return sanitizeNestedSensitiveReads(record)
+}
+
+function sanitizePublicPage(entity: string, rows: unknown[]) {
+  return rows.map((row) => sanitizePublicRead(entity, row))
+}
+
+function sanitizeAdminRead(entity: string, record: unknown) {
+  if (entity === 'webhook_deliveries') return attachSanitizedIncluded(toWebhookDeliveryRead(record as Record<string, unknown>), record)
+  return sanitizeNestedSensitiveReads(record)
+}
+
+function sanitizeAdminPage(entity: string, rows: unknown[]) {
+  return rows.map((row) => sanitizeAdminRead(entity, row))
+}
+
+function sanitizeNestedSensitiveReads(value: unknown): unknown {
+  if (!value || typeof value !== 'object') return value
+
+  const record = value as Record<string, unknown>
+  if (record.object === 'webhook') return toWebhookRead(record)
+  if (record.object === 'webhook_delivery') return toWebhookDeliveryRead(record)
+
+  return Object.fromEntries(
+    Object.entries(record).map(([key, nested]) => {
+      if (Array.isArray(nested)) {
+        return [key, nested.map((item) => sanitizeNestedSensitiveReads(item))]
+      }
+      return [key, sanitizeNestedSensitiveReads(nested)]
+    }),
+  )
+}
+
+function attachSanitizedIncluded<T extends Record<string, unknown>>(base: T, raw: unknown): T & { included?: unknown } {
+  if (!raw || typeof raw !== 'object') return base
+  const included = sanitizeNestedSensitiveReads((raw as Record<string, unknown>).included)
+  return included === undefined ? base : { ...base, included }
+}
+
 export function registerPublicEntityRoutes(app: Hono, adapter: StorageAdapter) {
   for (const [entity, capabilities] of Object.entries(PUBLIC_ENTITY_CAPABILITIES)) {
     app.get(`/v1/${entity}`, async (c) => {
@@ -318,7 +367,7 @@ export function registerPublicEntityRoutes(app: Hono, adapter: StorageAdapter) {
         cursor: query.cursor,
         include: query.include?.split(',').filter(Boolean),
       })
-      return c.json(toEnvelope(c, result.data, result))
+      return c.json(toEnvelope(c, sanitizePublicPage(entity, result.data), result))
     })
 
     if (capabilities.write) {
@@ -326,7 +375,7 @@ export function registerPublicEntityRoutes(app: Hono, adapter: StorageAdapter) {
         const service = resolveService(adapter, entity)
         const body = await c.req.json()
         const created = await service.create(c.get('orbit'), body)
-        return c.json(toEnvelope(c, created), 201)
+        return c.json(toEnvelope(c, sanitizePublicRead(entity, created)), 201)
       })
     }
 
@@ -334,14 +383,14 @@ export function registerPublicEntityRoutes(app: Hono, adapter: StorageAdapter) {
       const service = resolveService(adapter, entity)
       const record = await service.get(c.get('orbit'), c.req.param('id'))
       if (!record) return c.json(toError(c, 'RESOURCE_NOT_FOUND', `${entity} not found`), 404)
-      return c.json(toEnvelope(c, record))
+      return c.json(toEnvelope(c, sanitizePublicRead(entity, record)))
     })
 
     if (capabilities.write) {
       app.patch(`/v1/${entity}/:id`, async (c) => {
         const service = resolveService(adapter, entity)
         const record = await service.update(c.get('orbit'), c.req.param('id'), await c.req.json())
-        return c.json(toEnvelope(c, record))
+        return c.json(toEnvelope(c, sanitizePublicRead(entity, record)))
       })
     }
 
@@ -356,7 +405,7 @@ export function registerPublicEntityRoutes(app: Hono, adapter: StorageAdapter) {
     app.post(`/v1/${entity}/search`, async (c) => {
       const service = resolveService(adapter, entity)
       const result = await service.search(c.get('orbit'), await c.req.json())
-      return c.json(toEnvelope(c, result.data, result))
+      return c.json(toEnvelope(c, sanitizePublicPage(entity, result.data), result))
     })
 
     if (capabilities.batch) {
@@ -382,21 +431,21 @@ export function registerAdminRoutes(app: Hono, adapter: StorageAdapter) {
     admin.get(`/${entity}`, async (c) => {
       const service = resolveAdminService(adapter, entity)
       const result = await service.list(c.get('orbit'), parseListQuery(c))
-      return c.json(toEnvelope(c, result.data, result))
+      return c.json(toEnvelope(c, sanitizeAdminPage(entity, result.data), result))
     })
 
     admin.get(`/${entity}/:id`, async (c) => {
       const service = resolveAdminService(adapter, entity)
       const record = await service.get(c.get('orbit'), c.req.param('id'))
       if (!record) return c.json(toError(c, 'RESOURCE_NOT_FOUND', `${entity} not found`), 404)
-      return c.json(toEnvelope(c, record))
+      return c.json(toEnvelope(c, sanitizeAdminRead(entity, record)))
     })
 
     if (capabilities.write) {
       admin.post(`/${entity}`, async (c) => {
         const service = resolveAdminService(adapter, entity)
         const created = await service.create?.(c.get('orbit'), await c.req.json())
-        return c.json(toEnvelope(c, created), 201)
+        return c.json(toEnvelope(c, sanitizeAdminRead(entity, created)), 201)
       })
     }
   }
@@ -594,8 +643,19 @@ Response:
 ```json
 {
   "data": [
-    { "ok": true, "result": { "id": "contact_01J1..." } },
-    { "ok": false, "error": { "code": "VALIDATION_FAILED", "message": "status is invalid" } }
+    {
+      "id": "audit_01J1...",
+      "object": "audit_log",
+      "entity_type": "contacts",
+      "entity_id": "contact_01J1...",
+      "action": "updated",
+      "actor_type": "api_key",
+      "actor_id": "key_01J1...",
+      "organization_id": "org_01J1...",
+      "before": { "status": "lead" },
+      "after": { "status": "qualified" },
+      "created_at": "2026-04-01T09:00:00.000Z"
+    }
   ],
   "meta": {
     "request_id": "req_01J1...",
@@ -610,13 +670,89 @@ Response:
 }
 ```
 
+### 7.2 Sensitive Read Contracts
+
+Secret-bearing records are write-only for sensitive fields. API reads must return sanitized DTOs.
+
+```typescript
+// packages/api/src/contracts/sensitive.ts
+export interface WebhookRead {
+  id: string
+  object: 'webhook'
+  organization_id: string
+  url: string
+  events: string[]
+  status: 'active' | 'disabled'
+  description: string | null
+  signing_secret_last_four: string | null
+  signing_secret_created_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface WebhookDeliveryRead {
+  id: string
+  object: 'webhook_delivery'
+  organization_id: string
+  webhook_id: string
+  event_id: string
+  status: 'pending' | 'succeeded' | 'failed'
+  response_status: number | null
+  attempt_count: number
+  next_retry_at: string | null
+  delivered_at: string | null
+  last_error: string | null
+  created_at: string
+  updated_at: string
+}
+
+export function toWebhookRead(record: Record<string, unknown>): WebhookRead {
+  return {
+    id: String(record.id),
+    object: 'webhook',
+    organization_id: String(record.organization_id ?? record.organizationId),
+    url: String(record.url),
+    events: Array.isArray(record.events) ? (record.events as string[]) : [],
+    status: (record.status as WebhookRead['status']) ?? 'active',
+    description: (record.description as string | null) ?? null,
+    signing_secret_last_four: String(record.secret_last_four ?? record.secretLastFour ?? '').slice(-4) || null,
+    signing_secret_created_at: (record.secret_created_at as string | null) ?? (record.secretCreatedAt as string | null) ?? null,
+    created_at: String(record.created_at ?? record.createdAt),
+    updated_at: String(record.updated_at ?? record.updatedAt),
+  }
+}
+
+export function toWebhookDeliveryRead(record: Record<string, unknown>): WebhookDeliveryRead {
+  return {
+    id: String(record.id),
+    object: 'webhook_delivery',
+    organization_id: String(record.organization_id ?? record.organizationId),
+    webhook_id: String(record.webhook_id ?? record.webhookId),
+    event_id: String(record.event_id ?? record.eventId),
+    status: (record.status as WebhookDeliveryRead['status']) ?? 'pending',
+    response_status: (record.response_status as number | null) ?? (record.responseStatus as number | null) ?? null,
+    attempt_count: Number(record.attempt_count ?? record.attemptCount ?? 0),
+    next_retry_at: (record.next_attempt_at as string | null) ?? (record.nextAttemptAt as string | null) ?? null,
+    delivered_at: (record.delivered_at as string | null) ?? (record.deliveredAt as string | null) ?? null,
+    last_error: (record.last_error as string | null) ?? (record.lastError as string | null) ?? null,
+    created_at: String(record.created_at ?? record.createdAt),
+    updated_at: String(record.updated_at ?? record.updatedAt),
+  }
+}
+```
+
+Sensitive read rules:
+
+- `POST /v1/webhooks` may return the plaintext signing secret once at creation time inside a dedicated write response field
+- `GET /v1/webhooks`, `GET /v1/webhooks/:id`, and list expansions must return `WebhookRead`, never plaintext secrets
+- `GET /v1/webhooks/:id/deliveries` and `/v1/admin/webhook_deliveries` must return `WebhookDeliveryRead`, not raw request bodies, signing headers, or retry-worker internals
+- secret-bearing objects in `?include=` expansions follow the same sanitized DTO contract as top-level reads
+
 ## 8. Auth Middleware
 
 ```typescript
 // packages/api/src/middleware/auth.ts
 import type { MiddlewareHandler } from 'hono'
-import { eq, isNull, or } from 'drizzle-orm'
-import { apiKeys } from '@orbit-ai/core'
 import type { StorageAdapter } from '@orbit-ai/core'
 
 export function authMiddleware(adapter: StorageAdapter): MiddlewareHandler {
@@ -628,9 +764,7 @@ export function authMiddleware(adapter: StorageAdapter): MiddlewareHandler {
 
     const raw = auth.slice('Bearer '.length)
     const keyHash = await hashApiKey(raw)
-    const key = await adapter.database.query.apiKeys.findFirst({
-      where: eq(apiKeys.keyHash, keyHash),
-    })
+    const key = await adapter.lookupApiKeyForAuth(keyHash)
 
     if (!key || key.revokedAt || (key.expiresAt && key.expiresAt < new Date())) {
       return c.json(toError(c, 'AUTH_INVALID_API_KEY', 'API key is invalid or expired'), 401)
@@ -639,12 +773,20 @@ export function authMiddleware(adapter: StorageAdapter): MiddlewareHandler {
     c.set('orbit', {
       orgId: key.organizationId,
       apiKeyId: key.id,
+      scopes: key.permissions,
       requestId: c.get('requestId'),
     })
     await next()
   }
 }
 ```
+
+Credential-boundary rules:
+
+- `authMiddleware()` resolves API keys through `adapter.lookupApiKeyForAuth()`; it must not query raw `api_keys` rows or swap to elevated credentials for bootstrap or admin requests
+- API keys are hashed at rest and compared by hash only
+- resolved API key scopes populate `c.get('orbit').scopes` and are the only input to `requireScope(...)`
+- request handlers may broaden service scope after auth, but they may not escalate database authority after auth
 
 ```typescript
 // packages/api/src/middleware/tenant-context.ts
@@ -669,6 +811,7 @@ Tenant-context rules:
 - bootstrap routes run outside tenant context
 - tenant-scoped routes must run inside `adapter.withTenantContext(...)`
 - Postgres-family adapters must implement `withTenantContext()` with transaction-local settings and guaranteed cleanup
+- public and admin tenant routes still use the runtime role; only bootstrap tables are exempt from tenant context
 
 ### 8.1 Search Route Example
 
@@ -800,6 +943,13 @@ Body:
 ```
 
 Retry schedule: `0m, 1m, 5m, 30m, 2h, 12h`.
+
+### 11.3 Read and Write Redaction Rules
+
+- write responses may include a newly-created webhook signing secret exactly once in a top-level `secret` field
+- subsequent webhook reads must expose only `signing_secret_last_four` and `signing_secret_created_at`
+- webhook delivery reads must redact request headers, signed payload copies, raw response bodies over the truncation threshold, and any worker-auth credentials
+- API logs and error envelopes must never echo webhook secrets, connector credentials, provider access tokens, or refresh tokens
 
 ## 12. OpenAPI Generation
 

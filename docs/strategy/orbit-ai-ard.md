@@ -270,7 +270,7 @@ orbit --json schema describe           # full schema introspection
 - Idempotency keys on all mutations
 - Interactive mode for humans, structured mode for agents
 - Natural language date parsing ("last week", "next Monday")
-- Dual auth: API key or OAuth
+- API key auth in v1, with bring-your-own-auth context for user-level operations
 
 #### SDK (`@orbit-ai/sdk`)
 ```typescript
@@ -325,8 +325,8 @@ Exposes all operations as MCP tools:
 - `orbit.pipeline.view` / `configure`
 - `orbit.schema.describe` / `addField` / `addEntity` / `migrate`
 - `orbit.activity.log` / `list`
-- `orbit.automations.create` / `list` / `trigger`
 - `orbit.analytics.summary` / `funnel`
+- integrations can add namespaced extension tools in composite runtimes, but the core package stays fixed at the 23-tool surface
 
 **Transport modes** (like Resend's MCP): stdio (local) + HTTP (remote, with bearer auth)
 
@@ -360,18 +360,18 @@ description       method            signed_at
 active            deal_id ────────→ deal_id ──────→ deals
                   contact_id ─────→ contact_id ──→ contacts
 
-activities        channels          automations
-─────────         ─────────         ─────────
+activities        tasks             notes
+─────────         ─────             ─────
 id                id                id
-type              type (email,      name
-subject           phone, sms,       trigger
-body              whatsapp, etc.)   conditions
-contact_id ─────→ config            actions
-deal_id ────────→ connected_at      active
-logged_at         status            last_run
+type              title             content
+subject           due_date          contact_id ─────→ contacts
+body              status            deal_id ────────→ deals
+contact_id ─────→ contact_id ─────→ contacts
+deal_id ────────→ deal_id ────────→ deals
+logged_at         assigned_to       created_at
 ```
 
-Plus: `pipeline_stages`, `tags`, `sequences`, `sequence_steps`, `notes`, `files`
+Plus: `pipeline_stages`, `tags`, `sequences`, `sequence_steps`, `files`
 
 #### Agent-Safe Migration System
 
@@ -409,7 +409,7 @@ The schema engine abstracts over multiple Postgres providers:
 |---------|---------|-----------------|
 | **Supabase** | Full-stack (auth + storage + realtime) | Built-in auth, RLS native, realtime subscriptions, edge functions |
 | **Neon** | Schema-heavy workflows | Branch-before-migrate, serverless scale-to-zero, copy-on-write |
-| **Raw Postgres** | Self-hosted / existing infra | Maximum control, any managed Postgres |
+| **Raw Postgres** | Post-v1 portability target / existing infra | Maximum control, any managed Postgres |
 | **SQLite** | Local dev / prototyping | Zero-config, instant startup, file-based |
 
 ```bash
@@ -629,7 +629,7 @@ For high-frequency or indexed custom fields, the agent CAN choose to "promote" a
 **Decision**: Schema supports both modes.
 
 ```bash
-orbit init --mode multi-tenant   # organization_id on every table, RLS scoped
+orbit init --mode multi-tenant   # organization_id on every tenant-scoped table, RLS scoped
 orbit init --mode single-tenant  # no org scoping, simpler RLS
 ```
 
@@ -720,7 +720,7 @@ Phase 0 (Foundation) ──→ Phase 1 (Schema Engine) ──→ Phase 2 (Interf
 ### Phase 0: Foundation (Weeks 1-3)
 - Monorepo setup (Turborepo + pnpm)
 - `@orbit-ai/core`: Base Drizzle schema (contacts, companies, deals, activities, pipeline_stages)
-- Storage adapters: Supabase + SQLite (Neon deferred to Phase 2)
+- Storage adapters: Supabase + SQLite foundations, with Neon implemented in Phase 2 but still part of the initial supported release wave
 - Basic CRUD operations on all entities
 - AGENTS.MD for each entity (LLM discoverability — low cost, high value)
 
@@ -737,8 +737,9 @@ Phase 0 (Foundation) ──→ Phase 1 (Schema Engine) ──→ Phase 2 (Interf
 - `@orbit-ai/api`: Hono REST API with OpenAPI spec
 - `@orbit-ai/sdk`: TypeScript SDK generated from OpenAPI
 - `@orbit-ai/cli`: Commander CLI with core commands (`init`, `schema`, `contacts`, `deals`, `migrate`, `status`)
-- `@orbit-ai/mcp`: MCP server (stdio transport)
+- `@orbit-ai/mcp`: MCP server (stdio + HTTP transport contracts; hosted endpoint operationalized later)
 - Neon adapter (with branch-before-migrate)
+- API webhooks, idempotency, and schema-management routes land in the interface wave rather than post-v1
 - Auth strategy: API keys (MVP), bring-your-own-auth via adapter (Supabase Auth, Clerk, etc.)
 - **Buffer week** (Week 11): Integration testing, edge cases, DX polish
 
@@ -757,19 +758,19 @@ Phase 0 (Foundation) ──→ Phase 1 (Schema Engine) ──→ Phase 2 (Interf
 - **Buffer week** (Week 16): Fix launch-blocking issues from early feedback
 - Target: 500-1K stars, 50 CLI installs (realistic for unknown founder)
 
-### Phase 5: Hosted + Monetization (Weeks 17-22)
+### Phase 5: Hosted Beta + Monetization (Weeks 17-22)
 - Managed hosting architecture (see §8 Open Question: hosted tier isolation)
 - Usage metering (records + API calls)
 - Stripe Billing integration
 - Rate limiting via Upstash Redis (not in-memory — must work on serverless)
-- HTTP transport for MCP server (remote/hosted)
+- Hosted MCP endpoint operations on top of the HTTP transport already implemented in the MCP package
 - Stripe Projects provider application (research requirements first — see §8 Q7)
+- Hosted GA depends on the final isolation decision and operational validation
 - Target: 20-50 paying customers
 
 ### Phase 6: Advanced Features — Lessons from Open Mercato (Weeks 23-30)
 - `@orbit-ai/workflows`: State machine engine for deal lifecycle, contract approval, lead nurturing (inspired by Open Mercato's Workflow Engine v1.0)
 - `@orbit-ai/inbox`: Email → LLM → structured proposal → human approval pipeline (inspired by Open Mercato's InboxOps)
-- Standard Webhooks spec adoption (signatures, retries, idempotency)
 - Audit log enhancement: before/after JSON diffs + `orbit activity undo <id>`
 - `orbit schema promote` (JSONB field → real column)
 - `@orbit-ai/react`: Optional React component library (PipelineBoard, ContactCard, etc.)
@@ -801,7 +802,7 @@ Phase 0 (Foundation) ──→ Phase 1 (Schema Engine) ──→ Phase 2 (Interf
 
 9. **Open-source wedge — what's the "React Email" equivalent?** The thing that gets stars independently of the commercial offering. **Candidates**: (a) Schema engine as standalone migration tool, (b) AGENTS.MD generator for any project, (c) `@orbit-ai/react` CRM component library, (d) MCP CRM server that wraps any Postgres. **Decision needed before launch.**
 
-10. **Hosted tier data isolation**: Each customer in their own Supabase/Neon project (expensive, secure)? Or shared database with schema-per-tenant or RLS isolation (cheaper, riskier)? **Decision needed**: This determines COGS, margin, and security posture.
+10. **Hosted tier data isolation**: Each customer in their own Supabase/Neon project (expensive, secure)? Or shared database with schema-per-tenant or RLS isolation (cheaper, riskier)? **Decision needed**: This determines whether hosted launches as beta or GA in the first release window, and it determines COGS, margin, and security posture.
 
 11. **Open Mercato competitive response**: They may launch a cloud offering. Monitor their Official Modules CLI (v0.4.9) and "first corporate deployments." Our moat: agent-safe schema engine + lightweight primitives + Stripe Projects. Their MCP (4 tools) may expand — comparison dated March 2026.
 

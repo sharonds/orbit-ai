@@ -135,28 +135,25 @@ The universal interface.
 - [ ] API key authentication
 - [ ] Rate limiting (configurable per key)
 - [ ] Error responses: consistent format with error codes
+- [ ] Webhooks (`POST /v1/webhooks`)
+- [ ] Schema management endpoints (`POST /v1/schema/fields`)
+- [ ] Idempotency keys on all mutations
 
 **Should have (v1.1)**:
 - [ ] Bulk operations (`POST /v1/contacts/bulk`)
-- [ ] Webhooks (`POST /v1/webhooks`)
 - [ ] OAuth 2.0 authentication
-- [ ] Schema management endpoints (`POST /v1/schema/fields`)
-- [ ] Idempotency keys on all mutations
 
 ### 3.5 MCP Server (`@orbit-ai/mcp`)
 
 The agent-native interface.
 
 **Must have (MVP)**:
-- [ ] All CRUD tools: `contacts.*`, `deals.*`, `companies.*`, `activities.*`
-- [ ] Schema tools: `schema.describe`, `schema.addField`, `schema.migrate`
-- [ ] Pipeline tools: `pipeline.view`, `pipeline.configure`
+- [ ] 23 core MCP tools covering CRUD, schema, pipeline, activity, import/export, sequence, analytics, and team workflows
 - [ ] stdio transport (for Claude Code, Cursor)
+- [ ] HTTP transport (for remote/hosted MCP)
 - [ ] API key authentication
 
 **Should have (v1.1)**:
-- [ ] HTTP transport (for remote/hosted MCP)
-- [ ] `analytics.summary`, `analytics.funnel`
 - [ ] `automations.create`, `automations.trigger`
 - [ ] `search.query` (natural language)
 - [ ] OAuth authentication
@@ -204,6 +201,8 @@ const crm = new OrbitClient({
 **Should have (v1.1)**:
 - [ ] Raw Postgres adapter (any managed Postgres)
 - [ ] Connection pooling (PgBouncer / Supabase pooler)
+
+Release note: the initial supported release wave is Supabase, Neon, and SQLite. Raw Postgres remains an explicit portability target immediately after the first release wave, but it is not treated as the launch blocker.
 
 ### 3.7 Workflows & Automation (v1.1 — Inspired by Open Mercato)
 
@@ -277,10 +276,12 @@ Target: 10K stars in first 6 months. Tactics:
 
 ### Revenue Architecture: Open-Core + Usage-Based
 
+The table below is the current hosted pricing hypothesis, not a fully frozen commercial package. Package v1 readiness is the hard release bar. Hosted is part of the first release window, likely as beta, and hosted GA depends on resolving the final isolation and operating-model decisions.
+
 | Tier | Price | Records | API Calls/mo | Features |
 |------|-------|---------|-------------|----------|
 | **Community** | Free forever | Unlimited (self-hosted) | Unlimited (self-hosted) | Full OSS: CLI, SDK, API, MCP, all entities |
-| **Pro** | $29/mo | 25,000 | 100,000 | Managed hosting, hosted MCP endpoint, email support, webhooks |
+| **Pro** | $29/mo | 25,000 | 100,000 | Managed hosting beta or GA depending on isolation readiness, hosted MCP endpoint, email support, webhooks |
 | **Scale** | $99/mo | 250,000 | 1,000,000 | Priority support, automations, analytics, SSO |
 | **Enterprise** | Custom | Unlimited | Unlimited | SLA, dedicated infra, on-prem, migration assistance |
 
@@ -368,7 +369,7 @@ Open Mercato (~1,100 stars, 5 months old, founded by Piotr Karwatka of Vue Store
 | **Schema modification** | Code changes → redeploy | CLI/SDK/MCP command → auto-migration |
 | **Agent-safe migrations** | Not a focus | Core moat (non-destructive default, branch-before-migrate, rollback) |
 | **MCP depth** | 4 generic tools (discover, find, call, whoami) | 20+ domain-specific tools (contacts.create, deals.move, schema.addField, etc.) |
-| **Cloud offering** | None (self-hosted only) | Hosted tier at orbit-ai.dev + Stripe Projects integration |
+| **Cloud offering** | None (self-hosted only) | Hosted path at orbit-ai.dev in the first release window; GA depends on isolation readiness. Stripe Projects is strategic distribution, not a ship blocker. |
 | **SaaS billing layer** | None | Hosted tier has Stripe Billing for Orbit AI's own subscriptions. SDK does NOT include billing primitives — developers bring their own (Stripe, Lemon Squeezy, etc.) |
 | **Scope** | CRM + ERP + Commerce + HR + Resource Planning | CRM infrastructure only (focused depth) |
 | **Target user** | Enterprise dev teams building internal systems | Vibe coders, SaaS builders, AI agents |
@@ -389,7 +390,7 @@ Open Mercato (~1,100 stars, 5 months old, founded by Piotr Karwatka of Vue Store
 2. **No Docker requirement** — We run on any Postgres. `npm install` is the whole setup.
 3. **No DI container** — Awilix is elegant but framework-heavy. Our SDK handles multi-tenancy at the client level.
 4. **No MikroORM** — Drizzle is 40x lighter, has programmatic migration APIs for agents, and runs on Edge.
-5. **No self-hosted-only** — We offer hosted from day one. Vibe coders don't want to run infrastructure.
+5. **No self-hosted-only** — We plan a hosted offering in the first release window. Package v1 is the hard launch bar; hosted beta may ship alongside it, and hosted GA depends on the isolation model being resolved.
 6. **Agent-first, not framework-first** — Every feature is CLI/MCP-accessible. UI is optional. Open Mercato is UI-first with MCP bolted on.
 
 ---
@@ -412,11 +413,12 @@ Open Mercato (~1,100 stars, 5 months old, founded by Piotr Karwatka of Vue Store
 - `create-orbit-app` with working example
 - Target: 1K-2K stars, 100 CLI installs, 5 "Built with Orbit AI" projects
 
-### GTM Phase 3: Hosted Launch (Month 5-7, aligns with Build Phase 5)
+### GTM Phase 3: Hosted Beta / Launch Window (Month 5-7, aligns with Build Phase 5)
 - orbit-ai.dev — managed hosting
 - Usage-based billing via Stripe
 - Stripe Projects provider application (research requirements first)
 - Hosted MCP endpoint for remote agent connections
+- Hosted GA depends on the final data-isolation decision and operational readiness
 - Target: 2K-5K stars, 30-50 paying customers, $1.5K-3K MRR
 
 ### GTM Phase 4: Ecosystem Expansion (Month 8-14, aligns with Build Phase 6+)
@@ -548,7 +550,7 @@ The current Orbit CRM (this repo: `smb-sale-crm-app`) is a **full-stack Next.js 
 | D-06 | Pricing model | Open-core + usage-based | Per-seat, flat rate, transaction % | Proven (Resend, Supabase). Records + API calls scale with business. No seat tax. |
 | D-07 | TUI framework | json-render + Ink | Blessed, Terminal.css, none | json-render = same spec renders web + terminal. Ink = React for terminal. |
 | D-08 | Naming | Orbit AI (decided) | Various | Open source. Name confirmed. Separate brand from current "Orbit CRM" SaaS app. |
-| D-09 | Database adapters | Supabase + Neon + SQLite (MVP) | Postgres-only, MongoDB, PlanetScale | Supabase = most popular with vibe coders. Neon = best for branching. SQLite = zero-config dev. |
+| D-09 | Database adapters | Supabase + Neon + SQLite (initial supported release), raw Postgres immediately after | Postgres-only, MongoDB, PlanetScale | Supabase = most popular with vibe coders. Neon = best for branching. SQLite = zero-config dev. Raw Postgres remains part of the portability story but is not the first release blocker. |
 | D-10 | MCP transport | stdio + HTTP | stdio only, SSE, WebSocket | stdio for local agents. HTTP for hosted. Matches Resend's MCP pattern. |
 
 ---

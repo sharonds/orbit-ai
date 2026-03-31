@@ -50,9 +50,9 @@ Based on competitive research against HubSpot Free, Pipedrive, Attio, Twenty, an
 | **"What do I do today" queue** | Medium | Morning brief exists as cron email, but no in-app daily task queue for reps. | `orbit tasks list --due today` + dashboard widget. Tasks surface overdue deals + follow-ups. |
 | **API layer** | Critical | No REST API. All operations are Next.js server actions — not accessible from CLI, SDK, or external tools. | Hono REST API with OpenAPI spec. Framework-agnostic. |
 | **CLI interface** | Critical | No terminal interface. Only web UI. Agents can't interact programmatically. | `@orbit-ai/cli` with 50+ commands, `--json` mode, `orbit context` briefing. |
-| **MCP server** | Critical | Current AI tools (22) are built into the Next.js app. Not accessible as standalone MCP. | `@orbit-ai/mcp` with 23 tools, stdio + HTTP transport, safety annotations. |
+| **MCP server** | Critical | Current AI tools (22) are built into the Next.js app. Not accessible as standalone MCP. | `@orbit-ai/mcp` with 23 core tools, stdio + HTTP transport, safety annotations. |
 | **SDK** | Critical | No embeddable client library. Can't use Orbit in another app. | `@orbit-ai/sdk` — TypeScript client, type-safe, auto-pagination, works with any framework. |
-| **Database portability** | High | Locked to one Supabase project (`zzmnmyxhkynbywnngess`). Can't self-host or use Neon. | Storage adapters: Supabase, Neon, SQLite (dev), raw Postgres. |
+| **Database portability** | High | Locked to one Supabase project (`zzmnmyxhkynbywnngess`). Can't self-host or use Neon. | Storage adapters: Supabase, Neon, SQLite in the initial supported release wave, with raw Postgres as a portability target immediately after. |
 
 ### 1.3 What We Keep (Proven Patterns to Extract)
 
@@ -61,7 +61,7 @@ These patterns from the current Orbit CRM are battle-tested and should be extrac
 | Pattern | Where It Lives | How It Transfers |
 |---------|---------------|-----------------|
 | `get_my_org_id()` RLS function | Migration 025 | Core schema engine generates this for multi-tenant mode |
-| `organization_id` on every table | Migration 025 | Default for all entities in multi-tenant mode |
+| `organization_id` on every tenant-scoped table | Migration 025 | Default for tenant data in multi-tenant mode; bootstrap/platform tables are excluded |
 | `requireEditor()` / `requireAdmin()` guards | Server actions | SDK auth context: `OrbitClient({ context: { userId, orgId } })` |
 | `logAudit()` on every mutation | Server actions | Built into core: every create/update/delete auto-logged |
 | `checkRateLimit()` | Server actions | API middleware with Upstash Redis (hosted) or in-memory (self-hosted) |
@@ -124,7 +124,7 @@ Three market shifts converging:
 
 ### 2.4 Data Model (Extracted from Our CRM + Research)
 
-The base schema is what you get with `orbit init`. Every entity has `id`, `organization_id` (multi-tenant), `created_at`, `updated_at`, `custom_fields JSONB`.
+The base schema is what you get with `orbit init`. Every tenant-scoped entity has `id`, `organization_id`, `created_at`, `updated_at`, `custom_fields JSONB`. Bootstrap/platform tables such as `organizations` are explicitly outside the tenant-table invariant.
 
 **Core entities:**
 
@@ -242,7 +242,7 @@ companies ──< contacts ──< deals
 
 ### 2.6 Interface Design Summary
 
-**23 MCP tools** (universal + semantic pattern from Attio research):
+**23 core MCP tools** (universal + semantic pattern from Attio research):
 
 | Tier | Tools | Count |
 |------|-------|-------|
@@ -254,9 +254,11 @@ companies ──< contacts ──< deals
 | Sequences | `enroll_in_sequence`, `unenroll_from_sequence` | 2 |
 | Analytics | `run_report`, `get_dashboard_summary` | 2 |
 | Team | `assign_record` | 1 |
-| **Total** | | **23** |
+| **Total** | | **23 core tools** |
 
 Every tool has: `readOnlyHint`, `destructiveHint`, `idempotentHint` safety annotations. Error responses include `hint` + `recovery` fields for agent self-correction.
+
+Integrations may add namespaced extension tools in a composite runtime, but the core MCP package remains fixed at 23 tools.
 
 **CLI** mirrors MCP with noun-verb structure:
 ```
@@ -277,14 +279,17 @@ Every command supports `--format=table|json|csv` and `--json` shorthand.
 
 **REST API** pattern:
 ```
-GET/POST       /v1/{entity}
+POST           /v1/bootstrap/organizations
+GET            /v1/bootstrap/current_org
+GET/POST       /v1/{entity}                   # tenant-scoped public entities only
 GET/PATCH/DEL  /v1/{entity}/{id}
-POST           /v1/{entity}/search
+POST           /v1/search
 POST           /v1/{entity}/batch
 GET            /v1/{entity}/{id}/timeline
 GET            /v1/{entity}/{id}/{relationship}
 GET            /v1/objects                    # schema introspection
-POST           /v1/objects/{type}/fields      # custom field management
+POST           /v1/schema/fields              # custom field management
+GET            /v1/admin/{entity}             # platform and admin-only entities
 ```
 
 Response envelope: `{ data, meta: { request_id, cursor, has_more }, links: { self, next } }`
@@ -342,10 +347,12 @@ for await (const contact of crm.contacts.list().autoPaginate()) { ... }
 
 ### 2.9 Pricing Model
 
+This is the current hosted pricing hypothesis. Package v1 readiness is the hard release bar. Hosted is part of the first release window, likely as beta, and hosted GA depends on the final isolation and operating-model decisions.
+
 | Tier | Price | Records | API Calls/mo | Includes |
 |------|-------|---------|-------------|----------|
 | **Community (self-hosted)** | Free forever | Unlimited | Unlimited | Full OSS: CLI, SDK, API, MCP, all entities. You run your own infra — no hosted services. |
-| **Pro** | $29/mo | 25,000 | 100,000 | Managed hosting, hosted MCP endpoint, webhooks, email support |
+| **Pro** | $29/mo | 25,000 | 100,000 | Managed hosting beta or GA depending on isolation readiness, hosted MCP endpoint, webhooks, email support |
 | **Scale** | $99/mo | 250,000 | 1,000,000 | Priority support, automations, analytics, SSO |
 | **Enterprise** | Custom | Unlimited | Unlimited | SLA, dedicated infra, field-level encryption |
 
@@ -360,7 +367,7 @@ Each spec is a self-contained implementation document. A developer (or agent) wi
 
 Scope:
 - Drizzle schema definitions for all 20+ entities (extracted from our 28 Supabase tables, refactored into clean entity model)
-- Storage adapter interface (Supabase, Neon, SQLite, raw Postgres)
+- Storage adapter interface (Supabase, Neon, SQLite in the initial supported release wave; raw Postgres as a portability target immediately after)
 - Schema engine: custom field definitions, `addField`, `addEntity`, `promote`
 - Migration engine: generate, preview, apply, rollback, non-destructive default
 - RLS auto-generation (`get_my_org_id()` pattern for multi-tenant, `auth.uid()` for single-tenant)
@@ -376,7 +383,7 @@ Additional scope from review:
 - **Users/team table**: `users` table managed by core. On Supabase adapter, synced from `auth.users` → `profiles`. On raw Postgres/SQLite, managed directly via `orbit users create`. Spec must define `IUserResolver` interface per adapter.
 - **Tags join table**: `entity_tags (tag_id, entity_type, entity_id)` — polymorphic join table. Tags are global (not per-entity-type).
 - **SQLite migration limitations**: Document that field type changes and column drops require table recreation (handled by Drizzle, but with data movement). `orbit doctor` should warn about this in SQLite mode.
-- **Multi-tenancy in non-Supabase mode**: `organization_id` columns present in all adapters. RLS enforcement is Supabase/Postgres only. On SQLite, multi-tenancy enforced at application level (WHERE clause in queries), not database level. Document this clearly.
+- **Multi-tenancy in non-Supabase mode**: `organization_id` columns present in all tenant-scoped adapters. RLS enforcement is Supabase/Postgres only. On SQLite, multi-tenancy enforced at application level (WHERE clause in queries), not database level. Document this clearly.
 - **`getContactContext()` query**: Core function that returns full dossier: contact record + company + last 10 activities + open tasks + open deals + tags + last contact date. Used by CLI `orbit context` and composable by MCP agents.
 
 Dependencies: Drizzle ORM, Zod, ulid
@@ -455,7 +462,7 @@ Depends on: Spec 1 (core)
 **The agent-native interface.**
 
 Scope:
-- 23 MCP tools organized in 8 tiers (see §2.6)
+- 23 core MCP tools organized in 8 tiers (see §2.6), plus optional namespaced integration extensions in composite runtimes
 - Safety annotations on every tool: `readOnlyHint`, `destructiveHint`, `idempotentHint`
 - Error responses with `hint` + `recovery` fields for agent self-correction
 - Schema discovery: `get_schema` returns all entities and their fields at runtime
@@ -535,7 +542,7 @@ Depends on: Spec 1 (core), Spec 2 (API for webhook delivery)
 **Phase 3**: SDK (Spec 3) — wraps API or connects directly to DB via core
 **Phase 4**: Integrations (Spec 6) — plugs into core + API for webhooks
 **Phase 5**: Documentation, `llms.txt`, AGENTS.MD, MCP registry listing
-**Phase 6**: Hosted tier, Stripe Billing, Stripe Projects provider application
+**Phase 6**: Hosted beta + billing, with hosted GA gated by the isolation decision
 
 ---
 

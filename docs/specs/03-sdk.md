@@ -16,8 +16,8 @@ The public API must stay identical across both modes.
 Public SDK contract:
 
 - resource methods are record-first, not envelope-first
-- low-level response metadata is available through explicit `.withResponse()` helpers and transport internals
-- pagination helpers yield records, while preserving cursor metadata for callers that need it
+- low-level response metadata is available through explicit `.response()` helpers; transport internals are package-private and not part of the public SDK contract
+- `autoPaginate()` yields records, while `list().firstPage()` preserves cursor metadata for callers that need the raw envelope
 
 ## 2. Package Structure
 
@@ -168,6 +168,22 @@ export class SearchResource {
     })
     return response.data
   }
+
+  response() {
+    return {
+      query: (input: {
+        query: string
+        object_types?: string[]
+        limit?: number
+        cursor?: string
+      }) =>
+        this.transport.rawRequest({
+          method: 'POST',
+          path: '/v1/search',
+          body: input,
+        }),
+    }
+  }
 }
 ```
 
@@ -194,6 +210,13 @@ export interface OrbitTransport {
   }): Promise<OrbitEnvelope<T>>
 }
 ```
+
+Transport contract rules:
+
+- `request()` returns an Orbit envelope to internal SDK callers and is the default path used by record-first resource methods
+- public resource methods unwrap `.data` before returning records to application code
+- `.response()` helpers and `list().firstPage()` are the only public SDK affordances that expose raw envelopes intentionally
+- CLI `--json` mode must use `.response()` helpers or `list().firstPage()` and must never reconstruct `meta`, `links`, or `request_id` client-side
 
 ### 4.1 HTTP Transport
 
@@ -364,7 +387,7 @@ export class BaseResource<TRecord, TCreate, TUpdate> {
     return response.data
   }
 
-  withResponse() {
+  response() {
     return {
       create: (input: TCreate) => this.transport.rawRequest<TRecord>({ method: 'POST', path: this.basePath, body: input }),
       get: (id: string, include?: string[]) =>
@@ -444,6 +467,17 @@ export class ContactResource extends BaseResource<ContactRecord, CreateContactIn
     })
     return response.data
   }
+
+  response() {
+    return {
+      ...super.response(),
+      context: (idOrEmail: string) =>
+        this.transport.rawRequest({
+          method: 'GET',
+          path: `/v1/context/${idOrEmail}`,
+        }),
+    }
+  }
 }
 ```
 
@@ -505,6 +539,22 @@ export class DealResource extends BaseResource<DealRecord, Record<string, unknow
     const response = await this.transport.request({ method: 'GET', path: '/v1/deals/stats', query })
     return response.data
   }
+
+  response() {
+    return {
+      ...super.response(),
+      move: (id: string, input: MoveDealStageInput) =>
+        this.transport.rawRequest<DealRecord>({
+          method: 'POST',
+          path: `/v1/deals/${id}/move`,
+          body: input,
+        }),
+      pipeline: (query: Record<string, unknown> = {}) =>
+        this.transport.rawRequest({ method: 'GET', path: '/v1/deals/pipeline', query }),
+      stats: (query: Record<string, unknown> = {}) =>
+        this.transport.rawRequest({ method: 'GET', path: '/v1/deals/stats', query }),
+    }
+  }
 }
 ```
 
@@ -561,6 +611,31 @@ export class SchemaResource {
     })
     return response.data
   }
+
+  response() {
+    return {
+      listObjects: () => this.transport.rawRequest({ method: 'GET', path: '/v1/objects' }),
+      describeObject: (type: string) => this.transport.rawRequest({ method: 'GET', path: `/v1/objects/${type}` }),
+      addField: (type: string, input: AddFieldInput) =>
+        this.transport.rawRequest({
+          method: 'POST',
+          path: `/v1/objects/${type}/fields`,
+          body: input,
+        }),
+      updateField: (type: string, fieldName: string, input: Partial<AddFieldInput>) =>
+        this.transport.rawRequest({
+          method: 'PATCH',
+          path: `/v1/objects/${type}/fields/${fieldName}`,
+          body: input,
+        }),
+      previewMigration: (body: Record<string, unknown>) =>
+        this.transport.rawRequest({
+          method: 'POST',
+          path: '/v1/schema/migrations/preview',
+          body,
+        }),
+    }
+  }
 }
 ```
 
@@ -601,6 +676,12 @@ export class AutoPager<T> {
   }
 }
 ```
+
+Pagination contract:
+
+- `list().autoPaginate()` is the ergonomic record iterator for application code
+- `list().firstPage()` is the response-aware accessor and returns the server envelope unchanged
+- CLI `--json` mode must use `firstPage()` for list commands so pagination metadata comes from the SDK transport, not CLI reconstruction
 
 ## 8. Errors
 
@@ -718,6 +799,6 @@ The emitter is local-only. It mirrors client-side actions and does not replace w
 3. `list().autoPaginate()` works across both transports.
 4. Errors surface as typed `OrbitApiError` with shared Orbit error codes.
 5. A single logical write request reuses one idempotency key across all retry attempts.
-6. Public resource methods return records, while `.withResponse()` exposes raw envelopes.
+6. Public resource methods return records, while `.response()` and `list().firstPage()` expose raw envelopes.
 7. Retries, idempotency, and version headers are applied automatically.
 8. Resource interfaces use real TypeScript types, not `any`.

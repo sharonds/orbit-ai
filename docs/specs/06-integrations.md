@@ -109,6 +109,128 @@ export interface OrbitIntegrationEventBus {
 }
 ```
 
+### 3.1 Credential Ownership and Redacted Reads
+
+Connector credentials are server-owned state. They may be written by install/sync flows, but they are never returned verbatim through SDK, CLI, MCP, or generic API reads.
+
+```typescript
+// packages/integrations/src/contracts.ts
+export interface IntegrationConnectionRead {
+  id: string
+  object: 'integration_connection'
+  organization_id: string
+  provider: 'gmail' | 'google_calendar' | 'stripe'
+  connection_type: string
+  user_id: string | null
+  status: 'active' | 'disabled' | 'error'
+  provider_account_id: string | null
+  provider_webhook_registered: boolean
+  scopes: string[]
+  failure_count: number
+  last_success_at: string | null
+  last_failure_at: string | null
+  metadata_summary: Record<string, string | number | boolean | null>
+  credentials_redacted: true
+  created_at: string
+  updated_at: string
+}
+
+export interface IntegrationSyncStateRead {
+  id: string
+  object: 'integration_sync_state'
+  organization_id: string
+  provider: 'gmail' | 'google_calendar' | 'stripe'
+  connection_id: string
+  stream: string
+  last_synced_at: string | null
+  last_seen_external_updated_at: string | null
+  failure_count: number
+  last_error_summary: string | null
+  metadata_summary: Record<string, string | number | boolean | null>
+  cursor_redacted: true
+  error_redacted: boolean
+  created_at: string
+  updated_at: string
+}
+
+export function toIntegrationConnectionRead(record: Record<string, unknown>): IntegrationConnectionRead {
+  return {
+    id: String(record.id),
+    object: 'integration_connection',
+    organization_id: String(record.organization_id ?? record.organizationId),
+    provider: record.provider as IntegrationConnectionRead['provider'],
+    connection_type: String(record.connection_type ?? record.connectionType),
+    user_id: (record.user_id as string | null) ?? (record.userId as string | null) ?? null,
+    status: (record.status as IntegrationConnectionRead['status']) ?? 'active',
+    provider_account_id: (record.provider_account_id as string | null) ?? (record.providerAccountId as string | null) ?? null,
+    provider_webhook_registered: Boolean(record.provider_webhook_id ?? record.providerWebhookId),
+    scopes: Array.isArray(record.scopes) ? (record.scopes as string[]) : [],
+    failure_count: Number(record.failure_count ?? record.failureCount ?? 0),
+    last_success_at: (record.last_success_at as string | null) ?? (record.lastSuccessAt as string | null) ?? null,
+    last_failure_at: (record.last_failure_at as string | null) ?? (record.lastFailureAt as string | null) ?? null,
+    metadata_summary: sanitizeIntegrationMetadata(record.metadata_summary ?? record.metadata),
+    credentials_redacted: true,
+    created_at: String(record.created_at ?? record.createdAt),
+    updated_at: String(record.updated_at ?? record.updatedAt),
+  }
+}
+
+export function toIntegrationSyncStateRead(record: Record<string, unknown>): IntegrationSyncStateRead {
+  return {
+    id: String(record.id),
+    object: 'integration_sync_state',
+    organization_id: String(record.organization_id ?? record.organizationId),
+    provider: record.provider as IntegrationSyncStateRead['provider'],
+    connection_id: String(record.connection_id ?? record.connectionId),
+    stream: String(record.stream),
+    last_synced_at: (record.last_synced_at as string | null) ?? (record.lastSyncedAt as string | null) ?? null,
+    last_seen_external_updated_at:
+      (record.last_seen_external_updated_at as string | null) ??
+      (record.lastSeenExternalUpdatedAt as string | null) ??
+      null,
+    failure_count: Number(record.failure_count ?? record.failureCount ?? 0),
+    last_error_summary: sanitizeProviderError(record.last_error ?? record.lastError),
+    metadata_summary: sanitizeIntegrationMetadata(record.metadata_summary ?? record.metadata),
+    cursor_redacted: true,
+    error_redacted: Boolean(record.last_error ?? record.lastError),
+    created_at: String(record.created_at ?? record.createdAt),
+    updated_at: String(record.updated_at ?? record.updatedAt),
+  }
+}
+
+function sanitizeIntegrationMetadata(input: unknown): Record<string, string | number | boolean | null> {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+
+  return Object.fromEntries(
+    Object.entries(input as Record<string, unknown>)
+      .filter(([key]) => !/(token|secret|signature|cursor|credential|auth|webhook)/i.test(key))
+      .slice(0, 12)
+      .map(([key, value]) => {
+        if (typeof value === 'string') return [key, value.slice(0, 120)]
+        if (typeof value === 'number' || typeof value === 'boolean') return [key, value]
+        return [key, null]
+      }),
+  )
+}
+
+function sanitizeProviderError(input: unknown): string | null {
+  if (typeof input !== 'string' || input.length === 0) return null
+
+  return input
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
+    .replace(/[A-Za-z0-9._-]{24,}/g, '[redacted]')
+    .slice(0, 160)
+}
+```
+
+Rules:
+
+- `credentials_encrypted`, `refresh_token_encrypted`, provider access tokens, and provider cursors are server-only fields
+- plaintext connector credentials may appear only inside the install callback before persistence and must not cross a read boundary afterward
+- all read surfaces must map connector rows to `IntegrationConnectionRead` or `IntegrationSyncStateRead`
+- `provider_webhook_id` is treated as internal connector state and is exposed only as `provider_webhook_registered`
+- `last_error_summary` and `metadata_summary` must be sanitized summaries, not raw provider payloads
+
 ## 4. Registry and Config
 
 Project-level config file:
@@ -411,6 +533,14 @@ export const integrationSyncState = orbit.table('integration_sync_state', {
 
 These tables must be registered through the core plugin schema extension contract so they receive migrations, tenant filtering, and RLS coverage like first-party tenant tables.
 
+### 8.1 Sanitized Read Mapping
+
+- `integration_connections` rows map to `IntegrationConnectionRead`
+- `integration_sync_state` rows map to `IntegrationSyncStateRead`
+- `cursor`, `credentials_encrypted`, and `refresh_token_encrypted` never leave the server process
+- provider error payloads must be normalized before persistence so read models do not leak provider secrets
+- CLI, MCP, and any admin API reads must route through `toIntegrationConnectionRead()` or `toIntegrationSyncStateRead()`, never raw adapter rows
+
 ```typescript
 // packages/integrations/src/schema-extension.ts
 export const integrationSchemaExtension: import('@orbit-ai/core').PluginSchemaExtension = {
@@ -486,6 +616,13 @@ Composite MCP runtime rule:
 - the composite runtime may append integration extension tools after loading enabled plugins
 - extension tools must not shadow or replace core tool names
 
+### 10.1 Sanitized Connector Reads in CLI and MCP
+
+- integration CLI commands that show connection status must render `IntegrationConnectionRead` or `IntegrationSyncStateRead`
+- integration MCP tools must return the same sanitized DTOs and must not expose encrypted credentials, provider tokens, or raw sync cursors
+- troubleshooting commands may include last error summaries, but they must redact provider secrets and signed payload fragments
+- plugin authors must use the shared serializer helpers before returning connector records from commands or tools
+
 ## 11. Event Architecture
 
 Integrations depend on three distinct event paths.
@@ -555,3 +692,5 @@ The target output is a reusable connector package, not a direct port.
 4. Connector tables are registered through the core plugin schema extension contract.
 5. Commands and extension tools are registered dynamically only when the plugin is enabled.
 6. Connector flows distinguish internal domain events, outbound customer webhooks, and inbound provider webhooks/polling.
+7. Connector reads always return sanitized DTOs; encrypted credentials, tokens, and provider cursors remain server-only.
+8. Connector commands and tools use the shared serializer helpers instead of returning raw rows.

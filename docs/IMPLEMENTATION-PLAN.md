@@ -1,29 +1,22 @@
 # Orbit AI Implementation Plan
 
 Date: 2026-03-31
-Status: Draft after spec review
-Prerequisite: resolve the issues in [REVIEW-REPORT.md](/Users/sharonsciammas/orbit-ai/docs/REVIEW-REPORT.md)
+Status: Draft after top-level docs reconciliation
+Prerequisite: complete the remaining implementation-facing contract pushdown from [docs-validation-report.md](/Users/sharonsciammas/orbit-ai/docs/review/docs-validation-report.md)
 
 ## 1. Exit Criteria Before Coding
 
-Implementation should not start until these are explicitly resolved in the specs:
+The original spec-review blockers are now closed in the package specs. Broad implementation should start only after the remaining implementation-facing clarifications are pushed into the build docs:
 
-1. Request-scoped tenant context is transaction-bound and safe on pooled Postgres connections.
-2. Core/API service coverage is aligned, including the fate of system entities and `batch()`.
-3. CLI command registry matches the declared command surface.
-4. SDK return contract and idempotency behavior are fixed.
-5. Plugin-owned schema extension model is defined in core.
-6. `organizations` is removed from the literal `organization_id` invariant or documented as the sole exception.
-7. MCP core-vs-extension tool model is fixed.
-8. Integrations event architecture is split into internal events, outbound customer webhooks, and inbound provider sync paths.
-9. API admin/system route model is typed and scoped concretely.
-10. MCP tool definitions are expressed in TypeScript for all 23 tools.
-11. Shared internal-vs-wire naming conventions are documented.
-12. Connector persistence tables are fully specified.
+1. Core and API specs define runtime role versus migration role expectations.
+2. Request paths explicitly prohibit elevated credentials such as Supabase `service_role`.
+3. API and MCP specs define redacted read contracts for secret-bearing objects.
+4. SDK and CLI specs agree on how `--json` output obtains envelope metadata.
+5. Top-level docs remain aligned on hosted stance, adapter rollout, and `v1` scope while implementation begins.
 
 ## 2. Recommended Build Order
 
-### Phase 0: Spec Corrections
+### Phase 0: Contract Pushdown
 
 Outputs:
 
@@ -33,15 +26,14 @@ Outputs:
 - revised `04-cli.md`
 - revised `05-mcp.md`
 - revised `06-integrations.md`
+- validation note closing the remaining contract gaps
 
 Goals:
 
-- resolve the review report issues
-- freeze shared contracts
-- lock one canonical base entity list
-- lock the MCP extensibility model
-- lock the integration event architecture
-- lock the internal-vs-wire serialization rule
+- push security authority rules into implementation-facing specs
+- push secret-redaction rules into API and MCP contracts
+- lock the CLI/SDK JSON contract
+- confirm the reconciled top-level docs remain the canonical product baseline
 
 ### Phase 1: Core Foundations
 
@@ -212,7 +204,7 @@ Recommended workstreams:
 4. Integrations and plugin extension model
 5. Cross-cutting eventing and serialization rules
 
-Parallelize only after Phase 0 freezes the shared contracts.
+Parallelize only after Phase 0 closes the remaining implementation-facing contract gaps.
 
 ## 4. Validation Gates
 
@@ -226,4 +218,4 @@ At the end of each phase:
 
 ## 5. Immediate Next Action
 
-Next action: revise the six specs to close the issues in the review report, then freeze a “v1 implementation baseline” before writing any package code.
+Next action: close the remaining Phase 0 contract-pushdown items in the implementation-facing specs, then freeze a “v1 implementation baseline” before broad package work begins.

@@ -526,6 +526,8 @@ Responses must:
 - truncate long text fields over 5,000 characters
 - set `truncated: true` when truncation occurs
 - preserve envelopes in machine-readable JSON inside the content block
+- never emit plaintext webhook secrets, encrypted credential blobs, provider access tokens, refresh tokens, provider sync cursors, or raw webhook signatures
+- use sanitized DTOs for secret-bearing objects even when the underlying API route is richer on write
 
 Example result:
 
@@ -542,6 +544,56 @@ Example result:
     "request_id": "req_01..."
   }
 }
+```
+
+Sanitized output contract:
+
+```typescript
+// packages/mcp/src/output/sensitive.ts
+import type { WebhookRead } from '@orbit-ai/api/contracts/sensitive'
+
+export interface McpIntegrationConnectionRead {
+  id: string
+  object: 'integration_connection'
+  organization_id: string
+  provider: 'gmail' | 'google_calendar' | 'stripe'
+  connection_type: string
+  user_id: string | null
+  status: 'active' | 'disabled' | 'error'
+  provider_account_id: string | null
+  provider_webhook_registered: boolean
+  scopes: string[]
+  failure_count: number
+  last_success_at: string | null
+  last_failure_at: string | null
+  metadata_summary: Record<string, string | number | boolean | null>
+  credentials_redacted: true
+  created_at: string
+  updated_at: string
+}
+
+export interface McpIntegrationSyncStateRead {
+  id: string
+  object: 'integration_sync_state'
+  organization_id: string
+  provider: 'gmail' | 'google_calendar' | 'stripe'
+  connection_id: string
+  stream: string
+  last_synced_at: string | null
+  last_seen_external_updated_at: string | null
+  failure_count: number
+  last_error_summary: string | null
+  metadata_summary: Record<string, string | number | boolean | null>
+  cursor_redacted: true
+  error_redacted: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type McpSensitiveRead =
+  | WebhookRead
+  | McpIntegrationConnectionRead
+  | McpIntegrationSyncStateRead
 ```
 
 ## 10. Resources
@@ -637,6 +689,14 @@ export async function startMcpServer(options: {
 - `get_dashboard_summary` -> dashboard summary API
 - `assign_record` -> targeted update on the relevant entity `assigned_to_user_id`
 
+## 12.1 Sensitive Object Behavior
+
+- tools that read `webhooks` must return sanitized webhook DTOs and never expose signing secrets after create
+- tools surfaced by integration plugins must return sanitized connection and sync-state DTOs and never expose encrypted credentials or provider cursors
+- in a composite runtime, integration extension tools must return objects that match the `@orbit-ai/integrations/contracts` read DTOs 1:1 even though the core MCP package does not import that package directly
+- error payloads and hints must not echo secrets back to the model, even when the underlying provider returned them
+- pagination metadata may include Orbit API `next_cursor`, but connector-internal sync cursors must stay server-side
+
 ## 13. Acceptance Criteria
 
 1. Exactly 23 tools are registered.
@@ -646,3 +706,4 @@ export async function startMcpServer(options: {
 5. Both stdio and HTTP transports work against the same tool registry.
 6. Tool descriptions are explicit enough for LLM selection and mention when not to use the tool.
 7. The core `@orbit-ai/mcp` package remains fixed at 23 tools even when integrations register extension tools in a composite runtime.
+8. Secret-bearing objects always use sanitized read DTOs in tool output and error payloads.
