@@ -71,12 +71,14 @@ export function createInMemoryUserRepository(seed: UserRecord[] = []): UserRepos
     async list(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
         searchableFields: ['email', 'name', 'role'],
+        filterableFields: ['id', 'organization_id', 'email', 'name', 'role', 'avatar_url', 'is_active'],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
     async search(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
         searchableFields: ['email', 'name', 'role'],
+        filterableFields: ['id', 'organization_id', 'email', 'name', 'role', 'avatar_url', 'is_active'],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
@@ -100,6 +102,7 @@ export function createSqliteUserRepository(adapter: StorageAdapter): UserReposit
       'updated_at',
     ],
     searchableFields: ['email', 'name', 'role'],
+    filterableFields: ['id', 'organization_id', 'email', 'name', 'role', 'avatar_url', 'is_active'],
     defaultSort: [{ field: 'created_at', direction: 'desc' }],
     serialize(record) {
       return {

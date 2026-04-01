@@ -64,12 +64,34 @@ export function createInMemoryCompanyRepository(seed: CompanyRecord[] = []): Com
     async list(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
         searchableFields: ['name', 'domain', 'industry', 'website', 'notes'],
+        filterableFields: [
+          'id',
+          'organization_id',
+          'name',
+          'domain',
+          'industry',
+          'size',
+          'website',
+          'notes',
+          'assigned_to_user_id',
+        ],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
     async search(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
         searchableFields: ['name', 'domain', 'industry', 'website', 'notes'],
+        filterableFields: [
+          'id',
+          'organization_id',
+          'name',
+          'domain',
+          'industry',
+          'size',
+          'website',
+          'notes',
+          'assigned_to_user_id',
+        ],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
@@ -94,6 +116,17 @@ export function createSqliteCompanyRepository(adapter: StorageAdapter): CompanyR
       'updated_at',
     ],
     searchableFields: ['name', 'domain', 'industry', 'website', 'notes'],
+    filterableFields: [
+      'id',
+      'organization_id',
+      'name',
+      'domain',
+      'industry',
+      'size',
+      'website',
+      'notes',
+      'assigned_to_user_id',
+    ],
     defaultSort: [{ field: 'created_at', direction: 'desc' }],
     serialize(record) {
       return {

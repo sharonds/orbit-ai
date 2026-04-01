@@ -2,7 +2,7 @@
 
 Date: 2026-04-01
 Status: Active working hub
-Current baseline commit: `516880f`
+Current baseline commit: `8da507c`
 
 ## What Orbit Is
 
@@ -36,6 +36,7 @@ Completed:
 - `@orbit-ai/core` Wave 1 service surface
 - `@orbit-ai/core` SQLite persistence bridge
 - `@orbit-ai/core` Wave 1 remediation
+- `@orbit-ai/core` pre-API hardening follow-up
 
 Current focus:
 
@@ -97,6 +98,7 @@ Use these files first:
   - [core-wave-1-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-review.md)
   - [core-wave-1-full-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-full-review.md)
   - [core-wave-1-remediation-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-remediation-review.md)
+  - [core-pre-api-hardening-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-pre-api-hardening-review.md)
   - [core-persistence-bridge-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-persistence-bridge-review.md)
   - [orbit-skills-plan.md](/Users/sharonsciammas/orbit-ai/docs/skills/orbit-skills-plan.md)
 
@@ -114,8 +116,8 @@ Immediate next actions:
    - Wave 1 service surface committed on `core-wave-1-services`
    - SQLite persistence bridge committed on `core-wave-1-services`
 3. Next:
-   - accept [core-wave-1-remediation-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-remediation-review.md) as the completed remediation review artifact
-   - resume [core-postgres-persistence-bridge-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-postgres-persistence-bridge-plan.md) from the remediated Wave 1 baseline
+   - accept [core-pre-api-hardening-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-pre-api-hardening-review.md) as the completed pre-API hardening review artifact
+   - execute [core-postgres-persistence-bridge-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-postgres-persistence-bridge-plan.md) from the hardened Wave 1 baseline
    - keep API/SDK execution blocked until that adapter path is explicit
 
 ## Open Items
@@ -159,6 +161,8 @@ These are still open, but they do not block the KB:
 - 2026-04-01: Executed the Wave 1 remediation plan on branch `core-wave-1-remediation`, landing the SQLite tenant-boundary hardening workstreams plus follow-up fixes for sanitized API key reads, explicit unsupported-adapter failure, and trusted-context create paths in commits `f732700`, `3991d12`, `f99ca7d`, `e23096b`, and `476bbc5`.
 - 2026-04-01: Recorded the completed remediation review in [core-wave-1-remediation-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-remediation-review.md); Wave 1 remediation is accepted and the next core gate is the Postgres-family persistence bridge.
 - 2026-04-01: Landed a pre-bridge hardening follow-up in `516880f` to remove `externalAuthId` from user search fields, stop exporting the raw API key repository from the public package index, make deal pipeline clearing explicit when a stage still exists, and standardize not-found paths on typed `OrbitError` responses.
+- 2026-04-01: Completed the pre-API hardening follow-up on branch `core-pre-api-hardening` in `50c109c` and `8da507c`, adding fail-closed filter handling, explicit repository allowlists, sanitized user service reads, typed relation errors, and bootstrap/admin filter stabilization.
+- 2026-04-01: Recorded the final review outcome in [core-pre-api-hardening-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-pre-api-hardening-review.md); the next core gate is the Postgres-family persistence bridge.
 
 ## Working Rule
 

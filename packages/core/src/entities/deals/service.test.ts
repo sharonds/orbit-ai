@@ -12,6 +12,24 @@ const ctx = {
 }
 
 describe('deal service', () => {
+  it('rejects missing relations with typed relation errors', async () => {
+    const pipelines = createInMemoryPipelineRepository()
+    const stages = createInMemoryStageRepository()
+    const contacts = createInMemoryContactRepository()
+    const companies = createInMemoryCompanyRepository()
+    const deals = createInMemoryDealRepository()
+    const dealService = createDealService({ deals, pipelines, stages, contacts, companies })
+
+    await expect(
+      dealService.create(ctx, {
+        title: 'Expansion',
+        stageId: 'stage_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      }),
+    ).rejects.toMatchObject({
+      code: 'RELATION_NOT_FOUND',
+    })
+  })
+
   it('rejects pipeline-only updates that would leave a stale stage', async () => {
     const pipelines = createInMemoryPipelineRepository()
     const stages = createInMemoryStageRepository()
@@ -57,9 +75,9 @@ describe('deal service', () => {
       stageId: stage.id,
     })
 
-    await expect(dealService.update(ctx, created.id, { pipelineId: pipelineB.id })).rejects.toThrow(
-      'Deal stage must be provided when changing pipeline',
-    )
+    await expect(dealService.update(ctx, created.id, { pipelineId: pipelineB.id })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+    })
   })
 
   it('rejects clearing pipeline while keeping an existing stage', async () => {
@@ -98,9 +116,9 @@ describe('deal service', () => {
       stageId: stage.id,
     })
 
-    await expect(dealService.update(ctx, created.id, { pipelineId: null })).rejects.toThrow(
-      'Deal stage must be cleared or replaced when clearing pipeline',
-    )
+    await expect(dealService.update(ctx, created.id, { pipelineId: null })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+    })
   })
 
   it('does not revalidate unchanged foreign keys on unrelated updates', async () => {

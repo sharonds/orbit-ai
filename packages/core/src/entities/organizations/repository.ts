@@ -26,6 +26,7 @@ export function createInMemoryOrganizationRepository(seed: OrganizationRecord[] 
     async list(query) {
       return runArrayQuery([...rows.values()], query, {
         searchableFields: ['name', 'slug', 'plan'],
+        filterableFields: ['id', 'name', 'slug', 'plan', 'is_active'],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
@@ -37,6 +38,7 @@ export function createSqliteOrganizationRepository(adapter: StorageAdapter): Org
     tableName: 'organizations',
     columns: ['id', 'name', 'slug', 'plan', 'is_active', 'settings', 'created_at', 'updated_at'],
     searchableFields: ['name', 'slug', 'plan'],
+    filterableFields: ['id', 'name', 'slug', 'plan', 'is_active'],
     defaultSort: [{ field: 'created_at', direction: 'desc' }],
     serialize(record) {
       return {
