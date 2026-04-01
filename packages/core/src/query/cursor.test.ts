@@ -16,6 +16,17 @@ describe('cursor helpers', () => {
   })
 
   it('rejects malformed cursors', () => {
-    expect(() => decodeCursor('not-a-valid-cursor')).toThrow('Invalid cursor')
+    expect(() => decodeCursor('not-a-valid-cursor')).toThrowError('Invalid cursor')
+    try {
+      decodeCursor('not-a-valid-cursor')
+      throw new Error('expected decodeCursor to throw')
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error)
+      expect(error).toMatchObject({
+        code: 'INVALID_CURSOR',
+        message: 'Invalid cursor',
+        name: 'OrbitError',
+      })
+    }
   })
 })

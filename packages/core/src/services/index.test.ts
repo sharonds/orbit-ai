@@ -5,8 +5,14 @@ import type { StorageAdapter } from '../adapters/interface.js'
 import { DEFAULT_ADAPTER_AUTHORITY_MODEL, asMigrationDatabase } from '../adapters/interface.js'
 import { generateId } from '../ids/generate-id.js'
 import { createInMemoryApiKeyRepository } from '../entities/api-keys/repository.js'
+import { createInMemoryCompanyRepository } from '../entities/companies/repository.js'
+import { createInMemoryContactRepository } from '../entities/contacts/repository.js'
+import { createInMemoryDealRepository } from '../entities/deals/repository.js'
 import { createInMemoryOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createInMemoryOrganizationRepository } from '../entities/organizations/repository.js'
+import { createInMemoryPipelineRepository } from '../entities/pipelines/repository.js'
+import { createInMemoryStageRepository } from '../entities/stages/repository.js'
+import { createInMemoryUserRepository } from '../entities/users/repository.js'
 import { createCoreServices } from './index.js'
 
 const ctx = {
@@ -114,15 +120,26 @@ describe('core services registry', () => {
         updatedAt: new Date('2026-03-31T09:00:00.000Z'),
       },
     ])
+    const companies = createInMemoryCompanyRepository()
+    const contacts = createInMemoryContactRepository()
+    const pipelines = createInMemoryPipelineRepository()
+    const stages = createInMemoryStageRepository()
+    const deals = createInMemoryDealRepository()
+    const users = createInMemoryUserRepository()
 
     const services = createCoreServices(createTestAdapter(), {
       organizations,
       organizationMemberships,
       apiKeys,
+      companies,
+      contacts,
+      pipelines,
+      stages,
+      deals,
+      users,
     })
 
     expect(Object.keys(services).sort()).toEqual([
-      'apiKeys',
       'companies',
       'contactContext',
       'contacts',
@@ -142,10 +159,28 @@ describe('core services registry', () => {
     expect(organizationsPage.data).toHaveLength(1)
     expect(membershipsPage.data).toHaveLength(1)
     expect(apiKey?.keyPrefix).toBe('orbt_live')
+    expect('keyHash' in apiKey!).toBe(false)
   })
 
   it('builds search and contact context from the Wave 1 entity set', async () => {
-    const services = createCoreServices(createTestAdapter())
+    const companies = createInMemoryCompanyRepository()
+    const contacts = createInMemoryContactRepository()
+    const pipelines = createInMemoryPipelineRepository()
+    const stages = createInMemoryStageRepository()
+    const deals = createInMemoryDealRepository()
+    const users = createInMemoryUserRepository()
+
+    const services = createCoreServices(createTestAdapter(), {
+      organizations: createInMemoryOrganizationRepository(),
+      organizationMemberships: createInMemoryOrganizationMembershipRepository(),
+      apiKeys: createInMemoryApiKeyRepository(),
+      companies,
+      contacts,
+      pipelines,
+      stages,
+      deals,
+      users,
+    })
     const company = await services.companies.create(ctx, {
       name: 'Acme',
       domain: 'acme.test',
@@ -182,5 +217,9 @@ describe('core services registry', () => {
     expect(context?.recentActivities).toEqual([])
     expect(context?.tags).toEqual([])
     expect(context?.lastContactDate).toBe('2026-03-31T10:00:00.000Z')
+  })
+
+  it('fails loudly when an adapter has no implemented repository bridge and no overrides', () => {
+    expect(() => createCoreServices(createTestAdapter())).toThrow('is not implemented')
   })
 })
