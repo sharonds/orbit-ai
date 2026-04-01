@@ -7,6 +7,7 @@ import { initializePostgresWave1Schema } from '../adapters/postgres/schema.js'
 import { createPostgresApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createPostgresOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createPostgresOrganizationRepository } from '../entities/organizations/repository.js'
+import { createPostgresUserRepository } from '../entities/users/repository.js'
 import { createCoreServices } from './index.js'
 
 const ctxA = {
@@ -112,6 +113,7 @@ describe('postgres persistence bridge', () => {
     const organizations = createPostgresOrganizationRepository(adapter)
     const memberships = createPostgresOrganizationMembershipRepository(adapter)
     const apiKeys = createPostgresApiKeyRepository(adapter)
+    const users = createPostgresUserRepository(adapter)
 
     await organizations.create({
       id: ctxA.orgId,
@@ -132,6 +134,19 @@ describe('postgres persistence bridge', () => {
       settings: {},
       createdAt: new Date('2026-04-01T12:05:00.000Z'),
       updatedAt: new Date('2026-04-01T12:05:00.000Z'),
+    })
+    await users.create(ctxA, {
+      id: ctxA.userId,
+      organizationId: ctxA.orgId,
+      email: 'owner@acme.test',
+      name: 'Owner',
+      role: 'owner',
+      avatarUrl: null,
+      externalAuthId: null,
+      isActive: true,
+      metadata: {},
+      createdAt: new Date('2026-04-01T12:00:00.000Z'),
+      updatedAt: new Date('2026-04-01T12:00:00.000Z'),
     })
     await memberships.create(ctxA, {
       id: 'mbr_01ARYZ6S41YYYYYYYYYYYYYYYY',

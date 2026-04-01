@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm'
+import { sql, type SQL } from 'drizzle-orm'
 import { newDb } from 'pg-mem'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -7,6 +7,17 @@ import { asMigrationDatabase } from '../interface.js'
 import { createPostgresStorageAdapter } from './adapter.js'
 import { createPostgresOrbitDatabase } from './database.js'
 import { initializePostgresWave1Schema } from './schema.js'
+
+function render(statement: SQL) {
+  return statement.toQuery({
+    escapeName: (value) => value,
+    escapeParam: () => '?',
+    escapeString: (value) => JSON.stringify(value),
+    casing: { getColumnCasing: (column) => column },
+    inlineParams: false,
+    paramStartIndex: { value: 0 },
+  })
+}
 
 const ctxA = {
   orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
@@ -105,7 +116,7 @@ describe('PostgresStorageAdapter', () => {
         ${'Server'},
         ${'hash_live'},
         ${'orbt_live'},
-        ${['contacts:read', 'deals:write']},
+        ${sql.raw(`'["contacts:read","deals:write"]'::jsonb`)},
         ${null},
         ${new Date('2026-06-01T00:00:00.000Z')},
         ${null},
