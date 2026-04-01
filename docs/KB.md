@@ -2,7 +2,7 @@
 
 Date: 2026-04-01
 Status: Active working hub
-Current baseline commit: `8da507c`
+Current baseline commit: `ba3dfb1`
 
 ## What Orbit Is
 
@@ -37,18 +37,17 @@ Completed:
 - `@orbit-ai/core` SQLite persistence bridge
 - `@orbit-ai/core` Wave 1 remediation
 - `@orbit-ai/core` pre-API hardening follow-up
+- `@orbit-ai/core` Postgres persistence bridge
 
 Current focus:
 
 - maintain the repo knowledge base as the live hub
-- treat the remediated Wave 1 baseline as the active core acceptance point
-- use the remediation review as the gate that reopens the Postgres-family persistence bridge
-- keep API/SDK execution blocked until Postgres-family persistence is explicit
+- treat the Postgres persistence bridge as the active core acceptance point
+- keep API/SDK execution blocked until the next core slice is explicitly chosen
 - keep execution docs and skills aligned with implementation progress
 
 Not started yet:
 
-- Postgres-family adapter-backed core repository execution
 - broad package implementation beyond `@orbit-ai/core`
 
 ## Frozen Decisions
@@ -163,6 +162,8 @@ These are still open, but they do not block the KB:
 - 2026-04-01: Landed a pre-bridge hardening follow-up in `516880f` to remove `externalAuthId` from user search fields, stop exporting the raw API key repository from the public package index, make deal pipeline clearing explicit when a stage still exists, and standardize not-found paths on typed `OrbitError` responses.
 - 2026-04-01: Completed the pre-API hardening follow-up on branch `core-pre-api-hardening` in `50c109c` and `8da507c`, adding fail-closed filter handling, explicit repository allowlists, sanitized user service reads, typed relation errors, and bootstrap/admin filter stabilization.
 - 2026-04-01: Recorded the final review outcome in [core-pre-api-hardening-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-pre-api-hardening-review.md); the next core gate is the Postgres-family persistence bridge.
+- 2026-04-01: Executed the Postgres persistence bridge on branch `core-postgres-persistence-bridge` in `ba3dfb1`, adding the generic Postgres runtime adapter, Postgres-backed Wave 1 repositories, and the integrated persistence proof harness.
+- 2026-04-01: Recorded the bridge review outcome in [core-postgres-persistence-bridge-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-postgres-persistence-bridge-review.md); the next core step is the next package-level implementation slice, pending instruction.
 
 ## Working Rule
 
