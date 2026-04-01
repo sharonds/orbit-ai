@@ -26,6 +26,7 @@ export function createStageService(deps: {
 
       const now = new Date()
       return deps.stages.create(
+        ctx,
         stageRecordSchema.parse({
           id: generateId('stage'),
           organizationId: ctx.orgId,

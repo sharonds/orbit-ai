@@ -18,6 +18,7 @@ export function createCompanyService(repository: CompanyRepository): EntityServi
       const now = new Date()
 
       return repository.create(
+        ctx,
         companyRecordSchema.parse({
           id: generateId('company'),
           organizationId: ctx.orgId,

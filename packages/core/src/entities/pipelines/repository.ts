@@ -12,7 +12,7 @@ import type { InternalPaginatedResult } from '../../types/pagination.js'
 import { pipelineRecordSchema, type PipelineRecord } from './validators.js'
 
 export interface PipelineRepository {
-  create(record: PipelineRecord): Promise<PipelineRecord>
+  create(ctx: OrbitAuthContext, record: PipelineRecord): Promise<PipelineRecord>
   get(ctx: OrbitAuthContext, id: string): Promise<PipelineRecord | null>
   update(ctx: OrbitAuthContext, id: string, patch: Partial<PipelineRecord>): Promise<PipelineRecord | null>
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
@@ -29,7 +29,12 @@ export function createInMemoryPipelineRepository(seed: PipelineRecord[] = []): P
   }
 
   return {
-    async create(record) {
+    async create(ctx, record) {
+      const orgId = assertOrgContext(ctx)
+      if (record.organizationId !== orgId) {
+        throw new Error('Pipeline organization mismatch')
+      }
+
       const parsed = pipelineRecordSchema.parse(record)
       rows.set(parsed.id, parsed)
       return parsed

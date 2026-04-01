@@ -18,6 +18,7 @@ export function createPipelineService(repository: PipelineRepository): EntitySer
       const now = new Date()
 
       return repository.create(
+        ctx,
         pipelineRecordSchema.parse({
           id: generateId('pipeline'),
           organizationId: ctx.orgId,

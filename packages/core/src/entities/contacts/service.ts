@@ -29,6 +29,7 @@ export function createContactService(deps: {
 
       const now = new Date()
       return deps.contacts.create(
+        ctx,
         contactRecordSchema.parse({
           id: generateId('contact'),
           organizationId: ctx.orgId,

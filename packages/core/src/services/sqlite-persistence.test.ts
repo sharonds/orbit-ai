@@ -137,7 +137,7 @@ describe('sqlite persistence bridge', () => {
       createdAt: new Date('2026-03-31T15:00:00.000Z'),
       updatedAt: new Date('2026-03-31T15:00:00.000Z'),
     })
-    await apiKeys.create({
+    await apiKeys.create(ctxA, {
       id: 'key_01ARYZ6S41YYYYYYYYYYYYYYYY',
       organizationId: ctxA.orgId,
       name: 'Server',

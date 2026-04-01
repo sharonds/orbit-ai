@@ -109,6 +109,7 @@ export function createDealService(deps: {
 
       const now = new Date()
       return deps.deals.create(
+        ctx,
         dealRecordSchema.parse({
           id: generateId('deal'),
           organizationId: ctx.orgId,
