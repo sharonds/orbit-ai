@@ -38,11 +38,13 @@ describe('user service', () => {
       email: 'owner@orbit.test',
       name: 'Orbit Owner',
       role: 'owner',
+      externalAuthId: 'auth_owner_secret',
     })
     await service.create(ctx, {
       email: 'agent@orbit.test',
       name: 'Agent User',
       role: 'member',
+      externalAuthId: 'auth_agent_secret',
     })
 
     const page = await service.list(ctx, {
@@ -53,9 +55,14 @@ describe('user service', () => {
       query: 'agent',
       limit: 10,
     })
+    const hiddenFieldSearch = await service.search(ctx, {
+      query: 'auth_agent_secret',
+      limit: 10,
+    })
 
     expect(page.data).toHaveLength(1)
     expect(page.hasMore).toBe(true)
     expect(search.data.map((record) => record.email)).toEqual(['agent@orbit.test'])
+    expect(hiddenFieldSearch.data).toEqual([])
   })
 })

@@ -12,7 +12,7 @@ import type { InternalPaginatedResult } from '../../types/pagination.js'
 import { stageRecordSchema, type StageRecord } from './validators.js'
 
 export interface StageRepository {
-  create(record: StageRecord): Promise<StageRecord>
+  create(ctx: OrbitAuthContext, record: StageRecord): Promise<StageRecord>
   get(ctx: OrbitAuthContext, id: string): Promise<StageRecord | null>
   update(ctx: OrbitAuthContext, id: string, patch: Partial<StageRecord>): Promise<StageRecord | null>
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
@@ -29,7 +29,12 @@ export function createInMemoryStageRepository(seed: StageRecord[] = []): StageRe
   }
 
   return {
-    async create(record) {
+    async create(ctx, record) {
+      const orgId = assertOrgContext(ctx)
+      if (record.organizationId !== orgId) {
+        throw new Error('Stage organization mismatch')
+      }
+
       const parsed = stageRecordSchema.parse(record)
       rows.set(parsed.id, parsed)
       return parsed

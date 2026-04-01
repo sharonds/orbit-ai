@@ -14,7 +14,7 @@ import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.
 import { contactRecordSchema, type ContactRecord } from './validators.js'
 
 export interface ContactRepository {
-  create(record: ContactRecord): Promise<ContactRecord>
+  create(ctx: OrbitAuthContext, record: ContactRecord): Promise<ContactRecord>
   get(ctx: OrbitAuthContext, id: string): Promise<ContactRecord | null>
   update(ctx: OrbitAuthContext, id: string, patch: Partial<ContactRecord>): Promise<ContactRecord | null>
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
@@ -31,7 +31,12 @@ export function createInMemoryContactRepository(seed: ContactRecord[] = []): Con
   }
 
   return {
-    async create(record) {
+    async create(ctx, record) {
+      const orgId = assertOrgContext(ctx)
+      if (record.organizationId !== orgId) {
+        throw new Error('Contact organization mismatch')
+      }
+
       const parsed = contactRecordSchema.parse(record)
       rows.set(parsed.id, parsed)
       return parsed

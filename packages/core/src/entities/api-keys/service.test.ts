@@ -24,6 +24,8 @@ describe('api key services', () => {
       revokedAt: new Date('2026-03-31T13:00:00.000Z'),
     })
 
+    expect('keyHash' in created).toBe(false)
+    expect('keyHash' in updated).toBe(false)
     expect(updated.revokedAt?.toISOString()).toBe('2026-03-31T13:00:00.000Z')
     await expect(
       service.get(
@@ -53,6 +55,41 @@ describe('api key services', () => {
 
     expect(list.data).toHaveLength(1)
     expect(search.data[0]?.id).toBe(created.id)
+    expect('keyHash' in search.data[0]!).toBe(false)
+    expect('keyHash' in adminRecord!).toBe(false)
     expect(adminRecord?.keyPrefix).toBe('orbt_cli')
+  })
+
+  it('ignores generic keyHash or keyPrefix mutation through update', async () => {
+    const repository = createInMemoryApiKeyRepository()
+    const service = createApiKeyService(repository)
+
+    const created = await service.create(ctx, {
+      name: 'Server',
+      keyHash: 'hashed-secret',
+      keyPrefix: 'orbt_live',
+      scopes: ['contacts:read'],
+    })
+
+    await service.update(ctx, created.id, {
+      keyHash: 'other-hash',
+      keyPrefix: 'orbt_other',
+    } as never)
+
+    const stored = await repository.get(ctx, created.id)
+    expect(stored?.keyHash).toBe('hashed-secret')
+    expect(stored?.keyPrefix).toBe('orbt_live')
+  })
+
+  it('raises a typed not-found error on delete', async () => {
+    const service = createApiKeyService(createInMemoryApiKeyRepository())
+
+    await expect(
+      service.delete(ctx, 'key_01ARYZ6S41YYYYYYYYYYYYYYYY'),
+    ).rejects.toMatchObject({
+      code: 'RESOURCE_NOT_FOUND',
+      message: 'API key key_01ARYZ6S41YYYYYYYYYYYYYYYY not found',
+      name: 'OrbitError',
+    })
   })
 })

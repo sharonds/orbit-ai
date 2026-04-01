@@ -14,7 +14,7 @@ import type { InternalPaginatedResult } from '../../types/pagination.js'
 import { userRecordSchema, type UserRecord } from './validators.js'
 
 export interface UserRepository {
-  create(record: UserRecord): Promise<UserRecord>
+  create(ctx: OrbitAuthContext, record: UserRecord): Promise<UserRecord>
   get(ctx: OrbitAuthContext, id: string): Promise<UserRecord | null>
   update(ctx: OrbitAuthContext, id: string, patch: Partial<UserRecord>): Promise<UserRecord | null>
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
@@ -31,7 +31,12 @@ export function createInMemoryUserRepository(seed: UserRecord[] = []): UserRepos
   }
 
   return {
-    async create(record) {
+    async create(ctx, record) {
+      const orgId = assertOrgContext(ctx)
+      if (record.organizationId !== orgId) {
+        throw new Error('User organization mismatch')
+      }
+
       const parsed = userRecordSchema.parse(record)
       rows.set(parsed.id, parsed)
       return parsed
@@ -65,13 +70,13 @@ export function createInMemoryUserRepository(seed: UserRecord[] = []): UserRepos
     },
     async list(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
-        searchableFields: ['email', 'name', 'role', 'external_auth_id'],
+        searchableFields: ['email', 'name', 'role'],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
     async search(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
-        searchableFields: ['email', 'name', 'role', 'external_auth_id'],
+        searchableFields: ['email', 'name', 'role'],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
@@ -94,7 +99,7 @@ export function createSqliteUserRepository(adapter: StorageAdapter): UserReposit
       'created_at',
       'updated_at',
     ],
-    searchableFields: ['email', 'name', 'role', 'external_auth_id'],
+    searchableFields: ['email', 'name', 'role'],
     defaultSort: [{ field: 'created_at', direction: 'desc' }],
     serialize(record) {
       return {
