@@ -12,7 +12,7 @@ import type { InternalPaginatedResult } from '../../types/pagination.js'
 import { dealRecordSchema, type DealRecord } from './validators.js'
 
 export interface DealRepository {
-  create(record: DealRecord): Promise<DealRecord>
+  create(ctx: OrbitAuthContext, record: DealRecord): Promise<DealRecord>
   get(ctx: OrbitAuthContext, id: string): Promise<DealRecord | null>
   update(ctx: OrbitAuthContext, id: string, patch: Partial<DealRecord>): Promise<DealRecord | null>
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
@@ -29,7 +29,12 @@ export function createInMemoryDealRepository(seed: DealRecord[] = []): DealRepos
   }
 
   return {
-    async create(record) {
+    async create(ctx, record) {
+      const orgId = assertOrgContext(ctx)
+      if (record.organizationId !== orgId) {
+        throw new Error('Deal organization mismatch')
+      }
+
       const parsed = dealRecordSchema.parse(record)
       rows.set(parsed.id, parsed)
       return parsed

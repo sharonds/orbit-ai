@@ -6,7 +6,7 @@ import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.
 import { companyRecordSchema, type CompanyRecord } from './validators.js'
 
 export interface CompanyRepository {
-  create(record: CompanyRecord): Promise<CompanyRecord>
+  create(ctx: OrbitAuthContext, record: CompanyRecord): Promise<CompanyRecord>
   get(ctx: OrbitAuthContext, id: string): Promise<CompanyRecord | null>
   update(ctx: OrbitAuthContext, id: string, patch: Partial<CompanyRecord>): Promise<CompanyRecord | null>
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
@@ -23,7 +23,12 @@ export function createInMemoryCompanyRepository(seed: CompanyRecord[] = []): Com
   }
 
   return {
-    async create(record) {
+    async create(ctx, record) {
+      const orgId = assertOrgContext(ctx)
+      if (record.organizationId !== orgId) {
+        throw new Error('Company organization mismatch')
+      }
+
       const parsed = companyRecordSchema.parse(record)
       rows.set(parsed.id, parsed)
       return parsed

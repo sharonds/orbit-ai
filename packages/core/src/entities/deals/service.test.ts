@@ -19,7 +19,7 @@ describe('deal service', () => {
     const companies = createInMemoryCompanyRepository()
     const deals = createInMemoryDealRepository()
 
-    const pipelineA = await pipelines.create({
+    const pipelineA = await pipelines.create(ctx, {
       id: 'pipeline_01ARYZ6S41YYYYYYYYYYYYYYYY',
       organizationId: ctx.orgId,
       name: 'Sales',
@@ -28,7 +28,7 @@ describe('deal service', () => {
       createdAt: new Date('2026-03-31T12:30:00.000Z'),
       updatedAt: new Date('2026-03-31T12:30:00.000Z'),
     })
-    const pipelineB = await pipelines.create({
+    const pipelineB = await pipelines.create(ctx, {
       id: 'pipeline_01ARYZ6S41ZZZZZZZZZZZZZZZZ',
       organizationId: ctx.orgId,
       name: 'Renewals',
@@ -37,7 +37,7 @@ describe('deal service', () => {
       createdAt: new Date('2026-03-31T12:31:00.000Z'),
       updatedAt: new Date('2026-03-31T12:31:00.000Z'),
     })
-    const stage = await stages.create({
+    const stage = await stages.create(ctx, {
       id: 'stage_01ARYZ6S41YYYYYYYYYYYYYYYY',
       organizationId: ctx.orgId,
       pipelineId: pipelineA.id,
@@ -69,7 +69,7 @@ describe('deal service', () => {
     const companies = createInMemoryCompanyRepository()
     const deals = createInMemoryDealRepository()
 
-    const pipeline = await pipelines.create({
+    const pipeline = await pipelines.create(ctx, {
       id: 'pipeline_01ARYZ6S41YYYYYYYYYYYYYYYY',
       organizationId: ctx.orgId,
       name: 'Sales',
@@ -78,7 +78,7 @@ describe('deal service', () => {
       createdAt: new Date('2026-03-31T13:00:00.000Z'),
       updatedAt: new Date('2026-03-31T13:00:00.000Z'),
     })
-    const stage = await stages.create({
+    const stage = await stages.create(ctx, {
       id: 'stage_01ARYZ6S41YYYYYYYYYYYYYYYY',
       organizationId: ctx.orgId,
       pipelineId: pipeline.id,
@@ -91,7 +91,7 @@ describe('deal service', () => {
       createdAt: new Date('2026-03-31T13:01:00.000Z'),
       updatedAt: new Date('2026-03-31T13:01:00.000Z'),
     })
-    const company = await companies.create({
+    const company = await companies.create(ctx, {
       id: 'company_01ARYZ6S41YYYYYYYYYYYYYYYY',
       organizationId: ctx.orgId,
       name: 'Acme',
@@ -105,7 +105,7 @@ describe('deal service', () => {
       createdAt: new Date('2026-03-31T13:02:00.000Z'),
       updatedAt: new Date('2026-03-31T13:02:00.000Z'),
     })
-    const contact = await contacts.create({
+    const contact = await contacts.create(ctx, {
       id: 'contact_01ARYZ6S41YYYYYYYYYYYYYYYY',
       organizationId: ctx.orgId,
       name: 'Taylor',

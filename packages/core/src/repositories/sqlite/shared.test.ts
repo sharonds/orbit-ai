@@ -66,7 +66,7 @@ describe('sqlite shared repository helpers', () => {
       },
     })
 
-    const created = await repository.create({
+    const created = await repository.create(ctxA, {
       id: 'wgt_01ARYZ6S41YYYYYYYYYYYYYYYY',
       organizationId: assertOrgContext(ctxA),
       name: 'Alpha',
@@ -78,6 +78,14 @@ describe('sqlite shared repository helpers', () => {
     expect(await repository.get(ctxB, created.id)).toBeNull()
     expect(await repository.update(ctxB, created.id, { name: 'Beta' })).toBeNull()
     expect(await repository.delete(ctxB, created.id)).toBe(false)
+
+    await expect(
+      repository.create(ctxB, {
+        ...created,
+        id: 'wgt_01ARYZ6S41XXXXXXXXXXXXXXXXXX',
+        organizationId: assertOrgContext(ctxA),
+      }),
+    ).rejects.toThrow('Tenant record organization mismatch')
 
     const updated = await repository.update(ctxA, created.id, { name: 'Gamma' })
     expect(updated?.name).toBe('Gamma')

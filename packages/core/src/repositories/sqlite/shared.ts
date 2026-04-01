@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm'
 
-import { assertOrbitId } from '../../ids/parse-id.js'
 import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
@@ -9,7 +8,7 @@ import type { InternalPaginatedResult } from '../../types/pagination.js'
 type SqlitePrimitive = string | number | null
 
 interface TenantRepositoryShape<TRecord extends { id: string } & Record<string, unknown>> {
-  create(record: TRecord): Promise<TRecord>
+  create(ctx: OrbitAuthContext, record: TRecord): Promise<TRecord>
   get(ctx: OrbitAuthContext, id: string): Promise<TRecord | null>
   update(ctx: OrbitAuthContext, id: string, patch: Partial<TRecord>): Promise<TRecord | null>
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
@@ -103,10 +102,14 @@ export function createTenantSqliteRepository<TRecord extends { id: string } & Re
   }
 
   return {
-    async create(record) {
-      const organizationId = assertOrbitId((record as { organizationId?: string }).organizationId ?? '', 'organization')
+    async create(ctx, record) {
+      const organizationId = assertOrgContext(ctx)
+      if ((record as { organizationId?: string }).organizationId !== organizationId) {
+        throw new Error('Tenant record organization mismatch')
+      }
+
       const row = config.serialize(record)
-      await adapter.withTenantContext({ orgId: organizationId }, async (db) => {
+      await adapter.withTenantContext(ctx, async (db) => {
         await db.execute(buildInsertStatement(config.tableName, row, config.columns))
       })
       return record

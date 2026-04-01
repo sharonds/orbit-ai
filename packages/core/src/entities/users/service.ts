@@ -18,6 +18,7 @@ export function createUserService(repository: UserRepository): EntityService<Use
       const now = new Date()
 
       return repository.create(
+        ctx,
         userRecordSchema.parse({
           id: generateId('user'),
           organizationId: ctx.orgId,
