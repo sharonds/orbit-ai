@@ -26,7 +26,7 @@ import { createOrbitError } from '../types/errors.js'
 import { createContactContextService } from './contact-context.js'
 import { createSearchService } from './search-service.js'
 
-export interface CoreRepositoryOverrides {
+interface CoreRepositoryOverrides {
   companies?: CompanyRepository
   contacts?: ContactRepository
   pipelines?: PipelineRepository

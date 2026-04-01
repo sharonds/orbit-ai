@@ -3,6 +3,15 @@ import { userInsertSchema, userSelectSchema, userUpdateSchema } from '../../sche
 export const userRecordSchema = userSelectSchema
 export type UserRecord = typeof userRecordSchema._output
 
+export const sanitizedUserRecordSchema = userRecordSchema.omit({
+  externalAuthId: true,
+})
+export type SanitizedUserRecord = typeof sanitizedUserRecordSchema._output
+
+export function sanitizeUserRecord(record: UserRecord): SanitizedUserRecord {
+  return sanitizedUserRecordSchema.parse(record)
+}
+
 export const userCreateInputSchema = userInsertSchema.omit({
   id: true,
   organizationId: true,

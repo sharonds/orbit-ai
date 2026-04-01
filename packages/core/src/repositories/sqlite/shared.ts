@@ -26,6 +26,7 @@ interface SqliteRepositoryConfig<TRecord extends { id: string } & Record<string,
   tableName: string
   columns: readonly string[]
   searchableFields: string[]
+  filterableFields?: string[]
   defaultSort: SearchQuery['sort']
   serialize(record: TRecord): Record<string, SqlitePrimitive>
   deserialize(row: Record<string, unknown>): TRecord
@@ -162,6 +163,7 @@ export function createTenantSqliteRepository<TRecord extends { id: string } & Re
       }
       return runArrayQuery(await listScopedRows(ctx), query, {
         ...options,
+        ...(config.filterableFields ? { filterableFields: config.filterableFields } : {}),
       })
     },
     async search(ctx, query) {
@@ -171,6 +173,7 @@ export function createTenantSqliteRepository<TRecord extends { id: string } & Re
       }
       return runArrayQuery(await listScopedRows(ctx), query, {
         ...options,
+        ...(config.filterableFields ? { filterableFields: config.filterableFields } : {}),
       })
     },
   }
@@ -206,6 +209,7 @@ export function createBootstrapSqliteRepository<TRecord extends { id: string } &
       }
       return runArrayQuery(await listRows(), query, {
         ...options,
+        ...(config.filterableFields ? { filterableFields: config.filterableFields } : {}),
       })
     },
   }
