@@ -87,6 +87,10 @@ describe('sqlite persistence bridge', () => {
     expect(await servicesB.companies.get(ctxA, company.id)).toEqual(company)
     expect(await servicesB.contacts.get(ctxA, contact.id)).toEqual(contact)
     expect(await servicesB.deals.get(ctxA, deal.id)).toEqual(deal)
+    await expect(servicesB.companies.update(ctxB, company.id, { name: 'Beta' })).rejects.toThrow(
+      'Company',
+    )
+    await expect(servicesB.companies.delete(ctxB, company.id)).rejects.toThrow('Company')
 
     const context = await servicesB.contactContext.getContactContext(ctxA, {
       contactId: contact.id,
@@ -123,7 +127,7 @@ describe('sqlite persistence bridge', () => {
       createdAt: new Date('2026-03-31T15:05:00.000Z'),
       updatedAt: new Date('2026-03-31T15:05:00.000Z'),
     })
-    await memberships.create({
+    await memberships.create(ctxA, {
       id: 'mbr_01ARYZ6S41YYYYYYYYYYYYYYYY',
       organizationId: ctxA.orgId,
       userId: ctxA.userId,
@@ -155,10 +159,17 @@ describe('sqlite persistence bridge', () => {
 
     const orgs = await services.system.organizations.list(ctxA, { limit: 10 })
     const membership = await services.system.organizationMemberships.get(ctxA, 'mbr_01ARYZ6S41YYYYYYYYYYYYYYYY')
+    const membershipOtherOrg = await services.system.organizationMemberships.get(
+      ctxB,
+      'mbr_01ARYZ6S41YYYYYYYYYYYYYYYY',
+    )
+    const membershipsOtherOrg = await services.system.organizationMemberships.list(ctxB, { limit: 10 })
     const apiKey = await services.system.apiKeys.get(ctxA, 'key_01ARYZ6S41YYYYYYYYYYYYYYYY')
 
     expect(orgs.data).toHaveLength(2)
     expect(membership?.userId).toBe(ctxA.userId)
+    expect(membershipOtherOrg).toBeNull()
+    expect(membershipsOtherOrg.data).toHaveLength(0)
     expect(apiKey?.keyPrefix).toBe('orbt_live')
   })
 })

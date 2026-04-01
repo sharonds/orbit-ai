@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 
+import { assertOrbitId } from '../../ids/parse-id.js'
 import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
@@ -61,11 +62,11 @@ function buildSelectByIdStatement(tableName: string, predicate: ReturnType<typeo
   return sql`select * from ${sql.raw(tableName)} where ${predicate} limit 1`
 }
 
-function buildSelectAllStatement(tableName: string, predicate?: ReturnType<typeof sql.join>) {
-  if (predicate) {
-    return sql`select * from ${sql.raw(tableName)} where ${predicate}`
-  }
+function buildTenantSelectStatement(tableName: string, predicate: ReturnType<typeof sql.join>) {
+  return sql`select * from ${sql.raw(tableName)} where ${predicate}`
+}
 
+function buildBootstrapSelectStatement(tableName: string) {
   return sql`select * from ${sql.raw(tableName)}`
 }
 
@@ -95,7 +96,7 @@ export function createTenantSqliteRepository<TRecord extends { id: string } & Re
   async function listScopedRows(ctx: OrbitAuthContext): Promise<TRecord[]> {
     return adapter.withTenantContext(ctx, async (db) => {
       const rows = await db.query<Record<string, unknown>>(
-        buildSelectAllStatement(config.tableName, buildTenantPredicate(ctx)),
+        buildTenantSelectStatement(config.tableName, buildTenantPredicate(ctx)),
       )
       return rows.map((row) => config.deserialize(row))
     })
@@ -103,8 +104,9 @@ export function createTenantSqliteRepository<TRecord extends { id: string } & Re
 
   return {
     async create(record) {
+      const organizationId = assertOrbitId((record as { organizationId?: string }).organizationId ?? '', 'organization')
       const row = config.serialize(record)
-      await adapter.transaction(async (db) => {
+      await adapter.withTenantContext({ orgId: organizationId }, async (db) => {
         await db.execute(buildInsertStatement(config.tableName, row, config.columns))
       })
       return record
@@ -118,33 +120,37 @@ export function createTenantSqliteRepository<TRecord extends { id: string } & Re
       })
     },
     async update(ctx, id, patch) {
-      const current = await this.get(ctx, id)
-      if (!current) {
-        return null
-      }
+      return adapter.withTenantContext(ctx, async (db) => {
+        const rows = await db.query<Record<string, unknown>>(
+          buildSelectByIdStatement(config.tableName, buildTenantPredicate(ctx, id)),
+        )
+        const current = rows[0] ? config.deserialize(rows[0]) : null
+        if (!current) {
+          return null
+        }
 
-      const next = {
-        ...current,
-        ...patch,
-      } as TRecord
-      const row = config.serialize(next)
+        const next = {
+          ...current,
+          ...patch,
+        } as TRecord
+        const row = config.serialize(next)
 
-      await adapter.withTenantContext(ctx, async (db) => {
         await db.execute(buildUpdateStatement(config.tableName, row, config.columns, buildTenantPredicate(ctx, id)))
+        return next
       })
-
-      return next
     },
     async delete(ctx, id) {
-      const current = await this.get(ctx, id)
-      if (!current) {
-        return false
-      }
+      return adapter.withTenantContext(ctx, async (db) => {
+        const rows = await db.query<Record<string, unknown>>(
+          buildSelectByIdStatement(config.tableName, buildTenantPredicate(ctx, id)),
+        )
+        if (!rows[0]) {
+          return false
+        }
 
-      await adapter.withTenantContext(ctx, async (db) => {
         await db.execute(buildDeleteStatement(config.tableName, buildTenantPredicate(ctx, id)))
+        return true
       })
-      return true
     },
     async list(ctx, query) {
       const options = {
@@ -172,10 +178,8 @@ export function createBootstrapSqliteRepository<TRecord extends { id: string } &
   config: SqliteRepositoryConfig<TRecord>,
 ): AdminRepositoryShape<TRecord> {
   async function listRows(): Promise<TRecord[]> {
-    return adapter.transaction(async (db) => {
-      const rows = await db.query<Record<string, unknown>>(buildSelectAllStatement(config.tableName))
-      return rows.map((row) => config.deserialize(row))
-    })
+    const rows = await adapter.query<Record<string, unknown>>(buildBootstrapSelectStatement(config.tableName))
+    return rows.map((row) => config.deserialize(row))
   }
 
   return {
@@ -187,12 +191,10 @@ export function createBootstrapSqliteRepository<TRecord extends { id: string } &
       return record
     },
     async get(id) {
-      return adapter.transaction(async (db) => {
-        const rows = await db.query<Record<string, unknown>>(
-          buildSelectByIdStatement(config.tableName, buildIdPredicate(id)),
-        )
-        return rows[0] ? config.deserialize(rows[0]) : null
-      })
+      const rows = await adapter.query<Record<string, unknown>>(
+        buildSelectByIdStatement(config.tableName, buildIdPredicate(id)),
+      )
+      return rows[0] ? config.deserialize(rows[0]) : null
     },
     async list(query) {
       const options = {
@@ -231,5 +233,9 @@ export function fromSqliteJson<T>(value: unknown, fallback: T): T {
     return fallback
   }
 
-  return JSON.parse(value) as T
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return fallback
+  }
 }

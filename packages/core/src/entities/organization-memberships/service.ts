@@ -6,11 +6,11 @@ export function createOrganizationMembershipAdminService(
   repository: OrganizationMembershipRepository,
 ): AdminEntityService<OrganizationMembershipRecord> {
   return {
-    async list(_ctx, query) {
-      return repository.list(query)
+    async list(ctx, query) {
+      return repository.list(ctx, query)
     },
-    async get(_ctx, id) {
-      return repository.get(id)
+    async get(ctx, id) {
+      return repository.get(ctx, id)
     },
   }
 }
