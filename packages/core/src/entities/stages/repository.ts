@@ -6,6 +6,11 @@ import {
   toSqliteBoolean,
   toSqliteDate,
 } from '../../repositories/sqlite/shared.js'
+import {
+  createTenantPostgresRepository,
+  fromPostgresBoolean,
+  fromPostgresDate,
+} from '../../repositories/postgres/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
@@ -160,6 +165,68 @@ export function createSqliteStageRepository(adapter: StorageAdapter): StageRepos
         isLost: fromSqliteBoolean(row.is_lost),
         createdAt: fromSqliteDate(row.created_at),
         updatedAt: fromSqliteDate(row.updated_at),
+      })
+    },
+  })
+}
+
+export function createPostgresStageRepository(adapter: StorageAdapter): StageRepository {
+  return createTenantPostgresRepository<StageRecord>(adapter, {
+    tableName: 'stages',
+    columns: [
+      'id',
+      'organization_id',
+      'pipeline_id',
+      'name',
+      'stage_order',
+      'probability',
+      'color',
+      'is_won',
+      'is_lost',
+      'created_at',
+      'updated_at',
+    ],
+    searchableFields: ['name', 'color'],
+    filterableFields: [
+      'id',
+      'organization_id',
+      'pipeline_id',
+      'name',
+      'stage_order',
+      'probability',
+      'color',
+      'is_won',
+      'is_lost',
+    ],
+    defaultSort: [{ field: 'stage_order', direction: 'asc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        organization_id: record.organizationId,
+        pipeline_id: record.pipelineId,
+        name: record.name,
+        stage_order: record.stageOrder,
+        probability: record.probability,
+        color: record.color ?? null,
+        is_won: record.isWon,
+        is_lost: record.isLost,
+        created_at: record.createdAt,
+        updated_at: record.updatedAt,
+      }
+    },
+    deserialize(row) {
+      return stageRecordSchema.parse({
+        id: row.id,
+        organizationId: row.organization_id,
+        pipelineId: row.pipeline_id,
+        name: row.name,
+        stageOrder: row.stage_order,
+        probability: row.probability,
+        color: row.color ?? null,
+        isWon: fromPostgresBoolean(row.is_won),
+        isLost: fromPostgresBoolean(row.is_lost),
+        createdAt: fromPostgresDate(row.created_at),
+        updatedAt: fromPostgresDate(row.updated_at),
       })
     },
   })

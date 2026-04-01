@@ -6,6 +6,11 @@ import {
   toSqliteDate,
   toSqliteJson,
 } from '../../repositories/sqlite/shared.js'
+import {
+  createTenantPostgresRepository,
+  fromPostgresDate,
+  fromPostgresJson,
+} from '../../repositories/postgres/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
@@ -205,6 +210,99 @@ export function createSqliteDealRepository(adapter: StorageAdapter): DealReposit
         customFields: fromSqliteJson(row.custom_fields, {}),
         createdAt: fromSqliteDate(row.created_at),
         updatedAt: fromSqliteDate(row.updated_at),
+      })
+    },
+  })
+}
+
+export function createPostgresDealRepository(adapter: StorageAdapter): DealRepository {
+  return createTenantPostgresRepository<DealRecord>(adapter, {
+    tableName: 'deals',
+    columns: [
+      'id',
+      'organization_id',
+      'title',
+      'value',
+      'currency',
+      'stage_id',
+      'pipeline_id',
+      'probability',
+      'expected_close_date',
+      'contact_id',
+      'company_id',
+      'assigned_to_user_id',
+      'status',
+      'won_at',
+      'lost_at',
+      'lost_reason',
+      'custom_fields',
+      'created_at',
+      'updated_at',
+    ],
+    searchableFields: ['title', 'currency', 'status', 'lost_reason'],
+    filterableFields: [
+      'id',
+      'organization_id',
+      'title',
+      'value',
+      'currency',
+      'stage_id',
+      'pipeline_id',
+      'probability',
+      'expected_close_date',
+      'contact_id',
+      'company_id',
+      'assigned_to_user_id',
+      'status',
+      'won_at',
+      'lost_at',
+      'lost_reason',
+    ],
+    defaultSort: [{ field: 'updated_at', direction: 'desc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        organization_id: record.organizationId,
+        title: record.title,
+        value: record.value,
+        currency: record.currency,
+        stage_id: record.stageId ?? null,
+        pipeline_id: record.pipelineId ?? null,
+        probability: record.probability,
+        expected_close_date: record.expectedCloseDate,
+        contact_id: record.contactId ?? null,
+        company_id: record.companyId ?? null,
+        assigned_to_user_id: record.assignedToUserId ?? null,
+        status: record.status,
+        won_at: record.wonAt,
+        lost_at: record.lostAt,
+        lost_reason: record.lostReason,
+        custom_fields: record.customFields,
+        created_at: record.createdAt,
+        updated_at: record.updatedAt,
+      }
+    },
+    deserialize(row) {
+      return dealRecordSchema.parse({
+        id: row.id,
+        organizationId: row.organization_id,
+        title: row.title,
+        value: row.value ?? null,
+        currency: row.currency,
+        stageId: row.stage_id ?? null,
+        pipelineId: row.pipeline_id ?? null,
+        probability: row.probability,
+        expectedCloseDate: fromPostgresDate(row.expected_close_date),
+        contactId: row.contact_id ?? null,
+        companyId: row.company_id ?? null,
+        assignedToUserId: row.assigned_to_user_id ?? null,
+        status: row.status,
+        wonAt: fromPostgresDate(row.won_at),
+        lostAt: fromPostgresDate(row.lost_at),
+        lostReason: row.lost_reason ?? null,
+        customFields: fromPostgresJson(row.custom_fields, {}),
+        createdAt: fromPostgresDate(row.created_at),
+        updatedAt: fromPostgresDate(row.updated_at),
       })
     },
   })

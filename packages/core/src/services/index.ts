@@ -1,25 +1,59 @@
 import type { StorageAdapter } from '../adapters/interface.js'
+import { PostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createApiKeyAdminService } from '../entities/api-keys/service.js'
 import { SqliteStorageAdapter } from '../adapters/sqlite/adapter.js'
-import { createSqliteApiKeyRepository, type ApiKeyRepository } from '../entities/api-keys/repository.js'
-import { createSqliteCompanyRepository, type CompanyRepository } from '../entities/companies/repository.js'
+import {
+  createPostgresApiKeyRepository,
+  createSqliteApiKeyRepository,
+  type ApiKeyRepository,
+} from '../entities/api-keys/repository.js'
+import {
+  createPostgresCompanyRepository,
+  createSqliteCompanyRepository,
+  type CompanyRepository,
+} from '../entities/companies/repository.js'
 import { createCompanyService } from '../entities/companies/service.js'
-import { createSqliteContactRepository, type ContactRepository } from '../entities/contacts/repository.js'
+import {
+  createPostgresContactRepository,
+  createSqliteContactRepository,
+  type ContactRepository,
+} from '../entities/contacts/repository.js'
 import { createContactService } from '../entities/contacts/service.js'
-import { createSqliteDealRepository, type DealRepository } from '../entities/deals/repository.js'
+import {
+  createPostgresDealRepository,
+  createSqliteDealRepository,
+  type DealRepository,
+} from '../entities/deals/repository.js'
 import { createDealService } from '../entities/deals/service.js'
 import {
+  createPostgresOrganizationMembershipRepository,
   createSqliteOrganizationMembershipRepository,
   type OrganizationMembershipRepository,
 } from '../entities/organization-memberships/repository.js'
 import { createOrganizationMembershipAdminService } from '../entities/organization-memberships/service.js'
-import { createSqliteOrganizationRepository, type OrganizationRepository } from '../entities/organizations/repository.js'
+import {
+  createPostgresOrganizationRepository,
+  createSqliteOrganizationRepository,
+  type OrganizationRepository,
+} from '../entities/organizations/repository.js'
 import { createOrganizationAdminService } from '../entities/organizations/service.js'
-import { createSqlitePipelineRepository, type PipelineRepository } from '../entities/pipelines/repository.js'
+import {
+  createPostgresPipelineRepository,
+  createSqlitePipelineRepository,
+  type PipelineRepository,
+} from '../entities/pipelines/repository.js'
 import { createPipelineService } from '../entities/pipelines/service.js'
-import { createSqliteStageRepository, type StageRepository } from '../entities/stages/repository.js'
+import {
+  createPostgresStageRepository,
+  createSqliteStageRepository,
+  type StageRepository,
+} from '../entities/stages/repository.js'
 import { createStageService } from '../entities/stages/service.js'
-import { createSqliteUserRepository, type UserRepository } from '../entities/users/repository.js'
+import {
+  createPostgresUserRepository,
+  createSqliteUserRepository,
+  type UserRepository,
+} from '../entities/users/repository.js'
 import { createUserService } from '../entities/users/service.js'
 import { OrbitSchemaEngine } from '../schema-engine/engine.js'
 import { createOrbitError } from '../types/errors.js'
@@ -41,11 +75,13 @@ interface CoreRepositoryOverrides {
 function resolveCoreRepository<T>({
   adapter,
   sqliteFactory,
+  postgresFactory,
   override,
   name,
 }: {
   adapter: StorageAdapter
   sqliteFactory: () => T
+  postgresFactory?: () => T
   override: T | undefined
   name: string
 }): T {
@@ -55,6 +91,10 @@ function resolveCoreRepository<T>({
 
   if (adapter instanceof SqliteStorageAdapter) {
     return sqliteFactory()
+  }
+
+  if (adapter instanceof PostgresStorageAdapter && postgresFactory) {
+    return postgresFactory()
   }
 
   throw createOrbitError({
@@ -72,54 +112,63 @@ export function createCoreServices(
     adapter,
     override: overrides.organizations,
     sqliteFactory: () => createSqliteOrganizationRepository(adapter),
+    postgresFactory: () => createPostgresOrganizationRepository(adapter),
     name: 'organizations repository',
   })
   const organizationMemberships = resolveCoreRepository({
     adapter,
     override: overrides.organizationMemberships,
     sqliteFactory: () => createSqliteOrganizationMembershipRepository(adapter),
+    postgresFactory: () => createPostgresOrganizationMembershipRepository(adapter),
     name: 'organization memberships repository',
   })
   const apiKeys = resolveCoreRepository({
     adapter,
     override: overrides.apiKeys,
     sqliteFactory: () => createSqliteApiKeyRepository(adapter),
+    postgresFactory: () => createPostgresApiKeyRepository(adapter),
     name: 'api keys repository',
   })
   const users = resolveCoreRepository({
     adapter,
     override: overrides.users,
     sqliteFactory: () => createSqliteUserRepository(adapter),
+    postgresFactory: () => createPostgresUserRepository(adapter),
     name: 'users repository',
   })
   const companies = resolveCoreRepository({
     adapter,
     override: overrides.companies,
     sqliteFactory: () => createSqliteCompanyRepository(adapter),
+    postgresFactory: () => createPostgresCompanyRepository(adapter),
     name: 'companies repository',
   })
   const contacts = resolveCoreRepository({
     adapter,
     override: overrides.contacts,
     sqliteFactory: () => createSqliteContactRepository(adapter),
+    postgresFactory: () => createPostgresContactRepository(adapter),
     name: 'contacts repository',
   })
   const pipelines = resolveCoreRepository({
     adapter,
     override: overrides.pipelines,
     sqliteFactory: () => createSqlitePipelineRepository(adapter),
+    postgresFactory: () => createPostgresPipelineRepository(adapter),
     name: 'pipelines repository',
   })
   const stages = resolveCoreRepository({
     adapter,
     override: overrides.stages,
     sqliteFactory: () => createSqliteStageRepository(adapter),
+    postgresFactory: () => createPostgresStageRepository(adapter),
     name: 'stages repository',
   })
   const deals = resolveCoreRepository({
     adapter,
     override: overrides.deals,
     sqliteFactory: () => createSqliteDealRepository(adapter),
+    postgresFactory: () => createPostgresDealRepository(adapter),
     name: 'deals repository',
   })
 
