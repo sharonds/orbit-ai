@@ -2,7 +2,7 @@
 
 Date: 2026-04-01
 Status: Active working hub
-Current baseline commit: `ed6e9bb`
+Current baseline commit: `e419d82`
 
 ## What Orbit Is
 
@@ -35,6 +35,7 @@ Completed:
 - `@orbit-ai/core` slice 2 foundations and hardening
 - `@orbit-ai/core` Wave 1 service surface
 - `@orbit-ai/core` SQLite persistence bridge
+- `@orbit-ai/core` Wave 1 remediation
 
 Current focus:
 
