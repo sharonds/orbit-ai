@@ -80,4 +80,16 @@ describe('api key services', () => {
     expect(stored?.keyHash).toBe('hashed-secret')
     expect(stored?.keyPrefix).toBe('orbt_live')
   })
+
+  it('raises a typed not-found error on delete', async () => {
+    const service = createApiKeyService(createInMemoryApiKeyRepository())
+
+    await expect(
+      service.delete(ctx, 'key_01ARYZ6S41YYYYYYYYYYYYYYYY'),
+    ).rejects.toMatchObject({
+      code: 'RESOURCE_NOT_FOUND',
+      message: 'API key key_01ARYZ6S41YYYYYYYYYYYYYYYY not found',
+      name: 'OrbitError',
+    })
+  })
 })

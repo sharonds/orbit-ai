@@ -1,5 +1,5 @@
 import { generateId } from '../../ids/generate-id.js'
-import { assertFound } from '../../services/service-helpers.js'
+import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { EntityService } from '../../services/entity-service.js'
 import type { PipelineRepository } from './repository.js'
 import {
@@ -48,10 +48,7 @@ export function createPipelineService(repository: PipelineRepository): EntitySer
       return assertFound(await repository.update(ctx, id, patch), `Pipeline ${id} not found`)
     },
     async delete(ctx, id) {
-      const deleted = await repository.delete(ctx, id)
-      if (!deleted) {
-        throw new Error(`Pipeline ${id} not found`)
-      }
+      assertDeleted(await repository.delete(ctx, id), `Pipeline ${id} not found`)
     },
     async list(ctx, query) {
       return repository.list(ctx, query)

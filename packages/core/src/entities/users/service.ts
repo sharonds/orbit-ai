@@ -1,5 +1,5 @@
 import { generateId } from '../../ids/generate-id.js'
-import { assertFound } from '../../services/service-helpers.js'
+import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { EntityService } from '../../services/entity-service.js'
 import type { UserRepository } from './repository.js'
 import {
@@ -60,10 +60,7 @@ export function createUserService(repository: UserRepository): EntityService<Use
       return assertFound(await repository.update(ctx, id, patch), `User ${id} not found`)
     },
     async delete(ctx, id) {
-      const deleted = await repository.delete(ctx, id)
-      if (!deleted) {
-        throw new Error(`User ${id} not found`)
-      }
+      assertDeleted(await repository.delete(ctx, id), `User ${id} not found`)
     },
     async list(ctx, query) {
       return repository.list(ctx, query)
