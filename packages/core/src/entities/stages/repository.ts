@@ -69,12 +69,34 @@ export function createInMemoryStageRepository(seed: StageRecord[] = []): StageRe
     async list(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
         searchableFields: ['name', 'color'],
+        filterableFields: [
+          'id',
+          'organization_id',
+          'pipeline_id',
+          'name',
+          'stage_order',
+          'probability',
+          'color',
+          'is_won',
+          'is_lost',
+        ],
         defaultSort: [{ field: 'stage_order', direction: 'asc' }],
       })
     },
     async search(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
         searchableFields: ['name', 'color'],
+        filterableFields: [
+          'id',
+          'organization_id',
+          'pipeline_id',
+          'name',
+          'stage_order',
+          'probability',
+          'color',
+          'is_won',
+          'is_lost',
+        ],
         defaultSort: [{ field: 'stage_order', direction: 'asc' }],
       })
     },
@@ -98,6 +120,17 @@ export function createSqliteStageRepository(adapter: StorageAdapter): StageRepos
       'updated_at',
     ],
     searchableFields: ['name', 'color'],
+    filterableFields: [
+      'id',
+      'organization_id',
+      'pipeline_id',
+      'name',
+      'stage_order',
+      'probability',
+      'color',
+      'is_won',
+      'is_lost',
+    ],
     defaultSort: [{ field: 'stage_order', direction: 'asc' }],
     serialize(record) {
       return {

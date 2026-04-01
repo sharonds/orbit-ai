@@ -22,6 +22,8 @@ describe('user service', () => {
     })
 
     expect(updated.role).toBe('admin')
+    expect('externalAuthId' in created).toBe(false)
+    expect('externalAuthId' in updated).toBe(false)
     await expect(
       service.get(
         {
@@ -49,7 +51,16 @@ describe('user service', () => {
       } as never,
     )
 
-    expect(updated.externalAuthId).toBe('auth_owner_secret')
+    expect('externalAuthId' in updated).toBe(false)
+
+    await expect(
+      service.update(ctx, created.id, {
+        email: null,
+      } as never),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      name: 'OrbitError',
+    })
   })
 
   it('lists and searches users', async () => {
@@ -79,17 +90,22 @@ describe('user service', () => {
       query: 'auth_agent_secret',
       limit: 10,
     })
-    const hiddenFieldFilter = await service.search(ctx, {
-      filter: {
-        externalAuthId: 'auth_agent_secret',
-      },
-      limit: 10,
-    })
-
     expect(page.data).toHaveLength(1)
     expect(page.hasMore).toBe(true)
     expect(search.data.map((record) => record.email)).toEqual(['agent@orbit.test'])
     expect(hiddenFieldSearch.data).toEqual([])
-    expect(hiddenFieldFilter.data).toHaveLength(2)
+    await expect(
+      service.search(ctx, {
+        filter: {
+          externalAuthId: 'auth_agent_secret',
+        },
+        limit: 10,
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      field: 'externalAuthId',
+      name: 'OrbitError',
+    })
+    expect(search.data.every((record) => 'externalAuthId' in record === false)).toBe(true)
   })
 })

@@ -1,12 +1,12 @@
 import { generateId } from '../../ids/generate-id.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { EntityService } from '../../services/entity-service.js'
+import { createOrbitError } from '../../types/errors.js'
 import type { CompanyRepository } from '../companies/repository.js'
 import type { ContactRepository } from '../contacts/repository.js'
 import type { PipelineRepository } from '../pipelines/repository.js'
 import type { StageRepository } from '../stages/repository.js'
 import type { DealRepository } from './repository.js'
-import { createOrbitError } from '../../types/errors.js'
 import {
   dealCreateInputSchema,
   dealRecordSchema,
@@ -116,6 +116,13 @@ export function createDealService(deps: {
   contacts: ContactRepository
   companies: CompanyRepository
 }): EntityService<DealCreateInput, DealUpdateInput, DealRecord> {
+  function relationNotFound(message: string) {
+    return createOrbitError({
+      code: 'RELATION_NOT_FOUND',
+      message,
+    })
+  }
+
   return {
     async create(ctx, input) {
       const parsed = dealCreateInputSchema.parse(input)
@@ -183,14 +190,14 @@ export function createDealService(deps: {
       if (parsed.contactId !== undefined && parsed.contactId !== null) {
         const contact = await deps.contacts.get(ctx, parsed.contactId)
         if (!contact) {
-          throw new Error(`Contact ${parsed.contactId} not found for deal`)
+          throw relationNotFound(`Contact ${parsed.contactId} not found for deal`)
         }
       }
 
       if (parsed.companyId !== undefined && parsed.companyId !== null) {
         const company = await deps.companies.get(ctx, parsed.companyId)
         if (!company) {
-          throw new Error(`Company ${parsed.companyId} not found for deal`)
+          throw relationNotFound(`Company ${parsed.companyId} not found for deal`)
         }
       }
 

@@ -119,6 +119,24 @@ function buildFilterableFields<T extends Record<string, unknown>>(
   return allowed
 }
 
+function assertAllowedFilters(filter: Record<string, unknown>, filterableFields: Set<string>): void {
+  for (const field of Object.keys(filter)) {
+    const normalizedField = field.trim()
+    const allowed =
+      filterableFields.has(normalizedField) ||
+      filterableFields.has(toRecordKey(normalizedField)) ||
+      filterableFields.has(toQueryKey(normalizedField))
+
+    if (!allowed) {
+      throw createOrbitError({
+        code: 'VALIDATION_FAILED',
+        message: `Filter field "${field}" is not allowed`,
+        field,
+      })
+    }
+  }
+}
+
 function applySearch<T extends Record<string, unknown>>(records: T[], query: string | undefined, fields: string[]): T[] {
   if (!query) {
     return records
@@ -146,17 +164,8 @@ export function runArrayQuery<T extends { id: string } & Record<string, unknown>
     ...(options.defaultSort ? { defaultSort: options.defaultSort } : {}),
   })
   const filterableFields = buildFilterableFields(records, options.filterableFields)
-  const filter = Object.fromEntries(
-    Object.entries(normalized.filter).filter(([field]) => {
-      const normalizedField = field.trim()
-      return (
-        filterableFields.has(normalizedField) ||
-        filterableFields.has(toRecordKey(normalizedField)) ||
-        filterableFields.has(toQueryKey(normalizedField))
-      )
-    }),
-  )
-
+  assertAllowedFilters(normalized.filter, filterableFields)
+  const filter = normalized.filter
   let result = applyFilter(records, filter)
   result = applySearch(result, normalized.query, options.searchableFields)
   result = sortRecords(result, normalized.sort)
