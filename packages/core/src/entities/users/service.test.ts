@@ -32,6 +32,26 @@ describe('user service', () => {
     ).resolves.toBeNull()
   })
 
+  it('does not allow generic updates to mutate external auth identity', async () => {
+    const service = createUserService(createInMemoryUserRepository())
+    const created = await service.create(ctx, {
+      email: 'owner@orbit.test',
+      name: 'Orbit Owner',
+      role: 'owner',
+      externalAuthId: 'auth_owner_secret',
+    })
+
+    const updated = await service.update(
+      ctx,
+      created.id,
+      {
+        externalAuthId: 'auth_owner_rotated',
+      } as never,
+    )
+
+    expect(updated.externalAuthId).toBe('auth_owner_secret')
+  })
+
   it('lists and searches users', async () => {
     const service = createUserService(createInMemoryUserRepository())
     await service.create(ctx, {
@@ -59,10 +79,17 @@ describe('user service', () => {
       query: 'auth_agent_secret',
       limit: 10,
     })
+    const hiddenFieldFilter = await service.search(ctx, {
+      filter: {
+        externalAuthId: 'auth_agent_secret',
+      },
+      limit: 10,
+    })
 
     expect(page.data).toHaveLength(1)
     expect(page.hasMore).toBe(true)
     expect(search.data.map((record) => record.email)).toEqual(['agent@orbit.test'])
     expect(hiddenFieldSearch.data).toEqual([])
+    expect(hiddenFieldFilter.data).toHaveLength(2)
   })
 })

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { createCompanyService } from '../companies/service.js'
-import { createInMemoryCompanyRepository } from '../companies/repository.js'
 import { createInMemoryContactRepository } from './repository.js'
 import { createContactService } from './service.js'
+import { createCompanyService } from '../companies/service.js'
+import { createInMemoryCompanyRepository } from '../companies/repository.js'
 
 const ctx = {
   orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
@@ -40,7 +40,9 @@ describe('contact service', () => {
         name: 'Sharon',
         companyId: 'company_01ARYZ6S41YYYYYYYYYYYYYYYY',
       }),
-    ).rejects.toThrow('Company company_01ARYZ6S41YYYYYYYYYYYYYYYY not found for contact')
+    ).rejects.toMatchObject({
+      code: 'RELATION_NOT_FOUND',
+    })
   })
 
   it('lists and searches contacts within the org scope', async () => {

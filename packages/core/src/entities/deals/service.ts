@@ -6,6 +6,7 @@ import type { ContactRepository } from '../contacts/repository.js'
 import type { PipelineRepository } from '../pipelines/repository.js'
 import type { StageRepository } from '../stages/repository.js'
 import type { DealRepository } from './repository.js'
+import { createOrbitError } from '../../types/errors.js'
 import {
   dealCreateInputSchema,
   dealRecordSchema,
@@ -34,6 +35,20 @@ async function resolveDealGraph(
     pipelineId: string | null | undefined
   },
 ): Promise<{ stageId: string | null; pipelineId: string | null }> {
+  function relationNotFound(message: string) {
+    return createOrbitError({
+      code: 'RELATION_NOT_FOUND',
+      message,
+    })
+  }
+
+  function validationFailed(message: string) {
+    return createOrbitError({
+      code: 'VALIDATION_FAILED',
+      message,
+    })
+  }
+
   const pipelineChanged = input.pipelineId !== undefined && input.pipelineId !== current?.pipelineId
   let nextStageId = current?.stageId ?? null
   let nextPipelineId = current?.pipelineId ?? null
@@ -47,21 +62,21 @@ async function resolveDealGraph(
   }
 
   if (input.pipelineId === null && input.stageId === undefined && current?.stageId) {
-    throw new Error('Deal stage must be cleared or replaced when clearing pipeline')
+    throw validationFailed('Deal stage must be cleared or replaced when clearing pipeline')
   }
 
   if (pipelineChanged && input.stageId === undefined && current?.stageId) {
-    throw new Error('Deal stage must be provided when changing pipeline')
+    throw validationFailed('Deal stage must be provided when changing pipeline')
   }
 
   if (nextStageId !== null) {
     const stage = await deps.stages.get(ctx, nextStageId)
     if (!stage) {
-      throw new Error(`Stage ${nextStageId} not found for deal`)
+      throw relationNotFound(`Stage ${nextStageId} not found for deal`)
     }
 
     if (nextPipelineId && stage.pipelineId !== nextPipelineId) {
-      throw new Error(`Stage ${nextStageId} does not belong to pipeline ${nextPipelineId}`)
+      throw validationFailed(`Stage ${nextStageId} does not belong to pipeline ${nextPipelineId}`)
     }
 
     nextPipelineId = stage.pipelineId
@@ -70,21 +85,21 @@ async function resolveDealGraph(
   if (nextPipelineId) {
     const pipeline = await deps.pipelines.get(ctx, nextPipelineId)
     if (!pipeline) {
-      throw new Error(`Pipeline ${nextPipelineId} not found for deal`)
+      throw relationNotFound(`Pipeline ${nextPipelineId} not found for deal`)
     }
   }
 
   if (input.contactId !== undefined && input.contactId !== null) {
     const contact = await deps.contacts.get(ctx, input.contactId)
     if (!contact) {
-      throw new Error(`Contact ${input.contactId} not found for deal`)
+      throw relationNotFound(`Contact ${input.contactId} not found for deal`)
     }
   }
 
   if (input.companyId !== undefined && input.companyId !== null) {
     const company = await deps.companies.get(ctx, input.companyId)
     if (!company) {
-      throw new Error(`Company ${input.companyId} not found for deal`)
+      throw relationNotFound(`Company ${input.companyId} not found for deal`)
     }
   }
 
