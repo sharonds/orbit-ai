@@ -92,6 +92,10 @@ export class SqliteStorageAdapter implements StorageAdapter {
     return this.unsafeRawDatabase.execute(statement)
   }
 
+  async query<T extends Record<string, unknown>>(statement: Parameters<OrbitDatabase['query']>[0]): Promise<T[]> {
+    return this.unsafeRawDatabase.query<T>(statement)
+  }
+
   async withTenantContext<T>(context: OrbitAuthContext, fn: (db: OrbitDatabase) => Promise<T>): Promise<T> {
     assertOrbitId(context.orgId, 'organization')
     return this.transaction(fn)

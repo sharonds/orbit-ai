@@ -130,7 +130,7 @@ export const pipelineUpdateSchema = createUpdateSchema(pipelines, {
   organizationId: orbitId('organization').optional(),
 })
 
-const stageSelectBaseSchema = createSelectSchema(stages, {
+export const stageSelectBaseSchema = createSelectSchema(stages, {
   id: orbitId('stage'),
   organizationId: orbitId('organization'),
   pipelineId: orbitId('pipeline'),
@@ -147,7 +147,7 @@ export const stageSelectSchema = stageSelectBaseSchema.superRefine((value, ctx) 
   }
 })
 
-const stageInsertBaseSchema = createInsertSchema(stages, {
+export const stageInsertBaseSchema = createInsertSchema(stages, {
   organizationId: orbitId('organization'),
   pipelineId: orbitId('pipeline'),
 })
@@ -163,7 +163,7 @@ export const stageInsertSchema = stageInsertBaseSchema.superRefine((value, ctx) 
   }
 })
 
-const stageUpdateBaseSchema = createUpdateSchema(stages, {
+export const stageUpdateBaseSchema = createUpdateSchema(stages, {
   organizationId: orbitId('organization').optional(),
   pipelineId: orbitId('pipeline').optional(),
 })
@@ -179,7 +179,7 @@ export const stageUpdateSchema = stageUpdateBaseSchema.superRefine((value, ctx) 
   }
 })
 
-const dealSelectBaseSchema = createSelectSchema(deals, {
+export const dealSelectBaseSchema = createSelectSchema(deals, {
   id: orbitId('deal'),
   organizationId: orbitId('organization'),
   stageId: orbitId('stage').optional().nullable(),
@@ -201,7 +201,7 @@ export const dealSelectSchema = dealSelectBaseSchema.superRefine((value, ctx) =>
   }
 })
 
-const dealInsertBaseSchema = createInsertSchema(deals, {
+export const dealInsertBaseSchema = createInsertSchema(deals, {
   organizationId: orbitId('organization'),
   stageId: orbitId('stage').optional().nullable(),
   pipelineId: orbitId('pipeline').optional().nullable(),
@@ -222,7 +222,7 @@ export const dealInsertSchema = dealInsertBaseSchema.superRefine((value, ctx) =>
   }
 })
 
-const dealUpdateBaseSchema = createUpdateSchema(deals, {
+export const dealUpdateBaseSchema = createUpdateSchema(deals, {
   organizationId: orbitId('organization').optional(),
   stageId: orbitId('stage').optional().nullable(),
   pipelineId: orbitId('pipeline').optional().nullable(),

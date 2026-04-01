@@ -9,6 +9,7 @@ describe('SqliteStorageAdapter', () => {
     const database = {
       transaction: async (fn: (tx: OrbitDatabase) => Promise<string>) => fn(database),
       execute: async () => undefined,
+      query: async () => [],
     } satisfies OrbitDatabase
 
     const adapter = createSqliteStorageAdapter({ database })
@@ -24,10 +25,12 @@ describe('SqliteStorageAdapter', () => {
     const runtimeDatabase = {
       transaction: async (fn: (tx: OrbitDatabase) => Promise<string>) => fn(runtimeDatabase),
       execute: async () => undefined,
+      query: async () => [],
     } satisfies OrbitDatabase
     const migrationDatabase = asMigrationDatabase({
       transaction: async (fn: (tx: OrbitDatabase) => Promise<string>) => fn(runtimeDatabase),
       execute: async () => undefined,
+      query: async () => [],
     } satisfies OrbitDatabase)
     const adapter = createSqliteStorageAdapter({
       database: runtimeDatabase,
@@ -47,6 +50,7 @@ describe('SqliteStorageAdapter', () => {
     const database = {
       transaction,
       execute: async () => undefined,
+      query: async () => [],
     } as OrbitDatabase
     const adapter = createSqliteStorageAdapter({ database })
 
