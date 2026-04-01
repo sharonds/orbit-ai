@@ -14,7 +14,7 @@ import type { InternalPaginatedResult } from '../../types/pagination.js'
 import { apiKeyRecordSchema, type ApiKeyRecord } from './validators.js'
 
 export interface ApiKeyRepository {
-  create(record: ApiKeyRecord): Promise<ApiKeyRecord>
+  create(ctx: OrbitAuthContext, record: ApiKeyRecord): Promise<ApiKeyRecord>
   get(ctx: OrbitAuthContext, id: string): Promise<ApiKeyRecord | null>
   getAny(id: string): Promise<ApiKeyRecord | null>
   update(ctx: OrbitAuthContext, id: string, patch: Partial<ApiKeyRecord>): Promise<ApiKeyRecord | null>
@@ -37,7 +37,12 @@ export function createInMemoryApiKeyRepository(seed: ApiKeyRecord[] = []): ApiKe
   }
 
   return {
-    async create(record) {
+    async create(ctx, record) {
+      const orgId = assertOrgContext(ctx)
+      if (record.organizationId !== orgId) {
+        throw new Error('API key organization mismatch')
+      }
+
       const parsed = apiKeyRecordSchema.parse(record)
       rows.set(parsed.id, parsed)
       return parsed
