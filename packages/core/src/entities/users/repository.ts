@@ -8,6 +8,7 @@ import {
   toSqliteDate,
   toSqliteJson,
 } from '../../repositories/sqlite/shared.js'
+import { createTenantPostgresRepository, fromPostgresBoolean, fromPostgresDate, fromPostgresJson } from '../../repositories/postgres/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
@@ -132,6 +133,58 @@ export function createSqliteUserRepository(adapter: StorageAdapter): UserReposit
         metadata: fromSqliteJson(row.metadata, {}),
         createdAt: fromSqliteDate(row.created_at),
         updatedAt: fromSqliteDate(row.updated_at),
+      })
+    },
+  })
+}
+
+export function createPostgresUserRepository(adapter: StorageAdapter): UserRepository {
+  return createTenantPostgresRepository<UserRecord>(adapter, {
+    tableName: 'users',
+    columns: [
+      'id',
+      'organization_id',
+      'email',
+      'name',
+      'role',
+      'avatar_url',
+      'external_auth_id',
+      'is_active',
+      'metadata',
+      'created_at',
+      'updated_at',
+    ],
+    searchableFields: ['email', 'name', 'role'],
+    filterableFields: ['id', 'organization_id', 'email', 'name', 'role', 'avatar_url', 'is_active'],
+    defaultSort: [{ field: 'created_at', direction: 'desc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        organization_id: record.organizationId,
+        email: record.email,
+        name: record.name,
+        role: record.role,
+        avatar_url: record.avatarUrl,
+        external_auth_id: record.externalAuthId,
+        is_active: record.isActive,
+        metadata: record.metadata,
+        created_at: record.createdAt,
+        updated_at: record.updatedAt,
+      }
+    },
+    deserialize(row) {
+      return userRecordSchema.parse({
+        id: row.id,
+        organizationId: row.organization_id,
+        email: row.email,
+        name: row.name,
+        role: row.role,
+        avatarUrl: row.avatar_url ?? null,
+        externalAuthId: row.external_auth_id ?? null,
+        isActive: fromPostgresBoolean(row.is_active),
+        metadata: fromPostgresJson(row.metadata, {}),
+        createdAt: fromPostgresDate(row.created_at),
+        updatedAt: fromPostgresDate(row.updated_at),
       })
     },
   })

@@ -1,4 +1,7 @@
 export * from './adapters/interface.js'
+export * from './adapters/postgres/adapter.js'
+export * from './adapters/postgres/database.js'
+export * from './adapters/postgres/schema.js'
 export * from './adapters/sqlite/adapter.js'
 export * from './adapters/sqlite/database.js'
 export * from './adapters/sqlite/schema.js'

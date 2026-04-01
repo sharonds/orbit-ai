@@ -3,6 +3,10 @@ import { sql } from 'drizzle-orm'
 import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
 import { assertOrgContext } from '../../services/service-helpers.js'
 import { fromSqliteDate } from '../../repositories/sqlite/shared.js'
+import {
+  createTenantPostgresRepository,
+  fromPostgresDate,
+} from '../../repositories/postgres/shared.js'
 import { runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
@@ -133,4 +137,49 @@ export function createSqliteOrganizationMembershipRepository(
       })
     },
   }
+}
+
+export function createPostgresOrganizationMembershipRepository(
+  adapter: StorageAdapter,
+): OrganizationMembershipRepository {
+  return createTenantPostgresRepository<OrganizationMembershipRecord>(adapter, {
+    tableName: 'organization_memberships',
+    columns: [
+      'id',
+      'organization_id',
+      'user_id',
+      'role',
+      'invited_by_user_id',
+      'joined_at',
+      'created_at',
+      'updated_at',
+    ],
+    searchableFields: ['role'],
+    filterableFields: ['id', 'organization_id', 'user_id', 'role', 'invited_by_user_id', 'joined_at'],
+    defaultSort: [{ field: 'created_at', direction: 'desc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        organization_id: record.organizationId,
+        user_id: record.userId,
+        role: record.role,
+        invited_by_user_id: record.invitedByUserId ?? null,
+        joined_at: record.joinedAt,
+        created_at: record.createdAt,
+        updated_at: record.updatedAt,
+      }
+    },
+    deserialize(row) {
+      return organizationMembershipRecordSchema.parse({
+        id: row.id,
+        organizationId: row.organization_id,
+        userId: row.user_id,
+        role: row.role,
+        invitedByUserId: row.invited_by_user_id ?? null,
+        joinedAt: fromPostgresDate(row.joined_at),
+        createdAt: fromPostgresDate(row.created_at),
+        updatedAt: fromPostgresDate(row.updated_at),
+      })
+    },
+  })
 }
