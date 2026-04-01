@@ -8,10 +8,26 @@ import type { OrbitAuthContext } from '../adapters/interface.js'
 
 type ComparableValue = string | number | boolean | null
 
+const BLOCKED_FILTER_FIELDS = new Set([
+  'externalAuthId',
+  'external_auth_id',
+  'keyHash',
+  'key_hash',
+  'keyPrefix',
+  'key_prefix',
+])
+
 function toRecordKey(field: string): string {
   return field.includes('_')
     ? field.replace(/_([a-z])/g, (_match, char: string) => char.toUpperCase())
     : field
+}
+
+function toQueryKey(field: string): string {
+  return field
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/-/g, '_')
+    .toLowerCase()
 }
 
 function normalizeComparable(value: unknown): ComparableValue {
@@ -80,6 +96,29 @@ function applyFilter<T extends Record<string, unknown>>(records: T[], filter: Re
   )
 }
 
+function buildFilterableFields<T extends Record<string, unknown>>(
+  records: T[],
+  explicitFilterableFields: string[] | undefined,
+): Set<string> {
+  const sourceFields = explicitFilterableFields ?? Array.from(new Set(records.flatMap((record) => Object.keys(record))))
+  const allowed = new Set<string>()
+
+  for (const field of sourceFields) {
+    const trimmed = field.trim()
+    if (trimmed.length === 0) {
+      continue
+    }
+
+    for (const candidate of [trimmed, toRecordKey(trimmed), toQueryKey(trimmed)]) {
+      if (!BLOCKED_FILTER_FIELDS.has(candidate)) {
+        allowed.add(candidate)
+      }
+    }
+  }
+
+  return allowed
+}
+
 function applySearch<T extends Record<string, unknown>>(records: T[], query: string | undefined, fields: string[]): T[] {
   if (!query) {
     return records
@@ -99,13 +138,26 @@ export function runArrayQuery<T extends { id: string } & Record<string, unknown>
   query: SearchQuery,
   options: {
     searchableFields: string[]
+    filterableFields?: string[]
     defaultSort?: SortSpec[]
   },
 ): InternalPaginatedResult<T> {
   const normalized = normalizeSearchQuery(query, {
     ...(options.defaultSort ? { defaultSort: options.defaultSort } : {}),
   })
-  let result = applyFilter(records, normalized.filter)
+  const filterableFields = buildFilterableFields(records, options.filterableFields)
+  const filter = Object.fromEntries(
+    Object.entries(normalized.filter).filter(([field]) => {
+      const normalizedField = field.trim()
+      return (
+        filterableFields.has(normalizedField) ||
+        filterableFields.has(toRecordKey(normalizedField)) ||
+        filterableFields.has(toQueryKey(normalizedField))
+      )
+    }),
+  )
+
+  let result = applyFilter(records, filter)
   result = applySearch(result, normalized.query, options.searchableFields)
   result = sortRecords(result, normalized.sort)
 
