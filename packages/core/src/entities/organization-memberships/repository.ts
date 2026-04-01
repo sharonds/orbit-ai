@@ -40,6 +40,7 @@ export function createInMemoryOrganizationMembershipRepository(
         query,
         {
           searchableFields: ['role'],
+          filterableFields: ['id', 'organization_id', 'user_id', 'role', 'invited_by_user_id', 'joined_at'],
           defaultSort: [{ field: 'created_at', direction: 'desc' }],
         },
       )
@@ -125,6 +126,7 @@ export function createSqliteOrganizationMembershipRepository(
           query,
           {
             searchableFields: ['role'],
+            filterableFields: ['id', 'organization_id', 'user_id', 'role', 'invited_by_user_id', 'joined_at'],
             defaultSort: [{ field: 'created_at', direction: 'desc' }],
           },
         )
