@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import type { SortSpec } from '../types/api.js'
+import { createOrbitError } from '../types/errors.js'
 
 const cursorPayloadSchema = z.object({
   version: z.literal(1),
@@ -25,7 +26,10 @@ export function decodeCursor(cursor: string): CursorPayload {
     const decoded = Buffer.from(cursor, 'base64url').toString('utf8')
     return cursorPayloadSchema.parse(JSON.parse(decoded))
   } catch {
-    throw new Error('Invalid cursor')
+    throw createOrbitError({
+      code: 'INVALID_CURSOR',
+      message: 'Invalid cursor',
+    })
   }
 }
 

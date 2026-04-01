@@ -35,12 +35,19 @@ export function createContactContextService(deps: {
       if (input.contactId) {
         contact = await deps.contacts.get(ctx, input.contactId)
       } else if (input.email) {
-        const matches = await deps.contacts.search(ctx, {
-          query: input.email,
-          limit: 100,
+        const exactEmail = input.email.trim()
+        if (exactEmail.length === 0) {
+          return null
+        }
+
+        const matches = await deps.contacts.list(ctx, {
+          filter: {
+            email: exactEmail,
+          },
           sort: [{ field: 'updated_at', direction: 'desc' }],
+          limit: 1,
         })
-        contact = matches.data.find((candidate) => candidate.email?.toLowerCase() === input.email?.toLowerCase()) ?? null
+        contact = matches.data[0] ?? null
       }
 
       if (!contact) {
