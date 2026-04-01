@@ -160,6 +160,9 @@ describe('core services registry', () => {
     expect(membershipsPage.data).toHaveLength(1)
     expect(apiKey?.keyPrefix).toBe('orbt_live')
     expect('keyHash' in apiKey!).toBe(false)
+    expect('create' in services.system.apiKeys).toBe(false)
+    expect('update' in services.system.apiKeys).toBe(false)
+    expect('delete' in services.system.apiKeys).toBe(false)
   })
 
   it('builds search and contact context from the Wave 1 entity set', async () => {
