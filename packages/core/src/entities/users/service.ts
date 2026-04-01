@@ -1,6 +1,7 @@
 import { generateId } from '../../ids/generate-id.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { EntityService } from '../../services/entity-service.js'
+import { createOrbitError } from '../../types/errors.js'
 import type { UserRepository } from './repository.js'
 import {
   userCreateInputSchema,
@@ -12,6 +13,13 @@ import {
 } from './validators.js'
 
 export function createUserService(repository: UserRepository): EntityService<UserCreateInput, UserUpdateInput, UserRecord> {
+  function validationFailed(message: string) {
+    return createOrbitError({
+      code: 'VALIDATION_FAILED',
+      message,
+    })
+  }
+
   return {
     async create(ctx, input) {
       const parsed = userCreateInputSchema.parse(input)
@@ -42,7 +50,7 @@ export function createUserService(repository: UserRepository): EntityService<Use
       assertFound(await repository.get(ctx, id), `User ${id} not found`)
 
       if (parsed.email === null) {
-        throw new Error('User email cannot be null')
+        throw validationFailed('User email cannot be null')
       }
 
       const patch: Partial<UserRecord> = {
@@ -53,7 +61,6 @@ export function createUserService(repository: UserRepository): EntityService<Use
       if (parsed.name !== undefined) patch.name = parsed.name
       if (parsed.role !== undefined) patch.role = parsed.role
       if (parsed.avatarUrl !== undefined) patch.avatarUrl = parsed.avatarUrl
-      if (parsed.externalAuthId !== undefined) patch.externalAuthId = parsed.externalAuthId
       if (parsed.isActive !== undefined) patch.isActive = parsed.isActive
       if (parsed.metadata !== undefined) patch.metadata = parsed.metadata
 

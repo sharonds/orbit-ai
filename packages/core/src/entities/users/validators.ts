@@ -16,5 +16,6 @@ export const userUpdateInputSchema = userUpdateSchema.omit({
   organizationId: true,
   createdAt: true,
   updatedAt: true,
+  externalAuthId: true,
 })
 export type UserUpdateInput = typeof userUpdateInputSchema._input

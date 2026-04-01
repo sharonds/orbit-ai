@@ -3,6 +3,7 @@ import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { EntityService } from '../../services/entity-service.js'
 import type { CompanyRepository } from '../companies/repository.js'
 import type { ContactRepository } from './repository.js'
+import { createOrbitError } from '../../types/errors.js'
 import {
   contactCreateInputSchema,
   contactRecordSchema,
@@ -16,6 +17,13 @@ export function createContactService(deps: {
   contacts: ContactRepository
   companies: CompanyRepository
 }): EntityService<ContactCreateInput, ContactUpdateInput, ContactRecord> {
+  function relationNotFound(message: string) {
+    return createOrbitError({
+      code: 'RELATION_NOT_FOUND',
+      message,
+    })
+  }
+
   return {
     async create(ctx, input) {
       const parsed = contactCreateInputSchema.parse(input)
@@ -23,7 +31,7 @@ export function createContactService(deps: {
       if (parsed.companyId) {
         const company = await deps.companies.get(ctx, parsed.companyId)
         if (!company) {
-          throw new Error(`Company ${parsed.companyId} not found for contact`)
+          throw relationNotFound(`Company ${parsed.companyId} not found for contact`)
         }
       }
 
@@ -61,7 +69,7 @@ export function createContactService(deps: {
       if (nextCompanyId) {
         const company = await deps.companies.get(ctx, nextCompanyId)
         if (!company) {
-          throw new Error(`Company ${nextCompanyId} not found for contact`)
+          throw relationNotFound(`Company ${nextCompanyId} not found for contact`)
         }
       }
 
