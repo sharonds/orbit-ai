@@ -8,6 +8,11 @@ import {
   toSqliteDate,
   toSqliteJson,
 } from '../../repositories/sqlite/shared.js'
+import {
+  createTenantPostgresRepository,
+  fromPostgresDate,
+  fromPostgresJson,
+} from '../../repositories/postgres/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
@@ -231,6 +236,131 @@ export function createSqliteApiKeyRepository(adapter: StorageAdapter): ApiKeyRep
             createdByUserId: row.created_by_user_id ?? null,
             createdAt: fromSqliteDate(row.created_at),
             updatedAt: fromSqliteDate(row.updated_at),
+          }),
+        ),
+        query,
+        {
+          searchableFields: ['name', 'key_prefix'],
+          filterableFields: [
+            'id',
+            'organization_id',
+            'name',
+            'scopes',
+            'last_used_at',
+            'expires_at',
+            'revoked_at',
+            'created_by_user_id',
+          ],
+          defaultSort: [{ field: 'created_at', direction: 'desc' }],
+        },
+      )
+    },
+  }
+}
+
+export function createPostgresApiKeyRepository(adapter: StorageAdapter): ApiKeyRepository {
+  const base = createTenantPostgresRepository<ApiKeyRecord>(adapter, {
+    tableName: 'api_keys',
+    columns: [
+      'id',
+      'organization_id',
+      'name',
+      'key_hash',
+      'key_prefix',
+      'scopes',
+      'last_used_at',
+      'expires_at',
+      'revoked_at',
+      'created_by_user_id',
+      'created_at',
+      'updated_at',
+    ],
+    searchableFields: ['name', 'key_prefix'],
+    filterableFields: [
+      'id',
+      'organization_id',
+      'name',
+      'scopes',
+      'last_used_at',
+      'expires_at',
+      'revoked_at',
+      'created_by_user_id',
+    ],
+    defaultSort: [{ field: 'created_at', direction: 'desc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        organization_id: record.organizationId,
+        name: record.name,
+        key_hash: record.keyHash,
+        key_prefix: record.keyPrefix,
+        scopes: JSON.stringify(record.scopes),
+        last_used_at: record.lastUsedAt,
+        expires_at: record.expiresAt,
+        revoked_at: record.revokedAt,
+        created_by_user_id: record.createdByUserId ?? null,
+        created_at: record.createdAt,
+        updated_at: record.updatedAt,
+      }
+    },
+    deserialize(row) {
+      return apiKeyRecordSchema.parse({
+        id: row.id,
+        organizationId: row.organization_id,
+        name: row.name,
+        keyHash: row.key_hash,
+        keyPrefix: row.key_prefix,
+        scopes: fromPostgresJson(row.scopes, []),
+        lastUsedAt: fromPostgresDate(row.last_used_at),
+        expiresAt: fromPostgresDate(row.expires_at),
+        revokedAt: fromPostgresDate(row.revoked_at),
+        createdByUserId: row.created_by_user_id ?? null,
+        createdAt: fromPostgresDate(row.created_at),
+        updatedAt: fromPostgresDate(row.updated_at),
+      })
+    },
+  })
+
+  return {
+    ...base,
+    async getAny(id) {
+      const rows = await adapter.query<Record<string, unknown>>(
+        sql`select * from ${sql.raw('api_keys')} where id = ${id} limit 1`,
+      )
+      return rows[0]
+        ? apiKeyRecordSchema.parse({
+            id: rows[0].id,
+            organizationId: rows[0].organization_id,
+            name: rows[0].name,
+            keyHash: rows[0].key_hash,
+            keyPrefix: rows[0].key_prefix,
+            scopes: fromPostgresJson(rows[0].scopes, []),
+            lastUsedAt: fromPostgresDate(rows[0].last_used_at),
+            expiresAt: fromPostgresDate(rows[0].expires_at),
+            revokedAt: fromPostgresDate(rows[0].revoked_at),
+            createdByUserId: rows[0].created_by_user_id ?? null,
+            createdAt: fromPostgresDate(rows[0].created_at),
+            updatedAt: fromPostgresDate(rows[0].updated_at),
+          })
+        : null
+    },
+    async listAll(query) {
+      const rows = await adapter.query<Record<string, unknown>>(sql`select * from ${sql.raw('api_keys')}`)
+      return runArrayQuery(
+        rows.map((row) =>
+          apiKeyRecordSchema.parse({
+            id: row.id,
+            organizationId: row.organization_id,
+            name: row.name,
+            keyHash: row.key_hash,
+            keyPrefix: row.key_prefix,
+            scopes: fromPostgresJson(row.scopes, []),
+            lastUsedAt: fromPostgresDate(row.last_used_at),
+            expiresAt: fromPostgresDate(row.expires_at),
+            revokedAt: fromPostgresDate(row.revoked_at),
+            createdByUserId: row.created_by_user_id ?? null,
+            createdAt: fromPostgresDate(row.created_at),
+            updatedAt: fromPostgresDate(row.updated_at),
           }),
         ),
         query,

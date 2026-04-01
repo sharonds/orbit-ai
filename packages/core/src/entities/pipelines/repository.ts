@@ -6,6 +6,11 @@ import {
   toSqliteBoolean,
   toSqliteDate,
 } from '../../repositories/sqlite/shared.js'
+import {
+  createTenantPostgresRepository,
+  fromPostgresBoolean,
+  fromPostgresDate,
+} from '../../repositories/postgres/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
@@ -110,6 +115,38 @@ export function createSqlitePipelineRepository(adapter: StorageAdapter): Pipelin
         description: row.description ?? null,
         createdAt: fromSqliteDate(row.created_at),
         updatedAt: fromSqliteDate(row.updated_at),
+      })
+    },
+  })
+}
+
+export function createPostgresPipelineRepository(adapter: StorageAdapter): PipelineRepository {
+  return createTenantPostgresRepository<PipelineRecord>(adapter, {
+    tableName: 'pipelines',
+    columns: ['id', 'organization_id', 'name', 'is_default', 'description', 'created_at', 'updated_at'],
+    searchableFields: ['name', 'description'],
+    filterableFields: ['id', 'organization_id', 'name', 'description', 'is_default'],
+    defaultSort: [{ field: 'created_at', direction: 'desc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        organization_id: record.organizationId,
+        name: record.name,
+        is_default: record.isDefault,
+        description: record.description ?? null,
+        created_at: record.createdAt,
+        updated_at: record.updatedAt,
+      }
+    },
+    deserialize(row) {
+      return pipelineRecordSchema.parse({
+        id: row.id,
+        organizationId: row.organization_id,
+        name: row.name,
+        isDefault: fromPostgresBoolean(row.is_default),
+        description: row.description ?? null,
+        createdAt: fromPostgresDate(row.created_at),
+        updatedAt: fromPostgresDate(row.updated_at),
       })
     },
   })
