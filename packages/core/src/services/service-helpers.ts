@@ -1,6 +1,7 @@
 import { createCursorPayload, decodeCursor, encodeCursor } from '../query/cursor.js'
 import { assertOrbitId } from '../ids/parse-id.js'
 import { normalizeSearchQuery } from '../query/list-query.js'
+import { createOrbitError } from '../types/errors.js'
 import type { SearchQuery, SortSpec } from '../types/api.js'
 import type { InternalPaginatedResult } from '../types/pagination.js'
 import type { OrbitAuthContext } from '../adapters/interface.js'
@@ -114,7 +115,10 @@ export function runArrayQuery<T extends { id: string } & Record<string, unknown>
     const cursorIndex = result.findIndex((record) => record.id === cursor.id)
 
     if (cursorIndex < 0) {
-      throw new Error('Invalid cursor')
+      throw createOrbitError({
+        code: 'INVALID_CURSOR',
+        message: 'Invalid cursor',
+      })
     }
 
     startIndex = cursorIndex + 1
