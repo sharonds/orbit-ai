@@ -149,10 +149,22 @@ export function runArrayQuery<T extends { id: string } & Record<string, unknown>
 
 export function assertFound<T>(value: T | null, message: string): T {
   if (value === null) {
-    throw new Error(message)
+    throw createOrbitError({
+      code: 'RESOURCE_NOT_FOUND',
+      message,
+    })
   }
 
   return value
+}
+
+export function assertDeleted(value: boolean, message: string): void {
+  if (!value) {
+    throw createOrbitError({
+      code: 'RESOURCE_NOT_FOUND',
+      message,
+    })
+  }
 }
 
 export function assertOrgContext(ctx: Pick<OrbitAuthContext, 'orgId'>): string {

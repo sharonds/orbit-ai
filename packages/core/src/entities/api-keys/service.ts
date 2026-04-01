@@ -1,5 +1,5 @@
 import { generateId } from '../../ids/generate-id.js'
-import { assertFound } from '../../services/service-helpers.js'
+import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { AdminEntityService, EntityService } from '../../services/entity-service.js'
 import type { ApiKeyRepository } from './repository.js'
 import {
@@ -47,7 +47,6 @@ export function createApiKeyService(
     },
     async update(ctx, id, input) {
       const parsed = apiKeyUpdateInputSchema.parse(input)
-      assertFound(await repository.get(ctx, id), `API key ${id} not found`)
 
       const patch: Partial<ApiKeyRecord> = {
         updatedAt: new Date(),
@@ -63,10 +62,7 @@ export function createApiKeyService(
       return sanitizeApiKeyRecord(assertFound(await repository.update(ctx, id, patch), `API key ${id} not found`))
     },
     async delete(ctx, id) {
-      const deleted = await repository.delete(ctx, id)
-      if (!deleted) {
-        throw new Error(`API key ${id} not found`)
-      }
+      assertDeleted(await repository.delete(ctx, id), `API key ${id} not found`)
     },
     async list(ctx, query) {
       const result = await repository.list(ctx, query)

@@ -62,6 +62,47 @@ describe('deal service', () => {
     )
   })
 
+  it('rejects clearing pipeline while keeping an existing stage', async () => {
+    const pipelines = createInMemoryPipelineRepository()
+    const stages = createInMemoryStageRepository()
+    const contacts = createInMemoryContactRepository()
+    const companies = createInMemoryCompanyRepository()
+    const deals = createInMemoryDealRepository()
+
+    const pipeline = await pipelines.create(ctx, {
+      id: 'pipeline_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      organizationId: ctx.orgId,
+      name: 'Sales',
+      isDefault: true,
+      description: null,
+      createdAt: new Date('2026-03-31T12:30:00.000Z'),
+      updatedAt: new Date('2026-03-31T12:30:00.000Z'),
+    })
+    const stage = await stages.create(ctx, {
+      id: 'stage_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      organizationId: ctx.orgId,
+      pipelineId: pipeline.id,
+      name: 'Qualified',
+      stageOrder: 1,
+      probability: 30,
+      color: null,
+      isWon: false,
+      isLost: false,
+      createdAt: new Date('2026-03-31T12:32:00.000Z'),
+      updatedAt: new Date('2026-03-31T12:32:00.000Z'),
+    })
+    const dealService = createDealService({ deals, pipelines, stages, contacts, companies })
+    const created = await dealService.create(ctx, {
+      title: 'Expansion',
+      pipelineId: pipeline.id,
+      stageId: stage.id,
+    })
+
+    await expect(dealService.update(ctx, created.id, { pipelineId: null })).rejects.toThrow(
+      'Deal stage must be cleared or replaced when clearing pipeline',
+    )
+  })
+
   it('does not revalidate unchanged foreign keys on unrelated updates', async () => {
     const pipelines = createInMemoryPipelineRepository()
     const stages = createInMemoryStageRepository()

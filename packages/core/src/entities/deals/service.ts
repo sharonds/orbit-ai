@@ -1,5 +1,5 @@
 import { generateId } from '../../ids/generate-id.js'
-import { assertFound } from '../../services/service-helpers.js'
+import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { EntityService } from '../../services/entity-service.js'
 import type { CompanyRepository } from '../companies/repository.js'
 import type { ContactRepository } from '../contacts/repository.js'
@@ -44,6 +44,10 @@ async function resolveDealGraph(
 
   if (input.pipelineId !== undefined) {
     nextPipelineId = input.pipelineId
+  }
+
+  if (input.pipelineId === null && input.stageId === undefined && current?.stageId) {
+    throw new Error('Deal stage must be cleared or replaced when clearing pipeline')
   }
 
   if (pipelineChanged && input.stageId === undefined && current?.stageId) {
@@ -192,10 +196,7 @@ export function createDealService(deps: {
       return assertFound(await deps.deals.update(ctx, id, patch), `Deal ${id} not found`)
     },
     async delete(ctx, id) {
-      const deleted = await deps.deals.delete(ctx, id)
-      if (!deleted) {
-        throw new Error(`Deal ${id} not found`)
-      }
+      assertDeleted(await deps.deals.delete(ctx, id), `Deal ${id} not found`)
     },
     async list(ctx, query) {
       return deps.deals.list(ctx, query)

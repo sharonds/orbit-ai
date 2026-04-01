@@ -1,5 +1,5 @@
 import { generateId } from '../../ids/generate-id.js'
-import { assertFound } from '../../services/service-helpers.js'
+import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { EntityService } from '../../services/entity-service.js'
 import type { PipelineRepository } from '../pipelines/repository.js'
 import type { StageRepository } from './repository.js'
@@ -70,10 +70,7 @@ export function createStageService(deps: {
       return assertFound(await deps.stages.update(ctx, id, patch), `Stage ${id} not found`)
     },
     async delete(ctx, id) {
-      const deleted = await deps.stages.delete(ctx, id)
-      if (!deleted) {
-        throw new Error(`Stage ${id} not found`)
-      }
+      assertDeleted(await deps.stages.delete(ctx, id), `Stage ${id} not found`)
     },
     async list(ctx, query) {
       return deps.stages.list(ctx, query)
