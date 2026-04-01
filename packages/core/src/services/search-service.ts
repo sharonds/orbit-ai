@@ -6,15 +6,18 @@ import type { PipelineRepository } from '../entities/pipelines/repository.js'
 import type { StageRepository } from '../entities/stages/repository.js'
 import type { UserRepository } from '../entities/users/repository.js'
 import { runArrayQuery } from './service-helpers.js'
+import { MAX_LIST_LIMIT } from '../query/list-query.js'
 import type { SearchQuery } from '../types/api.js'
 import type { InternalPaginatedResult } from '../types/pagination.js'
+
+type SearchRecordSummary = Record<string, string | number | boolean | null>
 
 export interface SearchResultRecord extends Record<string, unknown> {
   objectType: 'company' | 'contact' | 'deal' | 'pipeline' | 'stage' | 'user'
   id: string
   title: string
   subtitle: string | null
-  record: Record<string, unknown>
+  record: SearchRecordSummary
   updatedAt: string
 }
 
@@ -30,76 +33,160 @@ export function createSearchService(deps: {
   stages: StageRepository
   users: UserRepository
 }): SearchService {
+  async function fetchAllPages<TRecord>(
+    search: (query: SearchQuery) => Promise<InternalPaginatedResult<TRecord>>,
+    query: SearchQuery,
+  ): Promise<TRecord[]> {
+    const rows: TRecord[] = []
+    let cursor: string | null = null
+
+      do {
+      const page = await search({
+        ...query,
+        ...(cursor !== null ? { cursor } : {}),
+        limit: MAX_LIST_LIMIT,
+      })
+
+      rows.push(...page.data)
+      cursor = page.hasMore ? page.nextCursor : null
+    } while (cursor)
+
+    return rows
+  }
+
+  function summarizeCompany(record: Awaited<ReturnType<CompanyRepository['search']>>['data'][number]): SearchRecordSummary {
+    return {
+      id: record.id,
+      name: record.name,
+      domain: record.domain ?? null,
+      industry: record.industry ?? null,
+      website: record.website ?? null,
+    }
+  }
+
+  function summarizeContact(record: Awaited<ReturnType<ContactRepository['search']>>['data'][number]): SearchRecordSummary {
+    return {
+      id: record.id,
+      name: record.name,
+      email: record.email ?? null,
+      title: record.title ?? null,
+      status: record.status,
+      companyId: record.companyId ?? null,
+    }
+  }
+
+  function summarizeDeal(record: Awaited<ReturnType<DealRepository['search']>>['data'][number]): SearchRecordSummary {
+    return {
+      id: record.id,
+      title: record.title,
+      status: record.status,
+      currency: record.currency,
+      value: record.value ?? null,
+      stageId: record.stageId ?? null,
+      pipelineId: record.pipelineId ?? null,
+      contactId: record.contactId ?? null,
+      companyId: record.companyId ?? null,
+    }
+  }
+
+  function summarizePipeline(record: Awaited<ReturnType<PipelineRepository['search']>>['data'][number]): SearchRecordSummary {
+    return {
+      id: record.id,
+      name: record.name,
+      description: record.description ?? null,
+      isDefault: record.isDefault,
+    }
+  }
+
+  function summarizeStage(record: Awaited<ReturnType<StageRepository['search']>>['data'][number]): SearchRecordSummary {
+    return {
+      id: record.id,
+      name: record.name,
+      pipelineId: record.pipelineId,
+      stageOrder: record.stageOrder,
+      probability: record.probability,
+      color: record.color ?? null,
+      isWon: record.isWon,
+      isLost: record.isLost,
+    }
+  }
+
+  function summarizeUser(record: Awaited<ReturnType<UserRepository['search']>>['data'][number]): SearchRecordSummary {
+    return {
+      id: record.id,
+      name: record.name,
+      email: record.email ?? null,
+      role: record.role,
+      isActive: record.isActive,
+    }
+  }
+
   return {
     async search(ctx, query) {
       const { cursor: _cursor, ...queryWithoutCursor } = query
-      const expandedQuery: SearchQuery = {
-        ...queryWithoutCursor,
-        limit: 100,
-      }
 
       const [companies, contacts, deals, pipelines, stages, users] = await Promise.all([
-        deps.companies.search(ctx, expandedQuery),
-        deps.contacts.search(ctx, expandedQuery),
-        deps.deals.search(ctx, expandedQuery),
-        deps.pipelines.search(ctx, expandedQuery),
-        deps.stages.search(ctx, expandedQuery),
-        deps.users.search(ctx, expandedQuery),
+        fetchAllPages((page) => deps.companies.search(ctx, page), queryWithoutCursor),
+        fetchAllPages((page) => deps.contacts.search(ctx, page), queryWithoutCursor),
+        fetchAllPages((page) => deps.deals.search(ctx, page), queryWithoutCursor),
+        fetchAllPages((page) => deps.pipelines.search(ctx, page), queryWithoutCursor),
+        fetchAllPages((page) => deps.stages.search(ctx, page), queryWithoutCursor),
+        fetchAllPages((page) => deps.users.search(ctx, page), queryWithoutCursor),
       ])
 
       const rows: SearchResultRecord[] = [
-        ...companies.data.map((record) => ({
+        ...companies.map((record) => ({
           objectType: 'company' as const,
           id: record.id,
           title: record.name,
           subtitle: record.domain ?? record.industry ?? null,
-          record,
+          record: summarizeCompany(record),
           updatedAt: record.updatedAt.toISOString(),
         })),
-        ...contacts.data.map((record) => ({
+        ...contacts.map((record) => ({
           objectType: 'contact' as const,
           id: record.id,
           title: record.name,
           subtitle: record.email ?? record.title ?? null,
-          record,
+          record: summarizeContact(record),
           updatedAt: record.updatedAt.toISOString(),
         })),
-        ...deals.data.map((record) => ({
+        ...deals.map((record) => ({
           objectType: 'deal' as const,
           id: record.id,
           title: record.title,
-          subtitle: record.status,
-          record,
+          subtitle: record.status ?? null,
+          record: summarizeDeal(record),
           updatedAt: record.updatedAt.toISOString(),
         })),
-        ...pipelines.data.map((record) => ({
+        ...pipelines.map((record) => ({
           objectType: 'pipeline' as const,
           id: record.id,
           title: record.name,
           subtitle: record.description ?? null,
-          record,
+          record: summarizePipeline(record),
           updatedAt: record.updatedAt.toISOString(),
         })),
-        ...stages.data.map((record) => ({
+        ...stages.map((record) => ({
           objectType: 'stage' as const,
           id: record.id,
           title: record.name,
           subtitle: record.color ?? null,
-          record,
+          record: summarizeStage(record),
           updatedAt: record.updatedAt.toISOString(),
         })),
-        ...users.data.map((record) => ({
+        ...users.map((record) => ({
           objectType: 'user' as const,
           id: record.id,
           title: record.name,
-          subtitle: record.email,
-          record,
+          subtitle: record.email ?? null,
+          record: summarizeUser(record),
           updatedAt: record.updatedAt.toISOString(),
         })),
       ]
 
       return runArrayQuery(rows, query, {
-        searchableFields: ['object_type', 'title', 'subtitle'],
+        searchableFields: ['title', 'subtitle'],
         defaultSort: [{ field: 'updated_at', direction: 'desc' }],
       })
     },

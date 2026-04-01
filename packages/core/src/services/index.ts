@@ -1,28 +1,28 @@
 import type { StorageAdapter } from '../adapters/interface.js'
-import { createApiKeyAdminService, createApiKeyService } from '../entities/api-keys/service.js'
+import { createApiKeyAdminService } from '../entities/api-keys/service.js'
 import { SqliteStorageAdapter } from '../adapters/sqlite/adapter.js'
-import { createInMemoryApiKeyRepository, createSqliteApiKeyRepository, type ApiKeyRepository } from '../entities/api-keys/repository.js'
-import { createInMemoryCompanyRepository, createSqliteCompanyRepository, type CompanyRepository } from '../entities/companies/repository.js'
+import { createSqliteApiKeyRepository, type ApiKeyRepository } from '../entities/api-keys/repository.js'
+import { createSqliteCompanyRepository, type CompanyRepository } from '../entities/companies/repository.js'
 import { createCompanyService } from '../entities/companies/service.js'
-import { createInMemoryContactRepository, createSqliteContactRepository, type ContactRepository } from '../entities/contacts/repository.js'
+import { createSqliteContactRepository, type ContactRepository } from '../entities/contacts/repository.js'
 import { createContactService } from '../entities/contacts/service.js'
-import { createInMemoryDealRepository, createSqliteDealRepository, type DealRepository } from '../entities/deals/repository.js'
+import { createSqliteDealRepository, type DealRepository } from '../entities/deals/repository.js'
 import { createDealService } from '../entities/deals/service.js'
 import {
-  createInMemoryOrganizationMembershipRepository,
   createSqliteOrganizationMembershipRepository,
   type OrganizationMembershipRepository,
 } from '../entities/organization-memberships/repository.js'
 import { createOrganizationMembershipAdminService } from '../entities/organization-memberships/service.js'
-import { createInMemoryOrganizationRepository, createSqliteOrganizationRepository, type OrganizationRepository } from '../entities/organizations/repository.js'
+import { createSqliteOrganizationRepository, type OrganizationRepository } from '../entities/organizations/repository.js'
 import { createOrganizationAdminService } from '../entities/organizations/service.js'
-import { createInMemoryPipelineRepository, createSqlitePipelineRepository, type PipelineRepository } from '../entities/pipelines/repository.js'
+import { createSqlitePipelineRepository, type PipelineRepository } from '../entities/pipelines/repository.js'
 import { createPipelineService } from '../entities/pipelines/service.js'
-import { createInMemoryStageRepository, createSqliteStageRepository, type StageRepository } from '../entities/stages/repository.js'
+import { createSqliteStageRepository, type StageRepository } from '../entities/stages/repository.js'
 import { createStageService } from '../entities/stages/service.js'
-import { createInMemoryUserRepository, createSqliteUserRepository, type UserRepository } from '../entities/users/repository.js'
+import { createSqliteUserRepository, type UserRepository } from '../entities/users/repository.js'
 import { createUserService } from '../entities/users/service.js'
 import { OrbitSchemaEngine } from '../schema-engine/engine.js'
+import { createOrbitError } from '../types/errors.js'
 import { createContactContextService } from './contact-context.js'
 import { createSearchService } from './search-service.js'
 
@@ -38,26 +38,90 @@ export interface CoreRepositoryOverrides {
   organizationMemberships?: OrganizationMembershipRepository
 }
 
+function resolveCoreRepository<T>({
+  adapter,
+  sqliteFactory,
+  override,
+  name,
+}: {
+  adapter: StorageAdapter
+  sqliteFactory: () => T
+  override: T | undefined
+  name: string
+}): T {
+  if (override) {
+    return override
+  }
+
+  if (adapter instanceof SqliteStorageAdapter) {
+    return sqliteFactory()
+  }
+
+  throw createOrbitError({
+    code: 'ADAPTER_UNAVAILABLE',
+    message: `Adapter ${adapter.name} is not implemented for ${name} without explicit repository overrides`,
+    hint: 'Use a real SqliteStorageAdapter for local execution or provide explicit repository overrides in tests.',
+  })
+}
+
 export function createCoreServices(
   adapter: StorageAdapter,
   overrides: CoreRepositoryOverrides = {},
 ) {
-  const sqliteMode = adapter instanceof SqliteStorageAdapter
-
-  const organizations =
-    overrides.organizations ?? (sqliteMode ? createSqliteOrganizationRepository(adapter) : createInMemoryOrganizationRepository())
-  const organizationMemberships =
-    overrides.organizationMemberships ??
-    (sqliteMode
-      ? createSqliteOrganizationMembershipRepository(adapter)
-      : createInMemoryOrganizationMembershipRepository())
-  const apiKeys = overrides.apiKeys ?? (sqliteMode ? createSqliteApiKeyRepository(adapter) : createInMemoryApiKeyRepository())
-  const users = overrides.users ?? (sqliteMode ? createSqliteUserRepository(adapter) : createInMemoryUserRepository())
-  const companies = overrides.companies ?? (sqliteMode ? createSqliteCompanyRepository(adapter) : createInMemoryCompanyRepository())
-  const contacts = overrides.contacts ?? (sqliteMode ? createSqliteContactRepository(adapter) : createInMemoryContactRepository())
-  const pipelines = overrides.pipelines ?? (sqliteMode ? createSqlitePipelineRepository(adapter) : createInMemoryPipelineRepository())
-  const stages = overrides.stages ?? (sqliteMode ? createSqliteStageRepository(adapter) : createInMemoryStageRepository())
-  const deals = overrides.deals ?? (sqliteMode ? createSqliteDealRepository(adapter) : createInMemoryDealRepository())
+  const organizations = resolveCoreRepository({
+    adapter,
+    override: overrides.organizations,
+    sqliteFactory: () => createSqliteOrganizationRepository(adapter),
+    name: 'organizations repository',
+  })
+  const organizationMemberships = resolveCoreRepository({
+    adapter,
+    override: overrides.organizationMemberships,
+    sqliteFactory: () => createSqliteOrganizationMembershipRepository(adapter),
+    name: 'organization memberships repository',
+  })
+  const apiKeys = resolveCoreRepository({
+    adapter,
+    override: overrides.apiKeys,
+    sqliteFactory: () => createSqliteApiKeyRepository(adapter),
+    name: 'api keys repository',
+  })
+  const users = resolveCoreRepository({
+    adapter,
+    override: overrides.users,
+    sqliteFactory: () => createSqliteUserRepository(adapter),
+    name: 'users repository',
+  })
+  const companies = resolveCoreRepository({
+    adapter,
+    override: overrides.companies,
+    sqliteFactory: () => createSqliteCompanyRepository(adapter),
+    name: 'companies repository',
+  })
+  const contacts = resolveCoreRepository({
+    adapter,
+    override: overrides.contacts,
+    sqliteFactory: () => createSqliteContactRepository(adapter),
+    name: 'contacts repository',
+  })
+  const pipelines = resolveCoreRepository({
+    adapter,
+    override: overrides.pipelines,
+    sqliteFactory: () => createSqlitePipelineRepository(adapter),
+    name: 'pipelines repository',
+  })
+  const stages = resolveCoreRepository({
+    adapter,
+    override: overrides.stages,
+    sqliteFactory: () => createSqliteStageRepository(adapter),
+    name: 'stages repository',
+  })
+  const deals = resolveCoreRepository({
+    adapter,
+    override: overrides.deals,
+    sqliteFactory: () => createSqliteDealRepository(adapter),
+    name: 'deals repository',
+  })
 
   return {
     companies: createCompanyService(companies),
@@ -66,7 +130,6 @@ export function createCoreServices(
     stages: createStageService({ stages, pipelines }),
     deals: createDealService({ deals, pipelines, stages, contacts, companies }),
     users: createUserService(users),
-    apiKeys: createApiKeyService(apiKeys),
     search: createSearchService({ companies, contacts, deals, pipelines, stages, users }),
     schema: new OrbitSchemaEngine(),
     contactContext: createContactContextService({ contacts, companies, deals }),

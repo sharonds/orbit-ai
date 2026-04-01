@@ -1,5 +1,5 @@
 import { generateId } from '../../ids/generate-id.js'
-import { assertFound } from '../../services/service-helpers.js'
+import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { EntityService } from '../../services/entity-service.js'
 import type { CompanyRepository } from '../companies/repository.js'
 import type { ContactRepository } from './repository.js'
@@ -29,6 +29,7 @@ export function createContactService(deps: {
 
       const now = new Date()
       return deps.contacts.create(
+        ctx,
         contactRecordSchema.parse({
           id: generateId('contact'),
           organizationId: ctx.orgId,
@@ -87,10 +88,7 @@ export function createContactService(deps: {
       )
     },
     async delete(ctx, id) {
-      const deleted = await deps.contacts.delete(ctx, id)
-      if (!deleted) {
-        throw new Error(`Contact ${id} not found`)
-      }
+      assertDeleted(await deps.contacts.delete(ctx, id), `Contact ${id} not found`)
     },
     async list(ctx, query) {
       return deps.contacts.list(ctx, query)

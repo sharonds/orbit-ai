@@ -1,6 +1,7 @@
 import { createCursorPayload, decodeCursor, encodeCursor } from '../query/cursor.js'
 import { assertOrbitId } from '../ids/parse-id.js'
 import { normalizeSearchQuery } from '../query/list-query.js'
+import { createOrbitError } from '../types/errors.js'
 import type { SearchQuery, SortSpec } from '../types/api.js'
 import type { InternalPaginatedResult } from '../types/pagination.js'
 import type { OrbitAuthContext } from '../adapters/interface.js'
@@ -114,7 +115,10 @@ export function runArrayQuery<T extends { id: string } & Record<string, unknown>
     const cursorIndex = result.findIndex((record) => record.id === cursor.id)
 
     if (cursorIndex < 0) {
-      throw new Error('Invalid cursor')
+      throw createOrbitError({
+        code: 'INVALID_CURSOR',
+        message: 'Invalid cursor',
+      })
     }
 
     startIndex = cursorIndex + 1
@@ -145,10 +149,22 @@ export function runArrayQuery<T extends { id: string } & Record<string, unknown>
 
 export function assertFound<T>(value: T | null, message: string): T {
   if (value === null) {
-    throw new Error(message)
+    throw createOrbitError({
+      code: 'RESOURCE_NOT_FOUND',
+      message,
+    })
   }
 
   return value
+}
+
+export function assertDeleted(value: boolean, message: string): void {
+  if (!value) {
+    throw createOrbitError({
+      code: 'RESOURCE_NOT_FOUND',
+      message,
+    })
+  }
 }
 
 export function assertOrgContext(ctx: Pick<OrbitAuthContext, 'orgId'>): string {

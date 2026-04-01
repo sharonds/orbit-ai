@@ -26,11 +26,53 @@ export type OrbitErrorCode = (typeof ORBIT_ERROR_CODES)[number]
 export interface OrbitErrorShape {
   code: OrbitErrorCode
   message: string
-  field?: string
-  request_id?: string
-  doc_url?: string
-  hint?: string
-  recovery?: string
-  retryable?: boolean
-  details?: Record<string, unknown>
+  field?: string | undefined
+  request_id?: string | undefined
+  doc_url?: string | undefined
+  hint?: string | undefined
+  recovery?: string | undefined
+  retryable?: boolean | undefined
+  details?: Record<string, unknown> | undefined
+}
+
+export class OrbitError extends Error implements OrbitErrorShape {
+  code: OrbitErrorCode
+  field: string | undefined
+  request_id: string | undefined
+  doc_url: string | undefined
+  hint: string | undefined
+  recovery: string | undefined
+  retryable: boolean | undefined
+  details: Record<string, unknown> | undefined
+
+  constructor(shape: OrbitErrorShape) {
+    super(shape.message)
+    this.name = 'OrbitError'
+    this.code = shape.code
+    if (shape.field !== undefined) {
+      this.field = shape.field
+    }
+    if (shape.request_id !== undefined) {
+      this.request_id = shape.request_id
+    }
+    if (shape.doc_url !== undefined) {
+      this.doc_url = shape.doc_url
+    }
+    if (shape.hint !== undefined) {
+      this.hint = shape.hint
+    }
+    if (shape.recovery !== undefined) {
+      this.recovery = shape.recovery
+    }
+    if (shape.retryable !== undefined) {
+      this.retryable = shape.retryable
+    }
+    if (shape.details !== undefined) {
+      this.details = shape.details
+    }
+  }
+}
+
+export function createOrbitError(shape: OrbitErrorShape): OrbitError {
+  return new OrbitError(shape)
 }
