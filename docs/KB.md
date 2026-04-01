@@ -2,7 +2,7 @@
 
 Date: 2026-04-01
 Status: Active working hub
-Current baseline commit: `ba3dfb1`
+Current baseline commit: `5572e15`
 
 ## What Orbit Is
 
@@ -163,6 +163,7 @@ These are still open, but they do not block the KB:
 - 2026-04-01: Completed the pre-API hardening follow-up on branch `core-pre-api-hardening` in `50c109c` and `8da507c`, adding fail-closed filter handling, explicit repository allowlists, sanitized user service reads, typed relation errors, and bootstrap/admin filter stabilization.
 - 2026-04-01: Recorded the final review outcome in [core-pre-api-hardening-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-pre-api-hardening-review.md); the next core gate is the Postgres-family persistence bridge.
 - 2026-04-01: Executed the Postgres persistence bridge on branch `core-postgres-persistence-bridge` in `ba3dfb1`, adding the generic Postgres runtime adapter, Postgres-backed Wave 1 repositories, and the integrated persistence proof harness.
+- 2026-04-01: Refined the Postgres bridge proof harness in `5572e15`, tightening the adapter and registry tests that validate tenant reuse, auth lookup, and persistence reuse.
 - 2026-04-01: Recorded the bridge review outcome in [core-postgres-persistence-bridge-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-postgres-persistence-bridge-review.md); the next core step is the next package-level implementation slice, pending instruction.
 
 ## Working Rule

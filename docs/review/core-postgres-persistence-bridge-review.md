@@ -2,7 +2,7 @@
 
 Date: 2026-04-01
 Branch: `core-postgres-persistence-bridge`
-Commit: `ba3dfb1` `feat(core): add postgres persistence bridge`
+Commit: `5572e15` `test(core): refine postgres bridge proofs`
 
 ## Scope
 
