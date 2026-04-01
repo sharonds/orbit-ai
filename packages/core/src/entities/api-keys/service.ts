@@ -6,18 +6,23 @@ import {
   apiKeyCreateInputSchema,
   apiKeyRecordSchema,
   apiKeyUpdateInputSchema,
+  sanitizeApiKeyRecord,
   type ApiKeyCreateInput,
   type ApiKeyRecord,
   type ApiKeyUpdateInput,
+  type SanitizedApiKeyRecord,
 } from './validators.js'
 
-export function createApiKeyService(repository: ApiKeyRepository): EntityService<ApiKeyCreateInput, ApiKeyUpdateInput, ApiKeyRecord> {
+export function createApiKeyService(
+  repository: ApiKeyRepository,
+): EntityService<ApiKeyCreateInput, ApiKeyUpdateInput, SanitizedApiKeyRecord> {
   return {
     async create(ctx, input) {
       const parsed = apiKeyCreateInputSchema.parse(input)
       const now = new Date()
 
-      return repository.create(
+      const created = await repository.create(
+        ctx,
         apiKeyRecordSchema.parse({
           id: generateId('apiKey'),
           organizationId: ctx.orgId,
@@ -33,9 +38,12 @@ export function createApiKeyService(repository: ApiKeyRepository): EntityService
           updatedAt: now,
         }),
       )
+
+      return sanitizeApiKeyRecord(created)
     },
     async get(ctx, id) {
-      return repository.get(ctx, id)
+      const record = await repository.get(ctx, id)
+      return record ? sanitizeApiKeyRecord(record) : null
     },
     async update(ctx, id, input) {
       const parsed = apiKeyUpdateInputSchema.parse(input)
@@ -46,15 +54,13 @@ export function createApiKeyService(repository: ApiKeyRepository): EntityService
       }
 
       if (parsed.name !== undefined) patch.name = parsed.name
-      if (parsed.keyHash !== undefined) patch.keyHash = parsed.keyHash
-      if (parsed.keyPrefix !== undefined) patch.keyPrefix = parsed.keyPrefix
       if (parsed.scopes !== undefined) patch.scopes = parsed.scopes
       if (parsed.lastUsedAt !== undefined) patch.lastUsedAt = parsed.lastUsedAt
       if (parsed.expiresAt !== undefined) patch.expiresAt = parsed.expiresAt
       if (parsed.revokedAt !== undefined) patch.revokedAt = parsed.revokedAt
       if (parsed.createdByUserId !== undefined) patch.createdByUserId = parsed.createdByUserId
 
-      return assertFound(await repository.update(ctx, id, patch), `API key ${id} not found`)
+      return sanitizeApiKeyRecord(assertFound(await repository.update(ctx, id, patch), `API key ${id} not found`))
     },
     async delete(ctx, id) {
       const deleted = await repository.delete(ctx, id)
@@ -63,21 +69,34 @@ export function createApiKeyService(repository: ApiKeyRepository): EntityService
       }
     },
     async list(ctx, query) {
-      return repository.list(ctx, query)
+      const result = await repository.list(ctx, query)
+      return {
+        ...result,
+        data: result.data.map(sanitizeApiKeyRecord),
+      }
     },
     async search(ctx, query) {
-      return repository.search(ctx, query)
+      const result = await repository.search(ctx, query)
+      return {
+        ...result,
+        data: result.data.map(sanitizeApiKeyRecord),
+      }
     },
   }
 }
 
-export function createApiKeyAdminService(repository: ApiKeyRepository): AdminEntityService<ApiKeyRecord> {
+export function createApiKeyAdminService(repository: ApiKeyRepository): AdminEntityService<SanitizedApiKeyRecord> {
   return {
     async list(_ctx, query) {
-      return repository.listAll(query)
+      const result = await repository.listAll(query)
+      return {
+        ...result,
+        data: result.data.map(sanitizeApiKeyRecord),
+      }
     },
     async get(_ctx, id) {
-      return repository.getAny(id)
+      const record = await repository.getAny(id)
+      return record ? sanitizeApiKeyRecord(record) : null
     },
   }
 }
