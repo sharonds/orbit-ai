@@ -10,6 +10,12 @@ import {
   toSqliteDate,
   toSqliteJson,
 } from '../../repositories/sqlite/shared.js'
+import {
+  createTenantPostgresRepository,
+  fromPostgresBoolean,
+  fromPostgresDate,
+  fromPostgresJson,
+} from '../../repositories/postgres/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import { contactRecordSchema, type ContactRecord } from './validators.js'
 
@@ -190,6 +196,87 @@ export function createSqliteContactRepository(adapter: StorageAdapter): ContactR
         customFields: fromSqliteJson(row.custom_fields, {}),
         createdAt: fromSqliteDate(row.created_at),
         updatedAt: fromSqliteDate(row.updated_at),
+      })
+    },
+  })
+}
+
+export function createPostgresContactRepository(adapter: StorageAdapter): ContactRepository {
+  return createTenantPostgresRepository<ContactRecord>(adapter, {
+    tableName: 'contacts',
+    columns: [
+      'id',
+      'organization_id',
+      'name',
+      'email',
+      'phone',
+      'title',
+      'source_channel',
+      'status',
+      'assigned_to_user_id',
+      'company_id',
+      'lead_score',
+      'is_hot',
+      'last_contacted_at',
+      'custom_fields',
+      'created_at',
+      'updated_at',
+    ],
+    searchableFields: ['name', 'email', 'phone', 'title', 'source_channel'],
+    filterableFields: [
+      'id',
+      'organization_id',
+      'name',
+      'email',
+      'phone',
+      'title',
+      'source_channel',
+      'status',
+      'assigned_to_user_id',
+      'company_id',
+      'lead_score',
+      'is_hot',
+      'last_contacted_at',
+    ],
+    defaultSort: [{ field: 'created_at', direction: 'desc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        organization_id: record.organizationId,
+        name: record.name,
+        email: record.email ?? null,
+        phone: record.phone ?? null,
+        title: record.title,
+        source_channel: record.sourceChannel,
+        status: record.status,
+        assigned_to_user_id: record.assignedToUserId ?? null,
+        company_id: record.companyId ?? null,
+        lead_score: record.leadScore,
+        is_hot: record.isHot,
+        last_contacted_at: record.lastContactedAt,
+        custom_fields: record.customFields,
+        created_at: record.createdAt,
+        updated_at: record.updatedAt,
+      }
+    },
+    deserialize(row) {
+      return contactRecordSchema.parse({
+        id: row.id,
+        organizationId: row.organization_id,
+        name: row.name,
+        email: row.email ?? null,
+        phone: row.phone ?? null,
+        title: row.title ?? null,
+        sourceChannel: row.source_channel ?? null,
+        status: row.status,
+        assignedToUserId: row.assigned_to_user_id ?? null,
+        companyId: row.company_id ?? null,
+        leadScore: row.lead_score,
+        isHot: fromPostgresBoolean(row.is_hot),
+        lastContactedAt: fromPostgresDate(row.last_contacted_at),
+        customFields: fromPostgresJson(row.custom_fields, {}),
+        createdAt: fromPostgresDate(row.created_at),
+        updatedAt: fromPostgresDate(row.updated_at),
       })
     },
   })

@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { sql } from 'drizzle-orm'
+import { DataType, newDb } from 'pg-mem'
 
 import type { StorageAdapter } from '../adapters/interface.js'
 import { DEFAULT_ADAPTER_AUTHORITY_MODEL, asMigrationDatabase } from '../adapters/interface.js'
+import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
+import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
+import { initializePostgresWave1Schema } from '../adapters/postgres/schema.js'
 import { generateId } from '../ids/generate-id.js'
 import { createInMemoryApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createInMemoryCompanyRepository } from '../entities/companies/repository.js'
@@ -13,6 +17,11 @@ import { createInMemoryOrganizationRepository } from '../entities/organizations/
 import { createInMemoryPipelineRepository } from '../entities/pipelines/repository.js'
 import { createInMemoryStageRepository } from '../entities/stages/repository.js'
 import { createInMemoryUserRepository } from '../entities/users/repository.js'
+import { createPostgresCompanyRepository } from '../entities/companies/repository.js'
+import { createPostgresOrganizationRepository } from '../entities/organizations/repository.js'
+import { createPostgresPipelineRepository } from '../entities/pipelines/repository.js'
+import { createPostgresStageRepository } from '../entities/stages/repository.js'
+import { createPostgresUserRepository } from '../entities/users/repository.js'
 import { createCoreServices } from './index.js'
 
 const ctx = {
@@ -76,6 +85,22 @@ function createTestAdapter(): StorageAdapter {
       }
     },
   }
+}
+
+function createPostgresTestAdapter() {
+  const mem = newDb({ autoCreateForeignKeyIndices: true })
+  mem.public.registerFunction({
+    name: 'set_config',
+    args: [DataType.text, DataType.text, DataType.bool],
+    returns: DataType.text,
+    implementation: (_name: string, value: string) => value,
+  })
+
+  const { Pool } = mem.adapters.createPg()
+  const database = createPostgresOrbitDatabase({ pool: new Pool() })
+  const adapter = createPostgresStorageAdapter({ database })
+
+  return { database, adapter }
 }
 
 describe('core services registry', () => {
@@ -224,5 +249,53 @@ describe('core services registry', () => {
 
   it('fails loudly when an adapter has no implemented repository bridge and no overrides', () => {
     expect(() => createCoreServices(createTestAdapter())).toThrow('is not implemented')
+  })
+
+  it('can build the registry from a Postgres adapter and Postgres-backed repositories', async () => {
+    const { database, adapter } = createPostgresTestAdapter()
+    await initializePostgresWave1Schema(database)
+
+    const organizations = createPostgresOrganizationRepository(adapter)
+    const companies = createPostgresCompanyRepository(adapter)
+    const pipelines = createPostgresPipelineRepository(adapter)
+    const stages = createPostgresStageRepository(adapter)
+    const users = createPostgresUserRepository(adapter)
+
+    const services = createCoreServices(adapter, {
+      organizations,
+      organizationMemberships: createInMemoryOrganizationMembershipRepository(),
+      apiKeys: createInMemoryApiKeyRepository(),
+      companies,
+      contacts: createInMemoryContactRepository(),
+      pipelines,
+      stages,
+      deals: createInMemoryDealRepository(),
+      users,
+    })
+
+    await organizations.create({
+      id: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      name: 'Acme',
+      slug: 'acme',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: new Date('2026-04-01T08:00:00.000Z'),
+      updatedAt: new Date('2026-04-01T08:00:00.000Z'),
+    })
+    const company = await services.companies.create(ctx, {
+      name: 'Acme',
+      domain: 'acme.test',
+    })
+
+    expect(await services.system.organizations.list(ctx, { limit: 10 })).toMatchObject({
+      data: [{ id: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY' }],
+    })
+    expect(await services.companies.get(ctx, company.id)).toMatchObject({
+      id: company.id,
+      organizationId: ctx.orgId,
+    })
+
+    await database.close()
   })
 })

@@ -1,5 +1,6 @@
 import type { StorageAdapter } from '../../adapters/interface.js'
 import { createBootstrapSqliteRepository, fromSqliteBoolean, fromSqliteDate, fromSqliteJson, toSqliteBoolean, toSqliteDate, toSqliteJson } from '../../repositories/sqlite/shared.js'
+import { createBootstrapPostgresRepository, fromPostgresBoolean, fromPostgresDate, fromPostgresJson } from '../../repositories/postgres/shared.js'
 import { runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
@@ -62,6 +63,40 @@ export function createSqliteOrganizationRepository(adapter: StorageAdapter): Org
         settings: fromSqliteJson(row.settings, {}),
         createdAt: fromSqliteDate(row.created_at),
         updatedAt: fromSqliteDate(row.updated_at),
+      })
+    },
+  })
+}
+
+export function createPostgresOrganizationRepository(adapter: StorageAdapter): OrganizationRepository {
+  return createBootstrapPostgresRepository<OrganizationRecord>(adapter, {
+    tableName: 'organizations',
+    columns: ['id', 'name', 'slug', 'plan', 'is_active', 'settings', 'created_at', 'updated_at'],
+    searchableFields: ['name', 'slug', 'plan'],
+    filterableFields: ['id', 'name', 'slug', 'plan', 'is_active'],
+    defaultSort: [{ field: 'created_at', direction: 'desc' }],
+    serialize(record) {
+      return {
+        id: record.id,
+        name: record.name,
+        slug: record.slug,
+        plan: record.plan,
+        is_active: record.isActive,
+        settings: record.settings,
+        created_at: record.createdAt,
+        updated_at: record.updatedAt,
+      }
+    },
+    deserialize(row) {
+      return organizationRecordSchema.parse({
+        id: row.id,
+        name: row.name,
+        slug: row.slug,
+        plan: row.plan,
+        isActive: fromPostgresBoolean(row.is_active),
+        settings: fromPostgresJson(row.settings, {}),
+        createdAt: fromPostgresDate(row.created_at),
+        updatedAt: fromPostgresDate(row.updated_at),
       })
     },
   })
