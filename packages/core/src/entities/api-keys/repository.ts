@@ -80,18 +80,48 @@ export function createInMemoryApiKeyRepository(seed: ApiKeyRecord[] = []): ApiKe
     async list(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
         searchableFields: ['name', 'key_prefix'],
+        filterableFields: [
+          'id',
+          'organization_id',
+          'name',
+          'scopes',
+          'last_used_at',
+          'expires_at',
+          'revoked_at',
+          'created_by_user_id',
+        ],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
     async search(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
         searchableFields: ['name', 'key_prefix'],
+        filterableFields: [
+          'id',
+          'organization_id',
+          'name',
+          'scopes',
+          'last_used_at',
+          'expires_at',
+          'revoked_at',
+          'created_by_user_id',
+        ],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
     async listAll(query) {
       return runArrayQuery(allRows(), query, {
         searchableFields: ['name', 'key_prefix'],
+        filterableFields: [
+          'id',
+          'organization_id',
+          'name',
+          'scopes',
+          'last_used_at',
+          'expires_at',
+          'revoked_at',
+          'created_by_user_id',
+        ],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
@@ -116,6 +146,16 @@ export function createSqliteApiKeyRepository(adapter: StorageAdapter): ApiKeyRep
       'updated_at',
     ],
     searchableFields: ['name', 'key_prefix'],
+    filterableFields: [
+      'id',
+      'organization_id',
+      'name',
+      'scopes',
+      'last_used_at',
+      'expires_at',
+      'revoked_at',
+      'created_by_user_id',
+    ],
     defaultSort: [{ field: 'created_at', direction: 'desc' }],
     serialize(record) {
       return {
@@ -196,6 +236,16 @@ export function createSqliteApiKeyRepository(adapter: StorageAdapter): ApiKeyRep
         query,
         {
           searchableFields: ['name', 'key_prefix'],
+          filterableFields: [
+            'id',
+            'organization_id',
+            'name',
+            'scopes',
+            'last_used_at',
+            'expires_at',
+            'revoked_at',
+            'created_by_user_id',
+          ],
           defaultSort: [{ field: 'created_at', direction: 'desc' }],
         },
       )

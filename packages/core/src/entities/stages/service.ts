@@ -3,6 +3,7 @@ import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { EntityService } from '../../services/entity-service.js'
 import type { PipelineRepository } from '../pipelines/repository.js'
 import type { StageRepository } from './repository.js'
+import { createOrbitError } from '../../types/errors.js'
 import {
   stageCreateInputSchema,
   stageRecordSchema,
@@ -16,12 +17,19 @@ export function createStageService(deps: {
   stages: StageRepository
   pipelines: PipelineRepository
 }): EntityService<StageCreateInput, StageUpdateInput, StageRecord> {
+  function relationNotFound(message: string) {
+    return createOrbitError({
+      code: 'RELATION_NOT_FOUND',
+      message,
+    })
+  }
+
   return {
     async create(ctx, input) {
       const parsed = stageCreateInputSchema.parse(input)
       const pipeline = await deps.pipelines.get(ctx, parsed.pipelineId)
       if (!pipeline) {
-        throw new Error(`Pipeline ${parsed.pipelineId} not found for stage`)
+        throw relationNotFound(`Pipeline ${parsed.pipelineId} not found for stage`)
       }
 
       const now = new Date()
@@ -52,7 +60,7 @@ export function createStageService(deps: {
 
       const pipeline = await deps.pipelines.get(ctx, nextPipelineId)
       if (!pipeline) {
-        throw new Error(`Pipeline ${nextPipelineId} not found for stage`)
+        throw relationNotFound(`Pipeline ${nextPipelineId} not found for stage`)
       }
 
       const patch: Partial<StageRecord> = {

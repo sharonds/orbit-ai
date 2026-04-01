@@ -69,12 +69,14 @@ export function createInMemoryPipelineRepository(seed: PipelineRecord[] = []): P
     async list(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
         searchableFields: ['name', 'description'],
+        filterableFields: ['id', 'organization_id', 'name', 'description', 'is_default'],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
     async search(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
         searchableFields: ['name', 'description'],
+        filterableFields: ['id', 'organization_id', 'name', 'description', 'is_default'],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
@@ -86,6 +88,7 @@ export function createSqlitePipelineRepository(adapter: StorageAdapter): Pipelin
     tableName: 'pipelines',
     columns: ['id', 'organization_id', 'name', 'is_default', 'description', 'created_at', 'updated_at'],
     searchableFields: ['name', 'description'],
+    filterableFields: ['id', 'organization_id', 'name', 'description', 'is_default'],
     defaultSort: [{ field: 'created_at', direction: 'desc' }],
     serialize(record) {
       return {

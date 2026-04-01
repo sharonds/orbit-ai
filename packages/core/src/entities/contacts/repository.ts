@@ -72,12 +72,42 @@ export function createInMemoryContactRepository(seed: ContactRecord[] = []): Con
     async list(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
         searchableFields: ['name', 'email', 'phone', 'title', 'source_channel'],
+        filterableFields: [
+          'id',
+          'organization_id',
+          'name',
+          'email',
+          'phone',
+          'title',
+          'source_channel',
+          'status',
+          'assigned_to_user_id',
+          'company_id',
+          'lead_score',
+          'is_hot',
+          'last_contacted_at',
+        ],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
     async search(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
         searchableFields: ['name', 'email', 'phone', 'title', 'source_channel'],
+        filterableFields: [
+          'id',
+          'organization_id',
+          'name',
+          'email',
+          'phone',
+          'title',
+          'source_channel',
+          'status',
+          'assigned_to_user_id',
+          'company_id',
+          'lead_score',
+          'is_hot',
+          'last_contacted_at',
+        ],
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
@@ -106,6 +136,21 @@ export function createSqliteContactRepository(adapter: StorageAdapter): ContactR
       'updated_at',
     ],
     searchableFields: ['name', 'email', 'phone', 'title', 'source_channel'],
+    filterableFields: [
+      'id',
+      'organization_id',
+      'name',
+      'email',
+      'phone',
+      'title',
+      'source_channel',
+      'status',
+      'assigned_to_user_id',
+      'company_id',
+      'lead_score',
+      'is_hot',
+      'last_contacted_at',
+    ],
     defaultSort: [{ field: 'created_at', direction: 'desc' }],
     serialize(record) {
       return {
