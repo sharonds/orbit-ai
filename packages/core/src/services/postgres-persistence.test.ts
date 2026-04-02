@@ -3,7 +3,7 @@ import { newDb } from 'pg-mem'
 
 import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
-import { initializePostgresWave2SliceASchema } from '../adapters/postgres/schema.js'
+import { initializePostgresWave2SliceBSchema } from '../adapters/postgres/schema.js'
 import { createPostgresApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createPostgresOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createPostgresOrganizationRepository } from '../entities/organizations/repository.js'
@@ -25,7 +25,7 @@ async function createPostgresAdapter() {
   const { Pool } = memory.adapters.createPg()
   const pool = new Pool({ max: 1 })
   const database = createPostgresOrbitDatabase({ pool })
-  await initializePostgresWave2SliceASchema(database)
+  await initializePostgresWave2SliceBSchema(database)
 
   const adapter = createPostgresStorageAdapter({
     database,
@@ -44,6 +44,9 @@ async function createPostgresAdapter() {
         'activities',
         'tasks',
         'notes',
+        'products',
+        'payments',
+        'contracts',
       ],
     }),
   })
@@ -52,7 +55,7 @@ async function createPostgresAdapter() {
 }
 
 describe('postgres persistence bridge', () => {
-  it('persists Slice A records across fresh service registries', async () => {
+  it('persists Slice B records across fresh service registries', async () => {
     const { adapter, pool } = await createPostgresAdapter()
     const organizations = createPostgresOrganizationRepository(adapter)
 
@@ -112,6 +115,25 @@ describe('postgres persistence bridge', () => {
       dealId: deal.id,
       companyId: company.id,
     })
+    const product = await servicesA.products.create(ctxA, {
+      name: 'Platform',
+      price: '199.00',
+      sortOrder: 1,
+    })
+    const payment = await servicesA.payments.create(ctxA, {
+      amount: '199.00',
+      status: 'paid',
+      dealId: deal.id,
+      contactId: contact.id,
+      externalId: 'pi_pg_123',
+    })
+    const contract = await servicesA.contracts.create(ctxA, {
+      title: 'MSA',
+      status: 'signed',
+      contactId: contact.id,
+      companyId: company.id,
+      dealId: deal.id,
+    })
 
     const servicesB = createCoreServices(adapter)
     expect(await servicesB.companies.get(ctxA, company.id)).toEqual(company)
@@ -120,6 +142,12 @@ describe('postgres persistence bridge', () => {
     expect(await servicesB.activities.get(ctxA, activity.id)).toEqual(activity)
     expect(await servicesB.tasks.get(ctxA, task.id)).toEqual(task)
     expect(await servicesB.notes.get(ctxA, note.id)).toEqual(note)
+    expect(await servicesB.products.get(ctxA, product.id)).toEqual(product)
+    expect(await servicesB.payments.get(ctxA, payment.id)).toEqual(payment)
+    expect(await servicesB.contracts.get(ctxA, contract.id)).toEqual(contract)
+    expect(await servicesB.products.get(ctxB, product.id)).toBeNull()
+    expect(await servicesB.payments.get(ctxB, payment.id)).toBeNull()
+    expect(await servicesB.contracts.get(ctxB, contract.id)).toBeNull()
     await expect(servicesB.companies.update(ctxB, company.id, { name: 'Beta' })).rejects.toThrow('Company')
     await expect(servicesB.companies.delete(ctxB, company.id)).rejects.toThrow('Company')
 
@@ -132,6 +160,42 @@ describe('postgres persistence bridge', () => {
     expect(context?.openTasks).toHaveLength(1)
     expect(context?.recentActivities).toHaveLength(1)
     expect(context?.lastContactDate).toBe('2026-04-01T12:00:00.000Z')
+
+    await pool.end()
+  })
+
+  it('preserves payment external id conflicts on the postgres adapter path', async () => {
+    const { adapter, pool } = await createPostgresAdapter()
+    const organizations = createPostgresOrganizationRepository(adapter)
+
+    await organizations.create({
+      id: ctxA.orgId,
+      name: 'Acme',
+      slug: 'acme',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: new Date('2026-04-01T12:30:00.000Z'),
+      updatedAt: new Date('2026-04-01T12:30:00.000Z'),
+    })
+
+    const services = createCoreServices(adapter)
+    await services.payments.create(ctxA, {
+      amount: '50.00',
+      status: 'pending',
+      externalId: 'pi_pg_conflict',
+    })
+
+    await expect(
+      services.payments.create(ctxA, {
+        amount: '75.00',
+        status: 'pending',
+        externalId: 'pi_pg_conflict',
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'externalId',
+    })
 
     await pool.end()
   })
