@@ -3,12 +3,15 @@ import {
   activities,
   apiKeys,
   companies,
+  contracts,
   contacts,
   deals,
   notes,
   organizationMemberships,
   organizations,
+  payments,
   pipelines,
+  products,
   stages,
   tasks,
   users,
@@ -26,6 +29,9 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   activities: many(activities),
   tasks: many(tasks),
   notes: many(notes),
+  products: many(products),
+  payments: many(payments),
+  contracts: many(contracts),
 }))
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -90,6 +96,7 @@ export const companiesRelations = relations(companies, ({ one, many }) => ({
   activities: many(activities),
   tasks: many(tasks),
   notes: many(notes),
+  contracts: many(contracts),
 }))
 
 export const contactsRelations = relations(contacts, ({ one, many }) => ({
@@ -109,6 +116,8 @@ export const contactsRelations = relations(contacts, ({ one, many }) => ({
   activities: many(activities),
   tasks: many(tasks),
   notes: many(notes),
+  payments: many(payments),
+  contracts: many(contracts),
 }))
 
 export const pipelinesRelations = relations(pipelines, ({ one, many }) => ({
@@ -160,6 +169,8 @@ export const dealsRelations = relations(deals, ({ one, many }) => ({
   activities: many(activities),
   tasks: many(tasks),
   notes: many(notes),
+  payments: many(payments),
+  contracts: many(contracts),
 }))
 
 export const activitiesRelations = relations(activities, ({ one }) => ({
@@ -228,5 +239,46 @@ export const notesRelations = relations(notes, ({ one }) => ({
   createdBy: one(users, {
     fields: [notes.createdByUserId],
     references: [users.id],
+  }),
+}))
+
+export const productsRelations = relations(products, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [products.organizationId],
+    references: [organizations.id],
+  }),
+}))
+
+export const paymentsRelations = relations(payments, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [payments.organizationId],
+    references: [organizations.id],
+  }),
+  deal: one(deals, {
+    fields: [payments.dealId],
+    references: [deals.id],
+  }),
+  contact: one(contacts, {
+    fields: [payments.contactId],
+    references: [contacts.id],
+  }),
+}))
+
+export const contractsRelations = relations(contracts, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [contracts.organizationId],
+    references: [organizations.id],
+  }),
+  deal: one(deals, {
+    fields: [contracts.dealId],
+    references: [deals.id],
+  }),
+  contact: one(contacts, {
+    fields: [contracts.contactId],
+    references: [contacts.id],
+  }),
+  company: one(companies, {
+    fields: [contracts.companyId],
+    references: [companies.id],
   }),
 }))

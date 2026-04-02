@@ -38,6 +38,12 @@ import {
 } from '../entities/notes/repository.js'
 import { createNoteService } from '../entities/notes/service.js'
 import {
+  createPostgresPaymentRepository,
+  createSqlitePaymentRepository,
+  type PaymentRepository,
+} from '../entities/payments/repository.js'
+import { createPaymentService } from '../entities/payments/service.js'
+import {
   createPostgresOrganizationMembershipRepository,
   createSqliteOrganizationMembershipRepository,
   type OrganizationMembershipRepository,
@@ -56,6 +62,12 @@ import {
 } from '../entities/pipelines/repository.js'
 import { createPipelineService } from '../entities/pipelines/service.js'
 import {
+  createPostgresProductRepository,
+  createSqliteProductRepository,
+  type ProductRepository,
+} from '../entities/products/repository.js'
+import { createProductService } from '../entities/products/service.js'
+import {
   createPostgresStageRepository,
   createSqliteStageRepository,
   type StageRepository,
@@ -67,6 +79,12 @@ import {
   type TaskRepository,
 } from '../entities/tasks/repository.js'
 import { createTaskService } from '../entities/tasks/service.js'
+import {
+  createPostgresContractRepository,
+  createSqliteContractRepository,
+  type ContractRepository,
+} from '../entities/contracts/repository.js'
+import { createContractService } from '../entities/contracts/service.js'
 import {
   createPostgresUserRepository,
   createSqliteUserRepository,
@@ -91,6 +109,9 @@ interface CoreRepositoryOverrides {
   activities?: ActivityRepository
   tasks?: TaskRepository
   notes?: NoteRepository
+  products?: ProductRepository
+  payments?: PaymentRepository
+  contracts?: ContractRepository
 }
 
 function resolveOptionalCoreRepository<T>({
@@ -221,10 +242,19 @@ export function createCoreServices(
   let activitiesRepository: ActivityRepository | null = null
   let tasksRepository: TaskRepository | null = null
   let notesRepository: NoteRepository | null = null
+  let productsRepository: ProductRepository | null = null
+  let paymentsRepository: PaymentRepository | null = null
+  let contractsRepository: ContractRepository | null = null
   let optionalActivitiesRepository: ActivityRepository | undefined
   let optionalTasksRepository: TaskRepository | undefined
+  let optionalProductsRepository: ProductRepository | undefined
+  let optionalPaymentsRepository: PaymentRepository | undefined
+  let optionalContractsRepository: ContractRepository | undefined
   let optionalActivitiesResolved = false
   let optionalTasksResolved = false
+  let optionalProductsResolved = false
+  let optionalPaymentsResolved = false
+  let optionalContractsResolved = false
 
   function getActivitiesRepository(): ActivityRepository {
     if (activitiesRepository) {
@@ -274,6 +304,54 @@ export function createCoreServices(
     return notesRepository
   }
 
+  function getProductsRepository(): ProductRepository {
+    if (productsRepository) {
+      return productsRepository
+    }
+
+    productsRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.products,
+      sqliteFactory: () => createSqliteProductRepository(adapter),
+      postgresFactory: () => createPostgresProductRepository(adapter),
+      name: 'products repository',
+    })
+
+    return productsRepository
+  }
+
+  function getPaymentsRepository(): PaymentRepository {
+    if (paymentsRepository) {
+      return paymentsRepository
+    }
+
+    paymentsRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.payments,
+      sqliteFactory: () => createSqlitePaymentRepository(adapter),
+      postgresFactory: () => createPostgresPaymentRepository(adapter),
+      name: 'payments repository',
+    })
+
+    return paymentsRepository
+  }
+
+  function getContractsRepository(): ContractRepository {
+    if (contractsRepository) {
+      return contractsRepository
+    }
+
+    contractsRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.contracts,
+      sqliteFactory: () => createSqliteContractRepository(adapter),
+      postgresFactory: () => createPostgresContractRepository(adapter),
+      name: 'contracts repository',
+    })
+
+    return contractsRepository
+  }
+
   function getOptionalActivitiesRepository(): ActivityRepository | undefined {
     if (optionalActivitiesResolved) {
       return optionalActivitiesRepository
@@ -306,9 +384,61 @@ export function createCoreServices(
     return optionalTasksRepository
   }
 
+  function getOptionalProductsRepository(): ProductRepository | undefined {
+    if (optionalProductsResolved) {
+      return optionalProductsRepository
+    }
+
+    optionalProductsRepository = resolveOptionalCoreRepository({
+      adapter,
+      override: overrides.products,
+      sqliteFactory: () => createSqliteProductRepository(adapter),
+      postgresFactory: () => createPostgresProductRepository(adapter),
+    })
+    optionalProductsResolved = true
+
+    return optionalProductsRepository
+  }
+
+  function getOptionalPaymentsRepository(): PaymentRepository | undefined {
+    if (optionalPaymentsResolved) {
+      return optionalPaymentsRepository
+    }
+
+    optionalPaymentsRepository = resolveOptionalCoreRepository({
+      adapter,
+      override: overrides.payments,
+      sqliteFactory: () => createSqlitePaymentRepository(adapter),
+      postgresFactory: () => createPostgresPaymentRepository(adapter),
+    })
+    optionalPaymentsResolved = true
+
+    return optionalPaymentsRepository
+  }
+
+  function getOptionalContractsRepository(): ContractRepository | undefined {
+    if (optionalContractsResolved) {
+      return optionalContractsRepository
+    }
+
+    optionalContractsRepository = resolveOptionalCoreRepository({
+      adapter,
+      override: overrides.contracts,
+      sqliteFactory: () => createSqliteContractRepository(adapter),
+      postgresFactory: () => createPostgresContractRepository(adapter),
+    })
+    optionalContractsResolved = true
+
+    return optionalContractsRepository
+  }
+
   let activitiesService: ReturnType<typeof createActivityService> | undefined
   let tasksService: ReturnType<typeof createTaskService> | undefined
   let notesService: ReturnType<typeof createNoteService> | undefined
+  let productsService: ReturnType<typeof createProductService> | undefined
+  let paymentsService: ReturnType<typeof createPaymentService> | undefined
+  let contractsService: ReturnType<typeof createContractService> | undefined
+  let searchService: ReturnType<typeof createSearchService> | undefined
   let contactContextService: ReturnType<typeof createContactContextService> | undefined
 
   return {
@@ -350,8 +480,52 @@ export function createCoreServices(
 
       return notesService
     },
+    get products() {
+      productsService ??= createProductService({
+        products: getProductsRepository(),
+      })
+
+      return productsService
+    },
+    get payments() {
+      paymentsService ??= createPaymentService({
+        payments: getPaymentsRepository(),
+        contacts,
+        deals,
+      })
+
+      return paymentsService
+    },
+    get contracts() {
+      contractsService ??= createContractService({
+        contracts: getContractsRepository(),
+        contacts,
+        companies,
+        deals,
+      })
+
+      return contractsService
+    },
     users: createUserService(users),
-    search: createSearchService({ companies, contacts, deals, pipelines, stages, users }),
+    get search() {
+      const optionalProducts = getOptionalProductsRepository()
+      const optionalPayments = getOptionalPaymentsRepository()
+      const optionalContracts = getOptionalContractsRepository()
+
+      searchService ??= createSearchService({
+        companies,
+        contacts,
+        deals,
+        pipelines,
+        stages,
+        users,
+        ...(optionalProducts ? { products: optionalProducts } : {}),
+        ...(optionalPayments ? { payments: optionalPayments } : {}),
+        ...(optionalContracts ? { contracts: optionalContracts } : {}),
+      })
+
+      return searchService
+    },
     schema: new OrbitSchemaEngine(),
     get contactContext() {
       const optionalActivities = getOptionalActivitiesRepository()

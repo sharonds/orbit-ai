@@ -40,7 +40,7 @@ export function createSearchService(deps: {
     const rows: TRecord[] = []
     let cursor: string | null = null
 
-      do {
+    do {
       const page = await search({
         ...query,
         ...(cursor !== null ? { cursor } : {}),
