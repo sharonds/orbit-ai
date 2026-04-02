@@ -609,6 +609,8 @@ export function createCoreServices(
     get sequences() {
       sequencesService ??= createSequenceService({
         sequences: getSequencesRepository(),
+        sequenceSteps: getSequenceStepsRepository(),
+        sequenceEnrollments: getSequenceEnrollmentsRepository(),
       })
 
       return sequencesService
@@ -617,6 +619,7 @@ export function createCoreServices(
       sequenceStepsService ??= createSequenceStepService({
         sequenceSteps: getSequenceStepsRepository(),
         sequences: getSequencesRepository(),
+        sequenceEvents: getSequenceEventsRepository(),
       })
 
       return sequenceStepsService
@@ -626,6 +629,7 @@ export function createCoreServices(
         sequenceEnrollments: getSequenceEnrollmentsRepository(),
         sequences: getSequencesRepository(),
         contacts,
+        sequenceEvents: getSequenceEventsRepository(),
       })
 
       return sequenceEnrollmentsService

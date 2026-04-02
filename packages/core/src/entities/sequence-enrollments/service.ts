@@ -3,6 +3,7 @@ import type { EntityService } from '../../services/entity-service.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import { createOrbitError } from '../../types/errors.js'
 import type { ContactRepository } from '../contacts/repository.js'
+import type { SequenceEventRepository } from '../sequence-events/repository.js'
 import type { SequenceRepository } from '../sequences/repository.js'
 import type { SequenceEnrollmentRepository } from './repository.js'
 import {
@@ -121,10 +122,36 @@ function coerceSequenceEnrollmentConflict(
   throw error
 }
 
+async function assertEnrollmentHistoryMutable(
+  ctx: Parameters<EntityService<SequenceEnrollmentCreateInput, SequenceEnrollmentUpdateInput, SequenceEnrollmentRecord>['create']>[0],
+  sequenceEvents: SequenceEventRepository,
+  enrollmentId: string,
+  action: 'reparent' | 'delete',
+): Promise<void> {
+  const events = await sequenceEvents.list(ctx, {
+    filter: {
+      sequence_enrollment_id: enrollmentId,
+    },
+    limit: 1,
+  })
+
+  if (events.data.length > 0) {
+    throw createOrbitError({
+      code: 'CONFLICT',
+      message:
+        action === 'reparent'
+          ? `Sequence enrollment ${enrollmentId} cannot change sequence or contact after history exists`
+          : `Sequence enrollment ${enrollmentId} cannot be deleted while history exists`,
+      field: 'id',
+    })
+  }
+}
+
 export function createSequenceEnrollmentService(deps: {
   sequenceEnrollments: SequenceEnrollmentRepository
   sequences: SequenceRepository
   contacts: ContactRepository
+  sequenceEvents: SequenceEventRepository
 }): EntityService<SequenceEnrollmentCreateInput, SequenceEnrollmentUpdateInput, SequenceEnrollmentRecord> {
   return {
     async create(ctx, input) {
@@ -177,6 +204,13 @@ export function createSequenceEnrollmentService(deps: {
       const nextExitedAt = parsed.exitedAt !== undefined ? parsed.exitedAt ?? null : current.exitedAt
       const nextExitReason = parsed.exitReason !== undefined ? parsed.exitReason ?? null : current.exitReason
 
+      if (
+        (parsed.sequenceId !== undefined && parsed.sequenceId !== current.sequenceId) ||
+        (parsed.contactId !== undefined && parsed.contactId !== current.contactId)
+      ) {
+        await assertEnrollmentHistoryMutable(ctx, deps.sequenceEvents, id, 'reparent')
+      }
+
       await assertEnrollmentRelations(ctx, deps, {
         sequenceId: parsed.sequenceId,
         contactId: parsed.contactId,
@@ -207,6 +241,7 @@ export function createSequenceEnrollmentService(deps: {
       }
     },
     async delete(ctx, id) {
+      await assertEnrollmentHistoryMutable(ctx, deps.sequenceEvents, id, 'delete')
       assertDeleted(await deps.sequenceEnrollments.delete(ctx, id), `Sequence enrollment ${id} not found`)
     },
     async list(ctx, query) {

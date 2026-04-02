@@ -1,6 +1,9 @@
 import { generateId } from '../../ids/generate-id.js'
 import type { EntityService } from '../../services/entity-service.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
+import { createOrbitError } from '../../types/errors.js'
+import type { SequenceEnrollmentRepository } from '../sequence-enrollments/repository.js'
+import type { SequenceStepRepository } from '../sequence-steps/repository.js'
 import type { SequenceRepository } from './repository.js'
 import {
   sequenceCreateInputSchema,
@@ -11,8 +14,42 @@ import {
   type SequenceUpdateInput,
 } from './validators.js'
 
+async function assertSequenceDeleteAllowed(
+  ctx: Parameters<EntityService<SequenceCreateInput, SequenceUpdateInput, SequenceRecord>['create']>[0],
+  deps: {
+    sequenceSteps: SequenceStepRepository
+    sequenceEnrollments: SequenceEnrollmentRepository
+  },
+  sequenceId: string,
+): Promise<void> {
+  const [steps, enrollments] = await Promise.all([
+    deps.sequenceSteps.list(ctx, {
+      filter: {
+        sequence_id: sequenceId,
+      },
+      limit: 1,
+    }),
+    deps.sequenceEnrollments.list(ctx, {
+      filter: {
+        sequence_id: sequenceId,
+      },
+      limit: 1,
+    }),
+  ])
+
+  if (steps.data.length > 0 || enrollments.data.length > 0) {
+    throw createOrbitError({
+      code: 'CONFLICT',
+      message: `Sequence ${sequenceId} cannot be deleted while steps or enrollments exist`,
+      field: 'id',
+    })
+  }
+}
+
 export function createSequenceService(deps: {
   sequences: SequenceRepository
+  sequenceSteps: SequenceStepRepository
+  sequenceEnrollments: SequenceEnrollmentRepository
 }): EntityService<SequenceCreateInput, SequenceUpdateInput, SequenceRecord> {
   return {
     async create(ctx, input) {
@@ -54,6 +91,7 @@ export function createSequenceService(deps: {
       return assertFound(await deps.sequences.update(ctx, id, patch), `Sequence ${id} not found`)
     },
     async delete(ctx, id) {
+      await assertSequenceDeleteAllowed(ctx, deps, id)
       assertDeleted(await deps.sequences.delete(ctx, id), `Sequence ${id} not found`)
     },
     async list(ctx, query) {

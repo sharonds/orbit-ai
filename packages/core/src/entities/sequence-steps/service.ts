@@ -2,6 +2,7 @@ import { generateId } from '../../ids/generate-id.js'
 import type { EntityService } from '../../services/entity-service.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import { createOrbitError } from '../../types/errors.js'
+import type { SequenceEventRepository } from '../sequence-events/repository.js'
 import type { SequenceRepository } from '../sequences/repository.js'
 import type { SequenceStepRepository } from './repository.js'
 import {
@@ -71,9 +72,35 @@ function coerceSequenceStepConflict(error: unknown, sequenceId: string, stepOrde
   throw error
 }
 
+async function assertStepHistoryMutable(
+  ctx: Parameters<EntityService<SequenceStepCreateInput, SequenceStepUpdateInput, SequenceStepRecord>['create']>[0],
+  sequenceEvents: SequenceEventRepository,
+  stepId: string,
+  action: 'reparent' | 'delete',
+): Promise<void> {
+  const events = await sequenceEvents.list(ctx, {
+    filter: {
+      sequence_step_id: stepId,
+    },
+    limit: 1,
+  })
+
+  if (events.data.length > 0) {
+    throw createOrbitError({
+      code: 'CONFLICT',
+      message:
+        action === 'reparent'
+          ? `Sequence step ${stepId} cannot change sequences after history exists`
+          : `Sequence step ${stepId} cannot be deleted while history exists`,
+      field: 'id',
+    })
+  }
+}
+
 export function createSequenceStepService(deps: {
   sequenceSteps: SequenceStepRepository
   sequences: SequenceRepository
+  sequenceEvents: SequenceEventRepository
 }): EntityService<SequenceStepCreateInput, SequenceStepUpdateInput, SequenceStepRecord> {
   return {
     async create(ctx, input) {
@@ -115,6 +142,9 @@ export function createSequenceStepService(deps: {
       const nextStepOrder = parsed.stepOrder ?? current.stepOrder
 
       if (parsed.sequenceId !== undefined) {
+        if (parsed.sequenceId !== current.sequenceId) {
+          await assertStepHistoryMutable(ctx, deps.sequenceEvents, id, 'reparent')
+        }
         await assertSequenceExists(ctx, deps.sequences, parsed.sequenceId)
       }
       await assertUniqueStepOrder(ctx, deps.sequenceSteps, nextSequenceId, nextStepOrder, id)
@@ -140,6 +170,7 @@ export function createSequenceStepService(deps: {
       }
     },
     async delete(ctx, id) {
+      await assertStepHistoryMutable(ctx, deps.sequenceEvents, id, 'delete')
       assertDeleted(await deps.sequenceSteps.delete(ctx, id), `Sequence step ${id} not found`)
     },
     async list(ctx, query) {

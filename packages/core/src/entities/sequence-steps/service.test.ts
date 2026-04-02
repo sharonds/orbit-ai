@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import { generateId } from '../../ids/generate-id.js'
+import { createInMemorySequenceEnrollmentRepository } from '../sequence-enrollments/repository.js'
+import { createSequenceEnrollmentService } from '../sequence-enrollments/service.js'
+import { createInMemorySequenceEventRepository } from '../sequence-events/repository.js'
+import { createSequenceEventService } from '../sequence-events/service.js'
 import { createInMemorySequenceStepRepository } from './repository.js'
 import { createSequenceStepService } from './service.js'
+import { createInMemoryCompanyRepository } from '../companies/repository.js'
+import { createCompanyService } from '../companies/service.js'
+import { createInMemoryContactRepository } from '../contacts/repository.js'
+import { createContactService } from '../contacts/service.js'
 import { createInMemorySequenceRepository } from '../sequences/repository.js'
 import { createSequenceService } from '../sequences/service.js'
 
@@ -17,8 +25,14 @@ const otherCtx = {
 async function createSequenceGraph() {
   const sequences = createInMemorySequenceRepository()
   const sequenceSteps = createInMemorySequenceStepRepository()
-  const sequenceService = createSequenceService({ sequences })
-  const sequenceStepService = createSequenceStepService({ sequenceSteps, sequences })
+  const sequenceEvents = createInMemorySequenceEventRepository()
+  const sequenceEnrollments = createInMemorySequenceEnrollmentRepository()
+  const sequenceService = createSequenceService({
+    sequences,
+    sequenceSteps,
+    sequenceEnrollments,
+  })
+  const sequenceStepService = createSequenceStepService({ sequenceSteps, sequences, sequenceEvents })
 
   const primary = await sequenceService.create(ctx, {
     name: 'Outbound',
@@ -28,6 +42,60 @@ async function createSequenceGraph() {
   })
 
   return { sequenceService, sequenceStepService, primary, secondary, sequenceSteps }
+}
+
+async function createGraphWithHistory() {
+  const companies = createInMemoryCompanyRepository()
+  const contacts = createInMemoryContactRepository()
+  const sequences = createInMemorySequenceRepository()
+  const sequenceSteps = createInMemorySequenceStepRepository()
+  const sequenceEnrollments = createInMemorySequenceEnrollmentRepository()
+  const sequenceEvents = createInMemorySequenceEventRepository()
+
+  const companyService = createCompanyService(companies)
+  const contactService = createContactService({ contacts, companies })
+  const sequenceService = createSequenceService({
+    sequences,
+    sequenceSteps,
+    sequenceEnrollments,
+  })
+  const sequenceStepService = createSequenceStepService({ sequenceSteps, sequences, sequenceEvents })
+  const sequenceEnrollmentService = createSequenceEnrollmentService({
+    sequenceEnrollments,
+    sequences,
+    contacts,
+    sequenceEvents,
+  })
+  const sequenceEventService = createSequenceEventService({
+    sequenceEvents,
+    sequenceEnrollments,
+    sequenceSteps,
+  })
+
+  const company = await companyService.create(ctx, { name: 'Orbit Labs' })
+  const contact = await contactService.create(ctx, {
+    name: 'Taylor',
+    email: 'taylor@orbit.test',
+    companyId: company.id,
+  })
+  const sequence = await sequenceService.create(ctx, { name: 'Outbound' })
+  const secondary = await sequenceService.create(ctx, { name: 'Lifecycle' })
+  const step = await sequenceStepService.create(ctx, {
+    sequenceId: sequence.id,
+    stepOrder: 1,
+    actionType: 'email',
+  })
+  const enrollment = await sequenceEnrollmentService.create(ctx, {
+    sequenceId: sequence.id,
+    contactId: contact.id,
+  })
+  await sequenceEventService.create(ctx, {
+    sequenceEnrollmentId: enrollment.id,
+    sequenceStepId: step.id,
+    eventType: 'step.entered',
+  })
+
+  return { sequenceStepService, step, secondary }
 }
 
 describe('sequence step service', () => {
@@ -141,5 +209,23 @@ describe('sequence step service', () => {
         organizationId: otherCtx.orgId,
       }),
     ).rejects.toThrow('Tenant record organization mismatch')
+  })
+
+  it('blocks reparenting or deleting a step once history exists', async () => {
+    const { sequenceStepService, step, secondary } = await createGraphWithHistory()
+
+    await expect(
+      sequenceStepService.update(ctx, step.id, {
+        sequenceId: secondary.id,
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'id',
+    })
+
+    await expect(sequenceStepService.delete(ctx, step.id)).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'id',
+    })
   })
 })

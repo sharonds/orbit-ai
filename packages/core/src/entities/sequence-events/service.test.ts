@@ -27,12 +27,17 @@ async function createEventGraph() {
 
   const companyService = createCompanyService(companies)
   const contactService = createContactService({ contacts, companies })
-  const sequenceService = createSequenceService({ sequences })
-  const sequenceStepService = createSequenceStepService({ sequenceSteps, sequences })
+  const sequenceService = createSequenceService({
+    sequences,
+    sequenceSteps,
+    sequenceEnrollments,
+  })
+  const sequenceStepService = createSequenceStepService({ sequenceSteps, sequences, sequenceEvents })
   const sequenceEnrollmentService = createSequenceEnrollmentService({
     sequenceEnrollments,
     sequences,
     contacts,
+    sequenceEvents,
   })
   const sequenceEventService = createSequenceEventService({
     sequenceEvents,
