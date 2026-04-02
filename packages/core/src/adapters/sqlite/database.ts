@@ -21,6 +21,7 @@ export class SqliteOrbitDatabase implements OrbitDatabase {
 
   constructor(options: SqliteOrbitDatabaseOptions = {}) {
     this.client = new DatabaseSync(options.filename ?? ':memory:')
+    this.client.exec('pragma foreign_keys = on')
   }
 
   async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>): Promise<T> {

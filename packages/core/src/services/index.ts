@@ -86,6 +86,30 @@ import {
 } from '../entities/contracts/repository.js'
 import { createContractService } from '../entities/contracts/service.js'
 import {
+  createPostgresSequenceEnrollmentRepository,
+  createSqliteSequenceEnrollmentRepository,
+  type SequenceEnrollmentRepository,
+} from '../entities/sequence-enrollments/repository.js'
+import { createSequenceEnrollmentService } from '../entities/sequence-enrollments/service.js'
+import {
+  createPostgresSequenceEventRepository,
+  createSqliteSequenceEventRepository,
+  type SequenceEventRepository,
+} from '../entities/sequence-events/repository.js'
+import { createSequenceEventService } from '../entities/sequence-events/service.js'
+import {
+  createPostgresSequenceStepRepository,
+  createSqliteSequenceStepRepository,
+  type SequenceStepRepository,
+} from '../entities/sequence-steps/repository.js'
+import { createSequenceStepService } from '../entities/sequence-steps/service.js'
+import {
+  createPostgresSequenceRepository,
+  createSqliteSequenceRepository,
+  type SequenceRepository,
+} from '../entities/sequences/repository.js'
+import { createSequenceService } from '../entities/sequences/service.js'
+import {
   createPostgresUserRepository,
   createSqliteUserRepository,
   type UserRepository,
@@ -112,6 +136,10 @@ interface CoreRepositoryOverrides {
   products?: ProductRepository
   payments?: PaymentRepository
   contracts?: ContractRepository
+  sequences?: SequenceRepository
+  sequenceSteps?: SequenceStepRepository
+  sequenceEnrollments?: SequenceEnrollmentRepository
+  sequenceEvents?: SequenceEventRepository
 }
 
 function resolveOptionalCoreRepository<T>({
@@ -245,6 +273,10 @@ export function createCoreServices(
   let productsRepository: ProductRepository | null = null
   let paymentsRepository: PaymentRepository | null = null
   let contractsRepository: ContractRepository | null = null
+  let sequencesRepository: SequenceRepository | null = null
+  let sequenceStepsRepository: SequenceStepRepository | null = null
+  let sequenceEnrollmentsRepository: SequenceEnrollmentRepository | null = null
+  let sequenceEventsRepository: SequenceEventRepository | null = null
   let optionalActivitiesRepository: ActivityRepository | undefined
   let optionalTasksRepository: TaskRepository | undefined
   let optionalProductsRepository: ProductRepository | undefined
@@ -352,6 +384,70 @@ export function createCoreServices(
     return contractsRepository
   }
 
+  function getSequencesRepository(): SequenceRepository {
+    if (sequencesRepository) {
+      return sequencesRepository
+    }
+
+    sequencesRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.sequences,
+      sqliteFactory: () => createSqliteSequenceRepository(adapter),
+      postgresFactory: () => createPostgresSequenceRepository(adapter),
+      name: 'sequences repository',
+    })
+
+    return sequencesRepository
+  }
+
+  function getSequenceStepsRepository(): SequenceStepRepository {
+    if (sequenceStepsRepository) {
+      return sequenceStepsRepository
+    }
+
+    sequenceStepsRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.sequenceSteps,
+      sqliteFactory: () => createSqliteSequenceStepRepository(adapter),
+      postgresFactory: () => createPostgresSequenceStepRepository(adapter),
+      name: 'sequence steps repository',
+    })
+
+    return sequenceStepsRepository
+  }
+
+  function getSequenceEnrollmentsRepository(): SequenceEnrollmentRepository {
+    if (sequenceEnrollmentsRepository) {
+      return sequenceEnrollmentsRepository
+    }
+
+    sequenceEnrollmentsRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.sequenceEnrollments,
+      sqliteFactory: () => createSqliteSequenceEnrollmentRepository(adapter),
+      postgresFactory: () => createPostgresSequenceEnrollmentRepository(adapter),
+      name: 'sequence enrollments repository',
+    })
+
+    return sequenceEnrollmentsRepository
+  }
+
+  function getSequenceEventsRepository(): SequenceEventRepository {
+    if (sequenceEventsRepository) {
+      return sequenceEventsRepository
+    }
+
+    sequenceEventsRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.sequenceEvents,
+      sqliteFactory: () => createSqliteSequenceEventRepository(adapter),
+      postgresFactory: () => createPostgresSequenceEventRepository(adapter),
+      name: 'sequence events repository',
+    })
+
+    return sequenceEventsRepository
+  }
+
   function getOptionalActivitiesRepository(): ActivityRepository | undefined {
     if (optionalActivitiesResolved) {
       return optionalActivitiesRepository
@@ -438,6 +534,10 @@ export function createCoreServices(
   let productsService: ReturnType<typeof createProductService> | undefined
   let paymentsService: ReturnType<typeof createPaymentService> | undefined
   let contractsService: ReturnType<typeof createContractService> | undefined
+  let sequencesService: ReturnType<typeof createSequenceService> | undefined
+  let sequenceStepsService: ReturnType<typeof createSequenceStepService> | undefined
+  let sequenceEnrollmentsService: ReturnType<typeof createSequenceEnrollmentService> | undefined
+  let sequenceEventsService: ReturnType<typeof createSequenceEventService> | undefined
   let searchService: ReturnType<typeof createSearchService> | undefined
   let contactContextService: ReturnType<typeof createContactContextService> | undefined
 
@@ -505,6 +605,43 @@ export function createCoreServices(
       })
 
       return contractsService
+    },
+    get sequences() {
+      sequencesService ??= createSequenceService({
+        sequences: getSequencesRepository(),
+        sequenceSteps: getSequenceStepsRepository(),
+        sequenceEnrollments: getSequenceEnrollmentsRepository(),
+      })
+
+      return sequencesService
+    },
+    get sequenceSteps() {
+      sequenceStepsService ??= createSequenceStepService({
+        sequenceSteps: getSequenceStepsRepository(),
+        sequences: getSequencesRepository(),
+        sequenceEvents: getSequenceEventsRepository(),
+      })
+
+      return sequenceStepsService
+    },
+    get sequenceEnrollments() {
+      sequenceEnrollmentsService ??= createSequenceEnrollmentService({
+        sequenceEnrollments: getSequenceEnrollmentsRepository(),
+        sequences: getSequencesRepository(),
+        contacts,
+        sequenceEvents: getSequenceEventsRepository(),
+      })
+
+      return sequenceEnrollmentsService
+    },
+    get sequenceEvents() {
+      sequenceEventsService ??= createSequenceEventService({
+        sequenceEvents: getSequenceEventsRepository(),
+        sequenceEnrollments: getSequenceEnrollmentsRepository(),
+        sequenceSteps: getSequenceStepsRepository(),
+      })
+
+      return sequenceEventsService
     },
     users: createUserService(users),
     get search() {
