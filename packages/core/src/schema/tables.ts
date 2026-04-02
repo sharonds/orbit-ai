@@ -246,3 +246,63 @@ export const notes = orbit.table(
     index('notes_deal_idx').on(table.dealId),
   ],
 )
+
+export const products = orbit.table(
+  'products',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    name: text('name').notNull(),
+    price: money('price').notNull(),
+    currency: text('currency').notNull().default('USD'),
+    description: text('description'),
+    isActive: boolean('is_active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [index('products_sort_order_idx').on(table.sortOrder)],
+)
+
+export const payments = orbit.table(
+  'payments',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    amount: money('amount').notNull(),
+    currency: text('currency').notNull().default('USD'),
+    status: text('status').notNull(),
+    method: text('method'),
+    dealId: text('deal_id').references(() => deals.id),
+    contactId: text('contact_id').references(() => contacts.id),
+    externalId: text('external_id'),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    metadata: metadata(),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('payments_external_id_idx').on(table.organizationId, table.externalId),
+    index('payments_status_idx').on(table.status),
+  ],
+)
+
+export const contracts = orbit.table(
+  'contracts',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    title: text('title').notNull(),
+    content: text('content'),
+    status: text('status').notNull().default('draft'),
+    signedAt: timestamp('signed_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    dealId: text('deal_id').references(() => deals.id),
+    contactId: text('contact_id').references(() => contacts.id),
+    companyId: text('company_id').references(() => companies.id),
+    externalSignatureId: text('external_signature_id'),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [index('contracts_status_idx').on(table.status)],
+)

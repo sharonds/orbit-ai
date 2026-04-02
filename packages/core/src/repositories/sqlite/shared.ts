@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 
 import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import { assertTenantPatchOrganizationInvariant } from '../tenant-guards.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
@@ -132,6 +133,8 @@ export function createTenantSqliteRepository<TRecord extends { id: string } & Re
         if (!current) {
           return null
         }
+
+        assertTenantPatchOrganizationInvariant((current as { organizationId?: unknown }).organizationId, patch)
 
         const next = {
           ...current,

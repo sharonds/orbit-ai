@@ -6,12 +6,15 @@ import {
   activities,
   apiKeys,
   companies,
+  contracts,
   contacts,
   deals,
   notes,
   organizationMemberships,
   organizations,
+  payments,
   pipelines,
+  products,
   stages,
   tasks,
   users,
@@ -313,4 +316,58 @@ export const noteUpdateSchema = createUpdateSchema(notes, {
   dealId: orbitId('deal').optional().nullable(),
   companyId: orbitId('company').optional().nullable(),
   createdByUserId: orbitId('user').optional().nullable(),
+})
+
+export const productSelectSchema = createSelectSchema(products, {
+  id: orbitId('product'),
+  organizationId: orbitId('organization'),
+  currency: z.string().length(3).transform((value) => value.toUpperCase()),
+})
+export const productInsertSchema = createInsertSchema(products, {
+  organizationId: orbitId('organization'),
+  currency: z.string().length(3).transform((value) => value.toUpperCase()).optional(),
+})
+export const productUpdateSchema = createUpdateSchema(products, {
+  organizationId: orbitId('organization').optional(),
+  currency: z.string().length(3).transform((value) => value.toUpperCase()).optional(),
+})
+
+export const paymentSelectSchema = createSelectSchema(payments, {
+  id: orbitId('payment'),
+  organizationId: orbitId('organization'),
+  dealId: orbitId('deal').optional().nullable(),
+  contactId: orbitId('contact').optional().nullable(),
+  currency: z.string().length(3).transform((value) => value.toUpperCase()),
+})
+export const paymentInsertSchema = createInsertSchema(payments, {
+  organizationId: orbitId('organization'),
+  dealId: orbitId('deal').optional().nullable(),
+  contactId: orbitId('contact').optional().nullable(),
+  currency: z.string().length(3).transform((value) => value.toUpperCase()).optional(),
+})
+export const paymentUpdateSchema = createUpdateSchema(payments, {
+  organizationId: orbitId('organization').optional(),
+  dealId: orbitId('deal').optional().nullable(),
+  contactId: orbitId('contact').optional().nullable(),
+  currency: z.string().length(3).transform((value) => value.toUpperCase()).optional(),
+})
+
+export const contractSelectSchema = createSelectSchema(contracts, {
+  id: orbitId('contract'),
+  organizationId: orbitId('organization'),
+  dealId: orbitId('deal').optional().nullable(),
+  contactId: orbitId('contact').optional().nullable(),
+  companyId: orbitId('company').optional().nullable(),
+})
+export const contractInsertSchema = createInsertSchema(contracts, {
+  organizationId: orbitId('organization'),
+  dealId: orbitId('deal').optional().nullable(),
+  contactId: orbitId('contact').optional().nullable(),
+  companyId: orbitId('company').optional().nullable(),
+})
+export const contractUpdateSchema = createUpdateSchema(contracts, {
+  organizationId: orbitId('organization').optional(),
+  dealId: orbitId('deal').optional().nullable(),
+  contactId: orbitId('contact').optional().nullable(),
+  companyId: orbitId('company').optional().nullable(),
 })

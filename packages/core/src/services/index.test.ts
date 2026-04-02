@@ -6,25 +6,31 @@ import type { StorageAdapter } from '../adapters/interface.js'
 import { DEFAULT_ADAPTER_AUTHORITY_MODEL, asMigrationDatabase } from '../adapters/interface.js'
 import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
-import { initializePostgresWave2SliceASchema } from '../adapters/postgres/schema.js'
+import { initializePostgresWave2SliceBSchema } from '../adapters/postgres/schema.js'
 import { generateId } from '../ids/generate-id.js'
 import { createInMemoryActivityRepository } from '../entities/activities/repository.js'
 import { createInMemoryApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createInMemoryCompanyRepository } from '../entities/companies/repository.js'
+import { createInMemoryContractRepository } from '../entities/contracts/repository.js'
 import { createInMemoryContactRepository } from '../entities/contacts/repository.js'
 import { createInMemoryDealRepository } from '../entities/deals/repository.js'
 import { createInMemoryNoteRepository } from '../entities/notes/repository.js'
 import { createInMemoryOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createInMemoryOrganizationRepository } from '../entities/organizations/repository.js'
+import { createInMemoryPaymentRepository } from '../entities/payments/repository.js'
 import { createInMemoryPipelineRepository } from '../entities/pipelines/repository.js'
+import { createInMemoryProductRepository } from '../entities/products/repository.js'
 import { createInMemoryStageRepository } from '../entities/stages/repository.js'
 import { createInMemoryTaskRepository } from '../entities/tasks/repository.js'
 import { createInMemoryUserRepository } from '../entities/users/repository.js'
 import { createPostgresActivityRepository } from '../entities/activities/repository.js'
 import { createPostgresCompanyRepository } from '../entities/companies/repository.js'
+import { createPostgresContractRepository } from '../entities/contracts/repository.js'
 import { createPostgresNoteRepository } from '../entities/notes/repository.js'
 import { createPostgresOrganizationRepository } from '../entities/organizations/repository.js'
+import { createPostgresPaymentRepository } from '../entities/payments/repository.js'
 import { createPostgresPipelineRepository } from '../entities/pipelines/repository.js'
+import { createPostgresProductRepository } from '../entities/products/repository.js'
 import { createPostgresStageRepository } from '../entities/stages/repository.js'
 import { createPostgresTaskRepository } from '../entities/tasks/repository.js'
 import { createPostgresUserRepository } from '../entities/users/repository.js'
@@ -110,7 +116,7 @@ function createPostgresTestAdapter() {
 }
 
 describe('core services registry', () => {
-  it('exposes the Slice A registry keys and keeps system reads separate', async () => {
+  it('exposes the Slice B registry keys and keeps system reads separate', async () => {
     const organizations = createInMemoryOrganizationRepository([
       {
         id: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
@@ -159,6 +165,9 @@ describe('core services registry', () => {
     const activities = createInMemoryActivityRepository()
     const tasks = createInMemoryTaskRepository()
     const notes = createInMemoryNoteRepository()
+    const products = createInMemoryProductRepository()
+    const payments = createInMemoryPaymentRepository()
+    const contracts = createInMemoryContractRepository()
     const users = createInMemoryUserRepository()
 
     const services = createCoreServices(createTestAdapter(), {
@@ -173,6 +182,9 @@ describe('core services registry', () => {
       activities,
       tasks,
       notes,
+      products,
+      payments,
+      contracts,
       users,
     })
 
@@ -181,9 +193,12 @@ describe('core services registry', () => {
       'companies',
       'contactContext',
       'contacts',
+      'contracts',
       'deals',
       'notes',
+      'payments',
       'pipelines',
+      'products',
       'schema',
       'search',
       'stages',
@@ -320,17 +335,21 @@ describe('core services registry', () => {
     expect(context?.openTasks).toEqual([])
     expect(context?.recentActivities).toEqual([])
     expect(() => services.activities).toThrow('is not implemented')
+    expect(() => services.products).toThrow('is not implemented')
   })
 
   it('can build the registry from a Postgres adapter and Postgres-backed repositories', async () => {
     const { database, adapter } = createPostgresTestAdapter()
-    await initializePostgresWave2SliceASchema(database)
+    await initializePostgresWave2SliceBSchema(database)
 
     const organizations = createPostgresOrganizationRepository(adapter)
     const activities = createPostgresActivityRepository(adapter)
     const companies = createPostgresCompanyRepository(adapter)
+    const contracts = createPostgresContractRepository(adapter)
     const notes = createPostgresNoteRepository(adapter)
+    const payments = createPostgresPaymentRepository(adapter)
     const pipelines = createPostgresPipelineRepository(adapter)
+    const products = createPostgresProductRepository(adapter)
     const stages = createPostgresStageRepository(adapter)
     const tasks = createPostgresTaskRepository(adapter)
     const users = createPostgresUserRepository(adapter)
@@ -347,6 +366,9 @@ describe('core services registry', () => {
       activities,
       tasks,
       notes,
+      products,
+      payments,
+      contracts,
       users,
     })
 
@@ -364,12 +386,21 @@ describe('core services registry', () => {
       name: 'Acme',
       domain: 'acme.test',
     })
+    const product = await services.products.create(ctx, {
+      name: 'Platform',
+      price: '199.00',
+      sortOrder: 1,
+    })
 
     expect(await services.system.organizations.list(ctx, { limit: 10 })).toMatchObject({
       data: [{ id: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY' }],
     })
     expect(await services.companies.get(ctx, company.id)).toMatchObject({
       id: company.id,
+      organizationId: ctx.orgId,
+    })
+    expect(await services.products.get(ctx, product.id)).toMatchObject({
+      id: product.id,
       organizationId: ctx.orgId,
     })
 
