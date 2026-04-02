@@ -6,7 +6,7 @@ import type { StorageAdapter } from '../adapters/interface.js'
 import { DEFAULT_ADAPTER_AUTHORITY_MODEL, asMigrationDatabase } from '../adapters/interface.js'
 import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
-import { initializePostgresWave2SliceBSchema } from '../adapters/postgres/schema.js'
+import { initializePostgresWave2SliceCSchema } from '../adapters/postgres/schema.js'
 import { generateId } from '../ids/generate-id.js'
 import { createInMemoryActivityRepository } from '../entities/activities/repository.js'
 import { createInMemoryApiKeyRepository } from '../entities/api-keys/repository.js'
@@ -20,17 +20,26 @@ import { createInMemoryOrganizationRepository } from '../entities/organizations/
 import { createInMemoryPaymentRepository } from '../entities/payments/repository.js'
 import { createInMemoryPipelineRepository } from '../entities/pipelines/repository.js'
 import { createInMemoryProductRepository } from '../entities/products/repository.js'
+import { createInMemorySequenceEnrollmentRepository } from '../entities/sequence-enrollments/repository.js'
+import { createInMemorySequenceEventRepository } from '../entities/sequence-events/repository.js'
+import { createInMemorySequenceStepRepository } from '../entities/sequence-steps/repository.js'
+import { createInMemorySequenceRepository } from '../entities/sequences/repository.js'
 import { createInMemoryStageRepository } from '../entities/stages/repository.js'
 import { createInMemoryTaskRepository } from '../entities/tasks/repository.js'
 import { createInMemoryUserRepository } from '../entities/users/repository.js'
 import { createPostgresActivityRepository } from '../entities/activities/repository.js'
 import { createPostgresCompanyRepository } from '../entities/companies/repository.js'
 import { createPostgresContractRepository } from '../entities/contracts/repository.js'
+import { createPostgresContactRepository } from '../entities/contacts/repository.js'
 import { createPostgresNoteRepository } from '../entities/notes/repository.js'
 import { createPostgresOrganizationRepository } from '../entities/organizations/repository.js'
 import { createPostgresPaymentRepository } from '../entities/payments/repository.js'
 import { createPostgresPipelineRepository } from '../entities/pipelines/repository.js'
 import { createPostgresProductRepository } from '../entities/products/repository.js'
+import { createPostgresSequenceEnrollmentRepository } from '../entities/sequence-enrollments/repository.js'
+import { createPostgresSequenceEventRepository } from '../entities/sequence-events/repository.js'
+import { createPostgresSequenceStepRepository } from '../entities/sequence-steps/repository.js'
+import { createPostgresSequenceRepository } from '../entities/sequences/repository.js'
 import { createPostgresStageRepository } from '../entities/stages/repository.js'
 import { createPostgresTaskRepository } from '../entities/tasks/repository.js'
 import { createPostgresUserRepository } from '../entities/users/repository.js'
@@ -116,7 +125,7 @@ function createPostgresTestAdapter() {
 }
 
 describe('core services registry', () => {
-  it('exposes the Slice B registry keys and keeps system reads separate', async () => {
+  it('exposes the Slice C registry keys and keeps system reads separate', async () => {
     const organizations = createInMemoryOrganizationRepository([
       {
         id: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
@@ -168,6 +177,10 @@ describe('core services registry', () => {
     const products = createInMemoryProductRepository()
     const payments = createInMemoryPaymentRepository()
     const contracts = createInMemoryContractRepository()
+    const sequences = createInMemorySequenceRepository()
+    const sequenceSteps = createInMemorySequenceStepRepository()
+    const sequenceEnrollments = createInMemorySequenceEnrollmentRepository()
+    const sequenceEvents = createInMemorySequenceEventRepository()
     const users = createInMemoryUserRepository()
 
     const services = createCoreServices(createTestAdapter(), {
@@ -185,6 +198,10 @@ describe('core services registry', () => {
       products,
       payments,
       contracts,
+      sequences,
+      sequenceSteps,
+      sequenceEnrollments,
+      sequenceEvents,
       users,
     })
 
@@ -201,6 +218,10 @@ describe('core services registry', () => {
       'products',
       'schema',
       'search',
+      'sequenceEnrollments',
+      'sequenceEvents',
+      'sequenceSteps',
+      'sequences',
       'stages',
       'system',
       'tasks',
@@ -336,20 +357,26 @@ describe('core services registry', () => {
     expect(context?.recentActivities).toEqual([])
     expect(() => services.activities).toThrow('is not implemented')
     expect(() => services.products).toThrow('is not implemented')
+    expect(() => services.sequences).toThrow('is not implemented')
   })
 
   it('can build the registry from a Postgres adapter and Postgres-backed repositories', async () => {
     const { database, adapter } = createPostgresTestAdapter()
-    await initializePostgresWave2SliceBSchema(database)
+    await initializePostgresWave2SliceCSchema(database)
 
     const organizations = createPostgresOrganizationRepository(adapter)
     const activities = createPostgresActivityRepository(adapter)
     const companies = createPostgresCompanyRepository(adapter)
     const contracts = createPostgresContractRepository(adapter)
+    const contacts = createPostgresContactRepository(adapter)
     const notes = createPostgresNoteRepository(adapter)
     const payments = createPostgresPaymentRepository(adapter)
     const pipelines = createPostgresPipelineRepository(adapter)
     const products = createPostgresProductRepository(adapter)
+    const sequenceEnrollments = createPostgresSequenceEnrollmentRepository(adapter)
+    const sequenceEvents = createPostgresSequenceEventRepository(adapter)
+    const sequenceSteps = createPostgresSequenceStepRepository(adapter)
+    const sequences = createPostgresSequenceRepository(adapter)
     const stages = createPostgresStageRepository(adapter)
     const tasks = createPostgresTaskRepository(adapter)
     const users = createPostgresUserRepository(adapter)
@@ -359,7 +386,7 @@ describe('core services registry', () => {
       organizationMemberships: createInMemoryOrganizationMembershipRepository(),
       apiKeys: createInMemoryApiKeyRepository(),
       companies,
-      contacts: createInMemoryContactRepository(),
+      contacts,
       pipelines,
       stages,
       deals: createInMemoryDealRepository(),
@@ -369,6 +396,10 @@ describe('core services registry', () => {
       products,
       payments,
       contracts,
+      sequences,
+      sequenceSteps,
+      sequenceEnrollments,
+      sequenceEvents,
       users,
     })
 
@@ -386,10 +417,32 @@ describe('core services registry', () => {
       name: 'Acme',
       domain: 'acme.test',
     })
+    const contact = await services.contacts.create(ctx, {
+      name: 'Taylor',
+      email: 'taylor@acme.test',
+      companyId: company.id,
+    })
     const product = await services.products.create(ctx, {
       name: 'Platform',
       price: '199.00',
       sortOrder: 1,
+    })
+    const sequence = await services.sequences.create(ctx, {
+      name: 'Outbound',
+    })
+    const sequenceStep = await services.sequenceSteps.create(ctx, {
+      sequenceId: sequence.id,
+      stepOrder: 1,
+      actionType: 'email',
+    })
+    const sequenceEnrollment = await services.sequenceEnrollments.create(ctx, {
+      sequenceId: sequence.id,
+      contactId: contact.id,
+    })
+    const sequenceEvent = await services.sequenceEvents.create(ctx, {
+      sequenceEnrollmentId: sequenceEnrollment.id,
+      sequenceStepId: sequenceStep.id,
+      eventType: 'step.entered',
     })
 
     expect(await services.system.organizations.list(ctx, { limit: 10 })).toMatchObject({
@@ -402,6 +455,22 @@ describe('core services registry', () => {
     expect(await services.products.get(ctx, product.id)).toMatchObject({
       id: product.id,
       organizationId: ctx.orgId,
+    })
+    expect(await services.sequences.get(ctx, sequence.id)).toMatchObject({
+      id: sequence.id,
+      organizationId: ctx.orgId,
+    })
+    expect(await services.sequenceSteps.get(ctx, sequenceStep.id)).toMatchObject({
+      id: sequenceStep.id,
+      sequenceId: sequence.id,
+    })
+    expect(await services.sequenceEnrollments.get(ctx, sequenceEnrollment.id)).toMatchObject({
+      id: sequenceEnrollment.id,
+      contactId: contact.id,
+    })
+    expect(await services.sequenceEvents.get(ctx, sequenceEvent.id)).toMatchObject({
+      id: sequenceEvent.id,
+      sequenceEnrollmentId: sequenceEnrollment.id,
     })
 
     await database.close()

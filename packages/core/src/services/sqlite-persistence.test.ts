@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createSqliteStorageAdapter } from '../adapters/sqlite/adapter.js'
 import { createSqliteOrbitDatabase } from '../adapters/sqlite/database.js'
-import { initializeSqliteWave2SliceBSchema } from '../adapters/sqlite/schema.js'
+import { initializeSqliteWave2SliceCSchema } from '../adapters/sqlite/schema.js'
 import { createSqliteApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createSqliteOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createSqliteOrganizationRepository } from '../entities/organizations/repository.js'
@@ -20,7 +20,7 @@ const ctxB = {
 
 async function createSqliteAdapter() {
   const database = createSqliteOrbitDatabase()
-  await initializeSqliteWave2SliceBSchema(database)
+  await initializeSqliteWave2SliceCSchema(database)
 
   return createSqliteStorageAdapter({
     database,
@@ -42,13 +42,17 @@ async function createSqliteAdapter() {
         'products',
         'payments',
         'contracts',
+        'sequences',
+        'sequence_steps',
+        'sequence_enrollments',
+        'sequence_events',
       ],
     }),
   })
 }
 
 describe('sqlite persistence bridge', () => {
-  it('persists Slice B records across service registries', async () => {
+  it('persists Slice C records across service registries', async () => {
     const adapter = await createSqliteAdapter()
     const organizations = createSqliteOrganizationRepository(adapter)
 
@@ -127,6 +131,24 @@ describe('sqlite persistence bridge', () => {
       companyId: company.id,
       dealId: deal.id,
     })
+    const sequence = await servicesA.sequences.create(ctxA, {
+      name: 'Outbound',
+    })
+    const sequenceStep = await servicesA.sequenceSteps.create(ctxA, {
+      sequenceId: sequence.id,
+      stepOrder: 1,
+      actionType: 'email',
+      templateSubject: 'Welcome to Orbit',
+    })
+    const sequenceEnrollment = await servicesA.sequenceEnrollments.create(ctxA, {
+      sequenceId: sequence.id,
+      contactId: contact.id,
+    })
+    const sequenceEvent = await servicesA.sequenceEvents.create(ctxA, {
+      sequenceEnrollmentId: sequenceEnrollment.id,
+      sequenceStepId: sequenceStep.id,
+      eventType: 'step.entered',
+    })
 
     const servicesB = createCoreServices(adapter)
     expect(await servicesB.companies.get(ctxA, company.id)).toEqual(company)
@@ -138,9 +160,17 @@ describe('sqlite persistence bridge', () => {
     expect(await servicesB.products.get(ctxA, product.id)).toEqual(product)
     expect(await servicesB.payments.get(ctxA, payment.id)).toEqual(payment)
     expect(await servicesB.contracts.get(ctxA, contract.id)).toEqual(contract)
+    expect(await servicesB.sequences.get(ctxA, sequence.id)).toEqual(sequence)
+    expect(await servicesB.sequenceSteps.get(ctxA, sequenceStep.id)).toEqual(sequenceStep)
+    expect(await servicesB.sequenceEnrollments.get(ctxA, sequenceEnrollment.id)).toEqual(sequenceEnrollment)
+    expect(await servicesB.sequenceEvents.get(ctxA, sequenceEvent.id)).toEqual(sequenceEvent)
     expect(await servicesB.products.get(ctxB, product.id)).toBeNull()
     expect(await servicesB.payments.get(ctxB, payment.id)).toBeNull()
     expect(await servicesB.contracts.get(ctxB, contract.id)).toBeNull()
+    expect(await servicesB.sequences.get(ctxB, sequence.id)).toBeNull()
+    expect(await servicesB.sequenceSteps.get(ctxB, sequenceStep.id)).toBeNull()
+    expect(await servicesB.sequenceEnrollments.get(ctxB, sequenceEnrollment.id)).toBeNull()
+    expect(await servicesB.sequenceEvents.get(ctxB, sequenceEvent.id)).toBeNull()
     await expect(servicesB.companies.update(ctxB, company.id, { name: 'Beta' })).rejects.toThrow(
       'Company',
     )

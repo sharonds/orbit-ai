@@ -15,6 +15,10 @@ import {
   payments,
   pipelines,
   products,
+  sequenceEnrollments,
+  sequenceEvents,
+  sequences,
+  sequenceSteps,
   stages,
   tasks,
   users,
@@ -370,4 +374,65 @@ export const contractUpdateSchema = createUpdateSchema(contracts, {
   dealId: orbitId('deal').optional().nullable(),
   contactId: orbitId('contact').optional().nullable(),
   companyId: orbitId('company').optional().nullable(),
+})
+
+export const sequenceSelectSchema = createSelectSchema(sequences, {
+  id: orbitId('sequence'),
+  organizationId: orbitId('organization'),
+})
+export const sequenceInsertSchema = createInsertSchema(sequences, {
+  organizationId: orbitId('organization'),
+})
+export const sequenceUpdateSchema = createUpdateSchema(sequences, {
+  organizationId: orbitId('organization').optional(),
+})
+
+export const sequenceStepSelectSchema = createSelectSchema(sequenceSteps, {
+  id: orbitId('sequenceStep'),
+  organizationId: orbitId('organization'),
+  sequenceId: orbitId('sequence'),
+})
+export const sequenceStepInsertSchema = createInsertSchema(sequenceSteps, {
+  organizationId: orbitId('organization'),
+  sequenceId: orbitId('sequence'),
+})
+export const sequenceStepUpdateSchema = createUpdateSchema(sequenceSteps, {
+  organizationId: orbitId('organization').optional(),
+  sequenceId: orbitId('sequence').optional(),
+})
+
+export const sequenceEnrollmentSelectSchema = createSelectSchema(sequenceEnrollments, {
+  id: orbitId('sequenceEnrollment'),
+  organizationId: orbitId('organization'),
+  sequenceId: orbitId('sequence'),
+  contactId: orbitId('contact'),
+})
+export const sequenceEnrollmentInsertSchema = createInsertSchema(sequenceEnrollments, {
+  organizationId: orbitId('organization'),
+  sequenceId: orbitId('sequence'),
+  contactId: orbitId('contact'),
+  enrolledAt: z.date().optional(),
+})
+export const sequenceEnrollmentUpdateSchema = createUpdateSchema(sequenceEnrollments, {
+  organizationId: orbitId('organization').optional(),
+  sequenceId: orbitId('sequence').optional(),
+  contactId: orbitId('contact').optional(),
+})
+
+export const sequenceEventSelectSchema = createSelectSchema(sequenceEvents, {
+  id: orbitId('sequenceEvent'),
+  organizationId: orbitId('organization'),
+  sequenceEnrollmentId: orbitId('sequenceEnrollment'),
+  sequenceStepId: orbitId('sequenceStep').optional().nullable(),
+})
+export const sequenceEventInsertSchema = createInsertSchema(sequenceEvents, {
+  organizationId: orbitId('organization'),
+  sequenceEnrollmentId: orbitId('sequenceEnrollment'),
+  sequenceStepId: orbitId('sequenceStep').optional().nullable(),
+  occurredAt: z.date().optional(),
+})
+export const sequenceEventUpdateSchema = createUpdateSchema(sequenceEvents, {
+  organizationId: orbitId('organization').optional(),
+  sequenceEnrollmentId: orbitId('sequenceEnrollment').optional(),
+  sequenceStepId: orbitId('sequenceStep').optional().nullable(),
 })

@@ -12,6 +12,10 @@ import {
   payments,
   pipelines,
   products,
+  sequenceEnrollments,
+  sequenceEvents,
+  sequences,
+  sequenceSteps,
   stages,
   tasks,
   users,
@@ -32,6 +36,10 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   products: many(products),
   payments: many(payments),
   contracts: many(contracts),
+  sequences: many(sequences),
+  sequenceSteps: many(sequenceSteps),
+  sequenceEnrollments: many(sequenceEnrollments),
+  sequenceEvents: many(sequenceEvents),
 }))
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -118,6 +126,7 @@ export const contactsRelations = relations(contacts, ({ one, many }) => ({
   notes: many(notes),
   payments: many(payments),
   contracts: many(contracts),
+  sequenceEnrollments: many(sequenceEnrollments),
 }))
 
 export const pipelinesRelations = relations(pipelines, ({ one, many }) => ({
@@ -280,5 +289,57 @@ export const contractsRelations = relations(contracts, ({ one }) => ({
   company: one(companies, {
     fields: [contracts.companyId],
     references: [companies.id],
+  }),
+}))
+
+export const sequencesRelations = relations(sequences, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [sequences.organizationId],
+    references: [organizations.id],
+  }),
+  steps: many(sequenceSteps),
+  enrollments: many(sequenceEnrollments),
+}))
+
+export const sequenceStepsRelations = relations(sequenceSteps, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [sequenceSteps.organizationId],
+    references: [organizations.id],
+  }),
+  sequence: one(sequences, {
+    fields: [sequenceSteps.sequenceId],
+    references: [sequences.id],
+  }),
+  events: many(sequenceEvents),
+}))
+
+export const sequenceEnrollmentsRelations = relations(sequenceEnrollments, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [sequenceEnrollments.organizationId],
+    references: [organizations.id],
+  }),
+  sequence: one(sequences, {
+    fields: [sequenceEnrollments.sequenceId],
+    references: [sequences.id],
+  }),
+  contact: one(contacts, {
+    fields: [sequenceEnrollments.contactId],
+    references: [contacts.id],
+  }),
+  events: many(sequenceEvents),
+}))
+
+export const sequenceEventsRelations = relations(sequenceEvents, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [sequenceEvents.organizationId],
+    references: [organizations.id],
+  }),
+  enrollment: one(sequenceEnrollments, {
+    fields: [sequenceEvents.sequenceEnrollmentId],
+    references: [sequenceEnrollments.id],
+  }),
+  step: one(sequenceSteps, {
+    fields: [sequenceEvents.sequenceStepId],
+    references: [sequenceSteps.id],
   }),
 }))

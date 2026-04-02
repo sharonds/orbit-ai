@@ -257,6 +257,64 @@ const POSTGRES_WAVE_2_SLICE_B_SCHEMA_STATEMENTS = [
   `create index if not exists contracts_status_idx on contracts (status)`,
 ] as const
 
+const POSTGRES_WAVE_2_SLICE_C_SCHEMA_STATEMENTS = [
+  ...POSTGRES_WAVE_2_SLICE_B_SCHEMA_STATEMENTS,
+  `create table if not exists sequences (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    name text not null,
+    description text,
+    trigger_event text,
+    status text not null default 'draft',
+    custom_fields jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create unique index if not exists sequences_org_name_idx on sequences (organization_id, name)`,
+  `create table if not exists sequence_steps (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    sequence_id text not null references sequences(id),
+    step_order integer not null,
+    action_type text not null,
+    delay_minutes integer not null default 0,
+    template_subject text,
+    template_body text,
+    task_title text,
+    task_description text,
+    metadata jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create unique index if not exists sequence_steps_order_idx on sequence_steps (sequence_id, step_order)`,
+  `create table if not exists sequence_enrollments (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    sequence_id text not null references sequences(id),
+    contact_id text not null references contacts(id),
+    status text not null default 'active',
+    current_step_order integer not null default 0,
+    enrolled_at timestamptz not null,
+    exited_at timestamptz,
+    exit_reason text,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create unique index if not exists sequence_enrollments_active_idx on sequence_enrollments (sequence_id, contact_id, status)`,
+  `create table if not exists sequence_events (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    sequence_enrollment_id text not null references sequence_enrollments(id),
+    sequence_step_id text references sequence_steps(id),
+    event_type text not null,
+    payload jsonb not null default '{}'::jsonb,
+    occurred_at timestamptz not null,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create index if not exists sequence_events_enrollment_idx on sequence_events (sequence_enrollment_id)`,
+] as const
+
 export async function initializePostgresWave1Schema(db: OrbitDatabase): Promise<void> {
   for (const statement of POSTGRES_WAVE_1_SCHEMA_STATEMENTS) {
     await db.execute(sql.raw(statement))
@@ -271,6 +329,12 @@ export async function initializePostgresWave2SliceASchema(db: OrbitDatabase): Pr
 
 export async function initializePostgresWave2SliceBSchema(db: OrbitDatabase): Promise<void> {
   for (const statement of POSTGRES_WAVE_2_SLICE_B_SCHEMA_STATEMENTS) {
+    await db.execute(sql.raw(statement))
+  }
+}
+
+export async function initializePostgresWave2SliceCSchema(db: OrbitDatabase): Promise<void> {
+  for (const statement of POSTGRES_WAVE_2_SLICE_C_SCHEMA_STATEMENTS) {
     await db.execute(sql.raw(statement))
   }
 }

@@ -306,3 +306,69 @@ export const contracts = orbit.table(
   },
   (table) => [index('contracts_status_idx').on(table.status)],
 )
+
+export const sequences = orbit.table(
+  'sequences',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    name: text('name').notNull(),
+    description: text('description'),
+    triggerEvent: text('trigger_event'),
+    status: text('status').notNull().default('draft'),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [uniqueIndex('sequences_org_name_idx').on(table.organizationId, table.name)],
+)
+
+export const sequenceSteps = orbit.table(
+  'sequence_steps',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    sequenceId: text('sequence_id').notNull().references(() => sequences.id),
+    stepOrder: integer('step_order').notNull(),
+    actionType: text('action_type').notNull(),
+    delayMinutes: integer('delay_minutes').notNull().default(0),
+    templateSubject: text('template_subject'),
+    templateBody: text('template_body'),
+    taskTitle: text('task_title'),
+    taskDescription: text('task_description'),
+    metadata: metadata(),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex('sequence_steps_order_idx').on(table.sequenceId, table.stepOrder)],
+)
+
+export const sequenceEnrollments = orbit.table(
+  'sequence_enrollments',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    sequenceId: text('sequence_id').notNull().references(() => sequences.id),
+    contactId: text('contact_id').notNull().references(() => contacts.id),
+    status: text('status').notNull().default('active'),
+    currentStepOrder: integer('current_step_order').notNull().default(0),
+    enrolledAt: timestamp('enrolled_at', { withTimezone: true }).notNull(),
+    exitedAt: timestamp('exited_at', { withTimezone: true }),
+    exitReason: text('exit_reason'),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex('sequence_enrollments_active_idx').on(table.sequenceId, table.contactId, table.status)],
+)
+
+export const sequenceEvents = orbit.table(
+  'sequence_events',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    sequenceEnrollmentId: text('sequence_enrollment_id').notNull().references(() => sequenceEnrollments.id),
+    sequenceStepId: text('sequence_step_id').references(() => sequenceSteps.id),
+    eventType: text('event_type').notNull(),
+    payload: metadata(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (table) => [index('sequence_events_enrollment_idx').on(table.sequenceEnrollmentId)],
+)
