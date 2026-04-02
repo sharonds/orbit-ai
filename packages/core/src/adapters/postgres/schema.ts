@@ -315,6 +315,79 @@ const POSTGRES_WAVE_2_SLICE_C_SCHEMA_STATEMENTS = [
   `create index if not exists sequence_events_enrollment_idx on sequence_events (sequence_enrollment_id)`,
 ] as const
 
+const POSTGRES_WAVE_2_SLICE_D_SCHEMA_STATEMENTS = [
+  ...POSTGRES_WAVE_2_SLICE_C_SCHEMA_STATEMENTS,
+  `create table if not exists tags (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    name text not null,
+    color text,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create unique index if not exists tags_org_name_idx on tags (organization_id, name)`,
+  `create table if not exists entity_tags (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    tag_id text not null references tags(id),
+    entity_type text not null,
+    entity_id text not null,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create unique index if not exists entity_tags_unique_idx on entity_tags (organization_id, tag_id, entity_type, entity_id)`,
+  `create index if not exists entity_tags_lookup_idx on entity_tags (organization_id, entity_type, entity_id)`,
+  `create table if not exists imports (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    entity_type text not null,
+    file_name text not null,
+    total_rows integer not null default 0,
+    created_rows integer not null default 0,
+    updated_rows integer not null default 0,
+    skipped_rows integer not null default 0,
+    failed_rows integer not null default 0,
+    status text not null default 'pending',
+    started_by_user_id text references users(id),
+    completed_at timestamptz,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create index if not exists imports_entity_type_idx on imports (entity_type)`,
+  `create table if not exists webhooks (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    url text not null,
+    description text,
+    events jsonb not null default '[]'::jsonb,
+    secret_encrypted text not null,
+    secret_last_four text not null,
+    secret_created_at timestamptz not null,
+    status text not null default 'active',
+    last_triggered_at timestamptz,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create index if not exists webhooks_status_idx on webhooks (status)`,
+  `create table if not exists webhook_deliveries (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    webhook_id text not null references webhooks(id),
+    event_id text not null,
+    event_type text not null,
+    status text not null default 'pending',
+    response_status integer,
+    attempt_count integer not null default 0,
+    next_attempt_at timestamptz,
+    delivered_at timestamptz,
+    last_error text,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create unique index if not exists webhook_deliveries_event_idx on webhook_deliveries (webhook_id, event_id)`,
+  `create index if not exists webhook_deliveries_next_attempt_idx on webhook_deliveries (next_attempt_at)`,
+] as const
+
 export async function initializePostgresWave1Schema(db: OrbitDatabase): Promise<void> {
   for (const statement of POSTGRES_WAVE_1_SCHEMA_STATEMENTS) {
     await db.execute(sql.raw(statement))
@@ -335,6 +408,12 @@ export async function initializePostgresWave2SliceBSchema(db: OrbitDatabase): Pr
 
 export async function initializePostgresWave2SliceCSchema(db: OrbitDatabase): Promise<void> {
   for (const statement of POSTGRES_WAVE_2_SLICE_C_SCHEMA_STATEMENTS) {
+    await db.execute(sql.raw(statement))
+  }
+}
+
+export async function initializePostgresWave2SliceDSchema(db: OrbitDatabase): Promise<void> {
+  for (const statement of POSTGRES_WAVE_2_SLICE_D_SCHEMA_STATEMENTS) {
     await db.execute(sql.raw(statement))
   }
 }

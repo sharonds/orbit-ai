@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createSqliteStorageAdapter } from '../adapters/sqlite/adapter.js'
 import { createSqliteOrbitDatabase } from '../adapters/sqlite/database.js'
-import { initializeSqliteWave2SliceCSchema } from '../adapters/sqlite/schema.js'
+import { initializeSqliteWave2SliceDSchema } from '../adapters/sqlite/schema.js'
 import { createSqliteApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createSqliteOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createSqliteOrganizationRepository } from '../entities/organizations/repository.js'
@@ -20,7 +20,7 @@ const ctxB = {
 
 async function createSqliteAdapter() {
   const database = createSqliteOrbitDatabase()
-  await initializeSqliteWave2SliceCSchema(database)
+  await initializeSqliteWave2SliceDSchema(database)
 
   return createSqliteStorageAdapter({
     database,
@@ -46,6 +46,11 @@ async function createSqliteAdapter() {
         'sequence_steps',
         'sequence_enrollments',
         'sequence_events',
+        'tags',
+        'entity_tags',
+        'imports',
+        'webhooks',
+        'webhook_deliveries',
       ],
     }),
   })
@@ -150,6 +155,21 @@ describe('sqlite persistence bridge', () => {
       eventType: 'step.entered',
     })
 
+    const tag = await servicesA.tags.create(ctxA, {
+      name: 'VIP',
+      color: '#ff0000',
+    })
+    const webhook = await servicesA.webhooks.create(ctxA, {
+      url: 'https://example.com/hook',
+      secretEncrypted: 'enc_test_secret',
+      secretLastFour: 'cret',
+      events: ['contact.created'],
+    })
+    const importJob = await servicesA.imports.create(ctxA, {
+      entityType: 'contacts',
+      fileName: 'contacts.csv',
+    })
+
     const servicesB = createCoreServices(adapter)
     expect(await servicesB.companies.get(ctxA, company.id)).toEqual(company)
     expect(await servicesB.contacts.get(ctxA, contact.id)).toEqual(contact)
@@ -171,6 +191,15 @@ describe('sqlite persistence bridge', () => {
     expect(await servicesB.sequenceSteps.get(ctxB, sequenceStep.id)).toBeNull()
     expect(await servicesB.sequenceEnrollments.get(ctxB, sequenceEnrollment.id)).toBeNull()
     expect(await servicesB.sequenceEvents.get(ctxB, sequenceEvent.id)).toBeNull()
+    expect(await servicesB.tags.get(ctxA, tag.id)).toEqual(tag)
+    expect(await servicesB.webhooks.get(ctxA, webhook.id)).toEqual(webhook)
+    expect(await servicesB.imports.get(ctxA, importJob.id)).toEqual(importJob)
+    expect(await servicesB.tags.get(ctxB, tag.id)).toBeNull()
+    expect(await servicesB.webhooks.get(ctxB, webhook.id)).toBeNull()
+    expect(await servicesB.imports.get(ctxB, importJob.id)).toBeNull()
+    // Verify webhook sanitization on persist round-trip
+    expect('secretEncrypted' in webhook).toBe(false)
+    expect(webhook.secretLastFour).toBe('cret')
     await expect(servicesB.companies.update(ctxB, company.id, { name: 'Beta' })).rejects.toThrow(
       'Company',
     )
