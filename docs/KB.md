@@ -2,7 +2,7 @@
 
 Date: 2026-04-02
 Status: Active working hub
-Current baseline commit: `1d98388`
+Current baseline commit: `060936f`
 
 ## What Orbit Is
 
@@ -39,11 +39,14 @@ Completed:
 - `@orbit-ai/core` pre-API hardening follow-up
 - `@orbit-ai/core` Postgres persistence bridge
 - `@orbit-ai/core` Wave 2 execution plan
+- `@orbit-ai/core` Wave 2 Slice A
+- `@orbit-ai/core` Wave 2 Slice B
 
 Current focus:
 
 - maintain the repo knowledge base as the live hub
-- complete review and acceptance for Core Wave 2 Slice A
+- complete PR review and acceptance for Core Wave 2 Slice B
+- keep tenant hardening carry-forwards explicit after the Slice B mutation-guard follow-up
 - treat the Postgres persistence bridge as the accepted baseline feeding Wave 2
 - keep API/SDK execution blocked until Wave 2 service coverage is further along
 - keep execution docs and skills aligned with implementation progress
@@ -104,6 +107,7 @@ Use these files first:
   - [core-persistence-bridge-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-persistence-bridge-review.md)
   - [core-postgres-persistence-bridge-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-postgres-persistence-bridge-review.md)
   - [core-wave-2-slice-a-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-a-review.md)
+  - [core-wave-2-slice-b-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-b-review.md)
   - [orbit-skills-plan.md](/Users/sharonsciammas/orbit-ai/docs/skills/orbit-skills-plan.md)
 
 ## What Is Next
@@ -120,8 +124,10 @@ Immediate next actions:
    - Wave 1 service surface committed on `core-wave-1-services`
    - SQLite persistence bridge committed on `core-wave-1-services`
 3. Next:
-   - accept [core-wave-2-slice-a-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-a-review.md) as the Slice A branch review artifact
-   - decide whether to open Slice B on `core-wave-2-services` or cut a follow-up branch
+   - accept [core-wave-2-slice-b-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-b-review.md) as the Slice B branch review artifact
+   - merge the Slice B hardening follow-up that blocks repository-level `organizationId` mutation
+   - start Slice C on a fresh follow-up branch after Slice B lands
+   - open a separate tenant-hardening follow-up for Postgres RLS DDL and tenant-table org-leading indexes
    - keep API/SDK execution blocked until the Wave 2 service surface is materially further along
 
 ## Open Items
@@ -133,7 +139,7 @@ These are still open, but they do not block the KB:
 - public release sequencing across packages
 - contribution and open-source governance docs
 - whether Postgres-family persistence lands before or alongside core Wave 2
-- how far Wave 2 proceeds beyond Slice A in the current branch before opening the next slice
+- the exact Slice C lifecycle rules for automation entities before implementation starts
 
 ## Decision Log
 
@@ -173,6 +179,9 @@ These are still open, but they do not block the KB:
 - 2026-04-01: Recorded the bridge review outcome in [core-postgres-persistence-bridge-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-postgres-persistence-bridge-review.md); the next core step is the next package-level implementation slice, pending instruction.
 - 2026-04-02: Committed [core-wave-2-services-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-wave-2-services-plan.md) on `main` in `1d98388` and opened branch `core-wave-2-services` to execute Wave 2 starting with Slice A.
 - 2026-04-02: Executed Core Wave 2 Slice A locally on branch `core-wave-2-services`, covering `activities`, `tasks`, `notes`, contact-context integration, and SQLite/Postgres persistence proofs; recorded the outcome in [core-wave-2-slice-a-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-a-review.md).
+- 2026-04-02: Opened branch `core-wave-2-slice-b` from `main` at `060936f` to keep Wave 2 Slice B reviewable as a separate branch after Slice A merged.
+- 2026-04-02: Executed Core Wave 2 Slice B locally on branch `core-wave-2-slice-b`, covering `products`, `payments`, and `contracts`, plus tenant-scope registration, SQLite/Postgres persistence proofs, and Slice B review documentation in [core-wave-2-slice-b-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-b-review.md).
+- 2026-04-02: Landed a Slice B follow-up hardening patch on `core-wave-2-slice-b` to block repository-level `organizationId` mutation in shared tenant repositories and Slice B in-memory repositories, added regression coverage, and explicitly left Postgres RLS DDL plus broader org-index work for a separate tenant-hardening follow-up.
 
 ## Working Rule
 

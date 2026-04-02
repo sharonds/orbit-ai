@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createSqliteStorageAdapter } from '../adapters/sqlite/adapter.js'
 import { createSqliteOrbitDatabase } from '../adapters/sqlite/database.js'
-import { initializeSqliteWave2SliceASchema } from '../adapters/sqlite/schema.js'
+import { initializeSqliteWave2SliceBSchema } from '../adapters/sqlite/schema.js'
 import { createSqliteApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createSqliteOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createSqliteOrganizationRepository } from '../entities/organizations/repository.js'
@@ -20,7 +20,7 @@ const ctxB = {
 
 async function createSqliteAdapter() {
   const database = createSqliteOrbitDatabase()
-  await initializeSqliteWave2SliceASchema(database)
+  await initializeSqliteWave2SliceBSchema(database)
 
   return createSqliteStorageAdapter({
     database,
@@ -39,13 +39,16 @@ async function createSqliteAdapter() {
         'activities',
         'tasks',
         'notes',
+        'products',
+        'payments',
+        'contracts',
       ],
     }),
   })
 }
 
 describe('sqlite persistence bridge', () => {
-  it('persists Slice A records across service registries', async () => {
+  it('persists Slice B records across service registries', async () => {
     const adapter = await createSqliteAdapter()
     const organizations = createSqliteOrganizationRepository(adapter)
 
@@ -105,6 +108,25 @@ describe('sqlite persistence bridge', () => {
       dealId: deal.id,
       companyId: company.id,
     })
+    const product = await servicesA.products.create(ctxA, {
+      name: 'Platform',
+      price: '199.00',
+      sortOrder: 1,
+    })
+    const payment = await servicesA.payments.create(ctxA, {
+      amount: '199.00',
+      status: 'paid',
+      dealId: deal.id,
+      contactId: contact.id,
+      externalId: 'pi_sqlite_123',
+    })
+    const contract = await servicesA.contracts.create(ctxA, {
+      title: 'MSA',
+      status: 'signed',
+      contactId: contact.id,
+      companyId: company.id,
+      dealId: deal.id,
+    })
 
     const servicesB = createCoreServices(adapter)
     expect(await servicesB.companies.get(ctxA, company.id)).toEqual(company)
@@ -113,6 +135,12 @@ describe('sqlite persistence bridge', () => {
     expect(await servicesB.activities.get(ctxA, activity.id)).toEqual(activity)
     expect(await servicesB.tasks.get(ctxA, task.id)).toEqual(task)
     expect(await servicesB.notes.get(ctxA, note.id)).toEqual(note)
+    expect(await servicesB.products.get(ctxA, product.id)).toEqual(product)
+    expect(await servicesB.payments.get(ctxA, payment.id)).toEqual(payment)
+    expect(await servicesB.contracts.get(ctxA, contract.id)).toEqual(contract)
+    expect(await servicesB.products.get(ctxB, product.id)).toBeNull()
+    expect(await servicesB.payments.get(ctxB, payment.id)).toBeNull()
+    expect(await servicesB.contracts.get(ctxB, contract.id)).toBeNull()
     await expect(servicesB.companies.update(ctxB, company.id, { name: 'Beta' })).rejects.toThrow(
       'Company',
     )
@@ -127,6 +155,40 @@ describe('sqlite persistence bridge', () => {
     expect(context?.openTasks).toHaveLength(1)
     expect(context?.recentActivities).toHaveLength(1)
     expect(context?.lastContactDate).toBe('2026-03-31T15:00:00.000Z')
+  })
+
+  it('preserves payment external id conflicts on the sqlite adapter path', async () => {
+    const adapter = await createSqliteAdapter()
+    const organizations = createSqliteOrganizationRepository(adapter)
+
+    await organizations.create({
+      id: ctxA.orgId,
+      name: 'Acme',
+      slug: 'acme',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: new Date('2026-03-31T16:00:00.000Z'),
+      updatedAt: new Date('2026-03-31T16:00:00.000Z'),
+    })
+
+    const services = createCoreServices(adapter)
+    await services.payments.create(ctxA, {
+      amount: '50.00',
+      status: 'pending',
+      externalId: 'pi_sqlite_conflict',
+    })
+
+    await expect(
+      services.payments.create(ctxA, {
+        amount: '75.00',
+        status: 'pending',
+        externalId: 'pi_sqlite_conflict',
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'externalId',
+    })
   })
 
   it('keeps tenant reads scoped while exposing admin/system records separately', async () => {

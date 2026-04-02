@@ -190,6 +190,59 @@ const SQLITE_WAVE_2_SLICE_A_SCHEMA_STATEMENTS = [
   `create index if not exists notes_deal_idx on notes (deal_id)`,
 ] as const
 
+const SQLITE_WAVE_2_SLICE_B_SCHEMA_STATEMENTS = [
+  ...SQLITE_WAVE_2_SLICE_A_SCHEMA_STATEMENTS,
+  `create table if not exists products (
+    id text primary key,
+    organization_id text not null,
+    name text not null,
+    price text not null,
+    currency text not null default 'USD',
+    description text,
+    is_active integer not null default 1,
+    sort_order integer not null default 0,
+    custom_fields text not null default '{}',
+    created_at text not null,
+    updated_at text not null
+  )`,
+  `create index if not exists products_sort_order_idx on products (sort_order)`,
+  `create table if not exists payments (
+    id text primary key,
+    organization_id text not null,
+    amount text not null,
+    currency text not null default 'USD',
+    status text not null,
+    method text,
+    deal_id text,
+    contact_id text,
+    external_id text,
+    paid_at text,
+    metadata text not null default '{}',
+    custom_fields text not null default '{}',
+    created_at text not null,
+    updated_at text not null
+  )`,
+  `create unique index if not exists payments_external_id_idx on payments (organization_id, external_id)`,
+  `create index if not exists payments_status_idx on payments (status)`,
+  `create table if not exists contracts (
+    id text primary key,
+    organization_id text not null,
+    title text not null,
+    content text,
+    status text not null default 'draft',
+    signed_at text,
+    expires_at text,
+    deal_id text,
+    contact_id text,
+    company_id text,
+    external_signature_id text,
+    custom_fields text not null default '{}',
+    created_at text not null,
+    updated_at text not null
+  )`,
+  `create index if not exists contracts_status_idx on contracts (status)`,
+] as const
+
 export async function initializeSqliteWave1Schema(db: OrbitDatabase): Promise<void> {
   for (const statement of SQLITE_WAVE_1_SCHEMA_STATEMENTS) {
     await db.execute(sql.raw(statement))
@@ -198,6 +251,12 @@ export async function initializeSqliteWave1Schema(db: OrbitDatabase): Promise<vo
 
 export async function initializeSqliteWave2SliceASchema(db: OrbitDatabase): Promise<void> {
   for (const statement of SQLITE_WAVE_2_SLICE_A_SCHEMA_STATEMENTS) {
+    await db.execute(sql.raw(statement))
+  }
+}
+
+export async function initializeSqliteWave2SliceBSchema(db: OrbitDatabase): Promise<void> {
+  for (const statement of SQLITE_WAVE_2_SLICE_B_SCHEMA_STATEMENTS) {
     await db.execute(sql.raw(statement))
   }
 }
