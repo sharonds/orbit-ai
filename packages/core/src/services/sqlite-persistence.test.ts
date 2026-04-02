@@ -57,7 +57,7 @@ async function createSqliteAdapter() {
 }
 
 describe('sqlite persistence bridge', () => {
-  it('persists Slice C records across service registries', async () => {
+  it('persists Slice D records across service registries', async () => {
     const adapter = await createSqliteAdapter()
     const organizations = createSqliteOrganizationRepository(adapter)
 
@@ -193,8 +193,12 @@ describe('sqlite persistence bridge', () => {
       webhookId: webhook.id,
       eventId: 'evt_sqlite_1',
       eventType: 'contact.created',
-      status: 'delivered',
+      payload: { contactId: contact.id },
+      signature: 'sig_sqlite_1',
+      idempotencyKey: 'idem_sqlite_1',
+      status: 'succeeded',
       responseStatus: 200,
+      responseBody: '{"ok":true}',
       attemptCount: 1,
       nextAttemptAt: null,
       deliveredAt: new Date('2026-04-02T12:00:00.000Z'),
@@ -233,10 +237,25 @@ describe('sqlite persistence bridge', () => {
     // Verify webhook sanitization on persist round-trip
     expect('secretEncrypted' in webhook).toBe(false)
     expect(webhook.secretLastFour).toBe('cret')
+    expect(importJob.rollbackData).toEqual({})
     // Verify entity tag and webhook delivery admin reads
     expect(await servicesB.system.entityTags.get(ctxA, entityTag.id)).toEqual(entityTag)
     expect(await servicesB.system.entityTags.get(ctxB, entityTag.id)).toBeNull()
-    expect(await servicesB.system.webhookDeliveries.get(ctxA, delivery.id)).toEqual(delivery)
+    expect(await servicesB.system.webhookDeliveries.get(ctxA, delivery.id)).toMatchObject({
+      id: delivery.id,
+      webhookId: webhook.id,
+      eventId: 'evt_sqlite_1',
+      eventType: 'contact.created',
+      status: 'succeeded',
+      responseStatus: 200,
+      attemptCount: 1,
+      deliveredAt: new Date('2026-04-02T12:00:00.000Z'),
+    })
+    const sanitizedDelivery = await servicesB.system.webhookDeliveries.get(ctxA, delivery.id)
+    expect('payload' in (sanitizedDelivery ?? {})).toBe(false)
+    expect('signature' in (sanitizedDelivery ?? {})).toBe(false)
+    expect('idempotencyKey' in (sanitizedDelivery ?? {})).toBe(false)
+    expect('responseBody' in (sanitizedDelivery ?? {})).toBe(false)
     expect(await servicesB.system.webhookDeliveries.get(ctxB, delivery.id)).toBeNull()
     await expect(servicesB.companies.update(ctxB, company.id, { name: 'Beta' })).rejects.toThrow(
       'Company',
@@ -252,6 +271,82 @@ describe('sqlite persistence bridge', () => {
     expect(context?.openTasks).toHaveLength(1)
     expect(context?.recentActivities).toHaveLength(1)
     expect(context?.lastContactDate).toBe('2026-03-31T15:00:00.000Z')
+  })
+
+  it('rejects cross-tenant Slice D relation writes on the sqlite adapter path', async () => {
+    const adapter = await createSqliteAdapter()
+    const organizations = createSqliteOrganizationRepository(adapter)
+    const now = new Date('2026-04-02T12:00:00.000Z')
+
+    await organizations.create({
+      id: ctxA.orgId,
+      name: 'Acme',
+      slug: 'acme',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+    await organizations.create({
+      id: ctxB.orgId,
+      name: 'Beta',
+      slug: 'beta',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const servicesA = createCoreServices(adapter)
+    const tagB = await servicesA.tags.create(ctxB, { name: 'Other Org' })
+    const webhookB = await servicesA.webhooks.create(ctxB, {
+      url: 'https://example.com/other',
+      secretEncrypted: 'enc_other_secret',
+      secretLastFour: 'cret',
+      events: ['contact.created'],
+    })
+
+    const { createSqliteEntityTagRepository } = await import('../entities/entity-tags/repository.js')
+    const entityTagRepo = createSqliteEntityTagRepository(adapter)
+    const { createSqliteWebhookDeliveryRepository } = await import('../entities/webhook-deliveries/repository.js')
+    const deliveryRepo = createSqliteWebhookDeliveryRepository(adapter)
+    const { generateId } = await import('../ids/generate-id.js')
+
+    await expect(
+      entityTagRepo.create(ctxA, {
+        id: generateId('entityTag'),
+        organizationId: ctxA.orgId,
+        tagId: tagB.id,
+        entityType: 'contacts',
+        entityId: 'contact_01ARYZ6S41YYYYYYYYYYYYYYYY',
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).rejects.toMatchObject({ code: 'RELATION_NOT_FOUND' })
+
+    await expect(
+      deliveryRepo.create(ctxA, {
+        id: generateId('webhookDelivery'),
+        organizationId: ctxA.orgId,
+        webhookId: webhookB.id,
+        eventId: 'evt_cross_org_sqlite',
+        eventType: 'contact.created',
+        payload: {},
+        signature: 'sig_cross_org_sqlite',
+        idempotencyKey: 'idem_cross_org_sqlite',
+        status: 'pending',
+        responseStatus: null,
+        responseBody: null,
+        attemptCount: 0,
+        nextAttemptAt: null,
+        deliveredAt: null,
+        lastError: null,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).rejects.toMatchObject({ code: 'RELATION_NOT_FOUND' })
   })
 
   it('preserves payment external id conflicts on the sqlite adapter path', async () => {

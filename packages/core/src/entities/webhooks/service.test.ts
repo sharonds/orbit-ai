@@ -69,8 +69,8 @@ describe('webhook service', () => {
     const webhookService = createWebhookService({ webhooks: createInMemoryWebhookRepository() })
     const webhook = await webhookService.create(ctx, createWebhookInput())
 
-    const updated = await webhookService.update(ctx, webhook.id, { status: 'inactive' })
-    expect(updated.status).toBe('inactive')
+    const updated = await webhookService.update(ctx, webhook.id, { status: 'disabled' })
+    expect(updated.status).toBe('disabled')
     expect('secretEncrypted' in updated).toBe(false)
   })
 

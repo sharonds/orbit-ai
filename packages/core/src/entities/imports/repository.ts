@@ -1,6 +1,12 @@
 import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
 import { createTenantPostgresRepository, fromPostgresDate } from '../../repositories/postgres/shared.js'
-import { createTenantSqliteRepository, fromSqliteDate, toSqliteDate } from '../../repositories/sqlite/shared.js'
+import {
+  createTenantSqliteRepository,
+  fromSqliteDate,
+  fromSqliteJson,
+  toSqliteDate,
+  toSqliteJson,
+} from '../../repositories/sqlite/shared.js'
 import { assertTenantPatchOrganizationInvariant } from '../../repositories/tenant-guards.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
@@ -90,6 +96,7 @@ export function createSqliteImportRepository(adapter: StorageAdapter): ImportRep
       'skipped_rows',
       'failed_rows',
       'status',
+      'rollback_data',
       'started_by_user_id',
       'completed_at',
       'created_at',
@@ -110,6 +117,7 @@ export function createSqliteImportRepository(adapter: StorageAdapter): ImportRep
         skipped_rows: record.skippedRows,
         failed_rows: record.failedRows,
         status: record.status,
+        rollback_data: toSqliteJson(record.rollbackData),
         started_by_user_id: record.startedByUserId ?? null,
         completed_at: record.completedAt ? toSqliteDate(record.completedAt) : null,
         created_at: toSqliteDate(record.createdAt),
@@ -128,6 +136,7 @@ export function createSqliteImportRepository(adapter: StorageAdapter): ImportRep
         skippedRows: row.skipped_rows,
         failedRows: row.failed_rows,
         status: row.status,
+        rollbackData: fromSqliteJson(row.rollback_data, {}),
         startedByUserId: row.started_by_user_id ?? null,
         completedAt: row.completed_at ? fromSqliteDate(row.completed_at) : null,
         createdAt: fromSqliteDate(row.created_at),
@@ -151,6 +160,7 @@ export function createPostgresImportRepository(adapter: StorageAdapter): ImportR
       'skipped_rows',
       'failed_rows',
       'status',
+      'rollback_data',
       'started_by_user_id',
       'completed_at',
       'created_at',
@@ -171,6 +181,7 @@ export function createPostgresImportRepository(adapter: StorageAdapter): ImportR
         skipped_rows: record.skippedRows,
         failed_rows: record.failedRows,
         status: record.status,
+        rollback_data: record.rollbackData,
         started_by_user_id: record.startedByUserId ?? null,
         completed_at: record.completedAt ?? null,
         created_at: record.createdAt,
@@ -189,6 +200,7 @@ export function createPostgresImportRepository(adapter: StorageAdapter): ImportR
         skippedRows: row.skipped_rows,
         failedRows: row.failed_rows,
         status: row.status,
+        rollbackData: row.rollback_data ?? {},
         startedByUserId: row.started_by_user_id ?? null,
         completedAt: row.completed_at ? fromPostgresDate(row.completed_at) : null,
         createdAt: fromPostgresDate(row.created_at),

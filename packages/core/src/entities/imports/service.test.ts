@@ -149,6 +149,22 @@ describe('import service', () => {
     })
   })
 
+  it('rejects update to a startedByUserId from another org', async () => {
+    const importService = createImportService(createTestDeps())
+    const record = await importService.create(ctx, {
+      entityType: 'contacts',
+      fileName: 'contacts.csv',
+    })
+
+    await expect(
+      importService.update(ctx, record.id, {
+        startedByUserId: 'user_01ARYZ6S41ZZZZZZZZZZZZZZZZ',
+      }),
+    ).rejects.toMatchObject({
+      code: 'RELATION_NOT_FOUND',
+    })
+  })
+
   it('supports list and search', async () => {
     const importService = createImportService(createTestDeps())
     await importService.create(ctx, { entityType: 'contacts', fileName: 'contacts.csv' })
@@ -178,6 +194,24 @@ describe('import service', () => {
     })
   })
 
+  it('rejects completedAt while the import is still processing', async () => {
+    const importService = createImportService(createTestDeps())
+    const record = await importService.create(ctx, {
+      entityType: 'contacts',
+      fileName: 'contacts.csv',
+    })
+
+    await expect(
+      importService.update(ctx, record.id, {
+        status: 'processing',
+        completedAt: new Date('2026-04-02T12:00:00.000Z'),
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      field: 'completedAt',
+    })
+  })
+
   it('tenant isolation: org B cannot see org A imports', async () => {
     const importService = createImportService(createTestDeps())
     const record = await importService.create(ctx, {
@@ -201,6 +235,7 @@ describe('import service', () => {
       skippedRows: 0,
       failedRows: 0,
       status: 'pending',
+      rollbackData: {},
       startedByUserId: null,
       completedAt: null,
       createdAt: new Date('2026-04-02T12:00:00.000Z'),
