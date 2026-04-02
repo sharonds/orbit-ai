@@ -431,8 +431,7 @@ export const sequenceEventInsertSchema = createInsertSchema(sequenceEvents, {
   sequenceStepId: orbitId('sequenceStep').optional().nullable(),
   occurredAt: z.date().optional(),
 })
-// Sequence events stay append/read-only at the service layer, but the generic
-// update schema remains exported so the schema package stays structurally complete.
+// Exported for schema completeness; SequenceEventService intentionally omits update — events are immutable.
 export const sequenceEventUpdateSchema = createUpdateSchema(sequenceEvents, {
   organizationId: orbitId('organization').optional(),
   sequenceEnrollmentId: orbitId('sequenceEnrollment').optional(),
