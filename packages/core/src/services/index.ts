@@ -32,6 +32,18 @@ import {
 } from '../entities/deals/repository.js'
 import { createDealService } from '../entities/deals/service.js'
 import {
+  createPostgresEntityTagRepository,
+  createSqliteEntityTagRepository,
+  type EntityTagRepository,
+} from '../entities/entity-tags/repository.js'
+import { createEntityTagAdminService } from '../entities/entity-tags/service.js'
+import {
+  createPostgresImportRepository,
+  createSqliteImportRepository,
+  type ImportRepository,
+} from '../entities/imports/repository.js'
+import { createImportService } from '../entities/imports/service.js'
+import {
   createPostgresNoteRepository,
   createSqliteNoteRepository,
   type NoteRepository,
@@ -74,6 +86,12 @@ import {
 } from '../entities/stages/repository.js'
 import { createStageService } from '../entities/stages/service.js'
 import {
+  createPostgresTagRepository,
+  createSqliteTagRepository,
+  type TagRepository,
+} from '../entities/tags/repository.js'
+import { createTagService } from '../entities/tags/service.js'
+import {
   createPostgresTaskRepository,
   createSqliteTaskRepository,
   type TaskRepository,
@@ -115,6 +133,18 @@ import {
   type UserRepository,
 } from '../entities/users/repository.js'
 import { createUserService } from '../entities/users/service.js'
+import {
+  createPostgresWebhookDeliveryRepository,
+  createSqliteWebhookDeliveryRepository,
+  type WebhookDeliveryRepository,
+} from '../entities/webhook-deliveries/repository.js'
+import { createWebhookDeliveryAdminService } from '../entities/webhook-deliveries/service.js'
+import {
+  createPostgresWebhookRepository,
+  createSqliteWebhookRepository,
+  type WebhookRepository,
+} from '../entities/webhooks/repository.js'
+import { createWebhookService } from '../entities/webhooks/service.js'
 import { OrbitSchemaEngine } from '../schema-engine/engine.js'
 import { createOrbitError } from '../types/errors.js'
 import { createContactContextService } from './contact-context.js'
@@ -140,6 +170,11 @@ interface CoreRepositoryOverrides {
   sequenceSteps?: SequenceStepRepository
   sequenceEnrollments?: SequenceEnrollmentRepository
   sequenceEvents?: SequenceEventRepository
+  tags?: TagRepository
+  entityTags?: EntityTagRepository
+  imports?: ImportRepository
+  webhooks?: WebhookRepository
+  webhookDeliveries?: WebhookDeliveryRepository
 }
 
 function resolveOptionalCoreRepository<T>({
@@ -277,6 +312,11 @@ export function createCoreServices(
   let sequenceStepsRepository: SequenceStepRepository | null = null
   let sequenceEnrollmentsRepository: SequenceEnrollmentRepository | null = null
   let sequenceEventsRepository: SequenceEventRepository | null = null
+  let tagsRepository: TagRepository | null = null
+  let entityTagsRepository: EntityTagRepository | null = null
+  let importsRepository: ImportRepository | null = null
+  let webhooksRepository: WebhookRepository | null = null
+  let webhookDeliveriesRepository: WebhookDeliveryRepository | null = null
   let optionalActivitiesRepository: ActivityRepository | undefined
   let optionalTasksRepository: TaskRepository | undefined
   let optionalProductsRepository: ProductRepository | undefined
@@ -448,6 +488,86 @@ export function createCoreServices(
     return sequenceEventsRepository
   }
 
+  function getTagsRepository(): TagRepository {
+    if (tagsRepository) {
+      return tagsRepository
+    }
+
+    tagsRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.tags,
+      sqliteFactory: () => createSqliteTagRepository(adapter),
+      postgresFactory: () => createPostgresTagRepository(adapter),
+      name: 'tags repository',
+    })
+
+    return tagsRepository
+  }
+
+  function getEntityTagsRepository(): EntityTagRepository {
+    if (entityTagsRepository) {
+      return entityTagsRepository
+    }
+
+    entityTagsRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.entityTags,
+      sqliteFactory: () => createSqliteEntityTagRepository(adapter),
+      postgresFactory: () => createPostgresEntityTagRepository(adapter),
+      name: 'entity tags repository',
+    })
+
+    return entityTagsRepository
+  }
+
+  function getImportsRepository(): ImportRepository {
+    if (importsRepository) {
+      return importsRepository
+    }
+
+    importsRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.imports,
+      sqliteFactory: () => createSqliteImportRepository(adapter),
+      postgresFactory: () => createPostgresImportRepository(adapter),
+      name: 'imports repository',
+    })
+
+    return importsRepository
+  }
+
+  function getWebhooksRepository(): WebhookRepository {
+    if (webhooksRepository) {
+      return webhooksRepository
+    }
+
+    webhooksRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.webhooks,
+      sqliteFactory: () => createSqliteWebhookRepository(adapter),
+      postgresFactory: () => createPostgresWebhookRepository(adapter),
+      name: 'webhooks repository',
+    })
+
+    return webhooksRepository
+  }
+
+  function getWebhookDeliveriesRepository(): WebhookDeliveryRepository {
+    if (webhookDeliveriesRepository) {
+      return webhookDeliveriesRepository
+    }
+
+    webhookDeliveriesRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.webhookDeliveries,
+      sqliteFactory: () => createSqliteWebhookDeliveryRepository(adapter),
+      postgresFactory: () => createPostgresWebhookDeliveryRepository(adapter),
+      name: 'webhook deliveries repository',
+    })
+
+    return webhookDeliveriesRepository
+  }
+
   function getOptionalActivitiesRepository(): ActivityRepository | undefined {
     if (optionalActivitiesResolved) {
       return optionalActivitiesRepository
@@ -538,6 +658,9 @@ export function createCoreServices(
   let sequenceStepsService: ReturnType<typeof createSequenceStepService> | undefined
   let sequenceEnrollmentsService: ReturnType<typeof createSequenceEnrollmentService> | undefined
   let sequenceEventsService: ReturnType<typeof createSequenceEventService> | undefined
+  let tagsService: ReturnType<typeof createTagService> | undefined
+  let importsService: ReturnType<typeof createImportService> | undefined
+  let webhooksService: ReturnType<typeof createWebhookService> | undefined
   let searchService: ReturnType<typeof createSearchService> | undefined
   let contactContextService: ReturnType<typeof createContactContextService> | undefined
 
@@ -643,6 +766,28 @@ export function createCoreServices(
 
       return sequenceEventsService
     },
+    get tags() {
+      tagsService ??= createTagService({
+        tags: getTagsRepository(),
+      })
+
+      return tagsService
+    },
+    get imports() {
+      importsService ??= createImportService({
+        imports: getImportsRepository(),
+        users,
+      })
+
+      return importsService
+    },
+    get webhooks() {
+      webhooksService ??= createWebhookService({
+        webhooks: getWebhooksRepository(),
+      })
+
+      return webhooksService
+    },
     users: createUserService(users),
     get search() {
       const optionalProducts = getOptionalProductsRepository()
@@ -668,12 +813,27 @@ export function createCoreServices(
       const optionalActivities = getOptionalActivitiesRepository()
       const optionalTasks = getOptionalTasksRepository()
 
+      const optionalEntityTags = resolveOptionalCoreRepository({
+        adapter,
+        override: overrides.entityTags,
+        sqliteFactory: () => createSqliteEntityTagRepository(adapter),
+        postgresFactory: () => createPostgresEntityTagRepository(adapter),
+      })
+      const optionalTags = resolveOptionalCoreRepository({
+        adapter,
+        override: overrides.tags,
+        sqliteFactory: () => createSqliteTagRepository(adapter),
+        postgresFactory: () => createPostgresTagRepository(adapter),
+      })
+
       contactContextService ??= createContactContextService({
         contacts,
         companies,
         deals,
         ...(optionalActivities ? { activities: optionalActivities } : {}),
         ...(optionalTasks ? { tasks: optionalTasks } : {}),
+        ...(optionalEntityTags ? { entityTags: optionalEntityTags } : {}),
+        ...(optionalTags ? { tags: optionalTags } : {}),
       })
 
       return contactContextService
@@ -682,6 +842,8 @@ export function createCoreServices(
       organizations: createOrganizationAdminService(organizations),
       organizationMemberships: createOrganizationMembershipAdminService(organizationMemberships),
       apiKeys: createApiKeyAdminService(apiKeys),
+      entityTags: createEntityTagAdminService(getEntityTagsRepository()),
+      webhookDeliveries: createWebhookDeliveryAdminService(getWebhookDeliveriesRepository()),
     },
   }
 }

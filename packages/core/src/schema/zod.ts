@@ -9,6 +9,8 @@ import {
   contracts,
   contacts,
   deals,
+  entityTags,
+  imports,
   notes,
   organizationMemberships,
   organizations,
@@ -20,8 +22,11 @@ import {
   sequences,
   sequenceSteps,
   stages,
+  tags,
   tasks,
   users,
+  webhookDeliveries,
+  webhooks,
 } from './tables.js'
 
 const emailSchema = z.string().email().optional().nullable()
@@ -436,4 +441,73 @@ export const sequenceEventUpdateSchema = createUpdateSchema(sequenceEvents, {
   organizationId: orbitId('organization').optional(),
   sequenceEnrollmentId: orbitId('sequenceEnrollment').optional(),
   sequenceStepId: orbitId('sequenceStep').optional().nullable(),
+})
+
+// Tags
+export const tagSelectSchema = createSelectSchema(tags, {
+  id: orbitId('tag'),
+  organizationId: orbitId('organization'),
+})
+export const tagInsertSchema = createInsertSchema(tags, {
+  organizationId: orbitId('organization'),
+})
+export const tagUpdateSchema = createUpdateSchema(tags, {
+  organizationId: orbitId('organization').optional(),
+})
+
+// Entity Tags
+export const entityTagSelectSchema = createSelectSchema(entityTags, {
+  id: orbitId('entityTag'),
+  organizationId: orbitId('organization'),
+  tagId: orbitId('tag'),
+})
+export const entityTagInsertSchema = createInsertSchema(entityTags, {
+  organizationId: orbitId('organization'),
+  tagId: orbitId('tag'),
+})
+export const entityTagUpdateSchema = createUpdateSchema(entityTags, {
+  organizationId: orbitId('organization').optional(),
+  tagId: orbitId('tag').optional(),
+})
+
+// Imports
+export const importSelectSchema = createSelectSchema(imports, {
+  id: orbitId('importJob'),
+  organizationId: orbitId('organization'),
+  startedByUserId: orbitId('user').optional().nullable(),
+})
+export const importInsertSchema = createInsertSchema(imports, {
+  organizationId: orbitId('organization'),
+  startedByUserId: orbitId('user').optional().nullable(),
+})
+export const importUpdateSchema = createUpdateSchema(imports, {
+  organizationId: orbitId('organization').optional(),
+  startedByUserId: orbitId('user').optional().nullable(),
+})
+
+// Webhooks
+export const webhookSelectSchema = createSelectSchema(webhooks, {
+  id: orbitId('webhook'),
+  organizationId: orbitId('organization'),
+})
+export const webhookInsertSchema = createInsertSchema(webhooks, {
+  organizationId: orbitId('organization'),
+})
+export const webhookUpdateSchema = createUpdateSchema(webhooks, {
+  organizationId: orbitId('organization').optional(),
+})
+
+// Webhook Deliveries
+export const webhookDeliverySelectSchema = createSelectSchema(webhookDeliveries, {
+  id: orbitId('webhookDelivery'),
+  organizationId: orbitId('organization'),
+  webhookId: orbitId('webhook'),
+})
+export const webhookDeliveryInsertSchema = createInsertSchema(webhookDeliveries, {
+  organizationId: orbitId('organization'),
+  webhookId: orbitId('webhook'),
+})
+export const webhookDeliveryUpdateSchema = createUpdateSchema(webhookDeliveries, {
+  organizationId: orbitId('organization').optional(),
+  webhookId: orbitId('webhook').optional(),
 })

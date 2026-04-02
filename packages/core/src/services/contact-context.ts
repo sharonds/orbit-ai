@@ -7,6 +7,8 @@ import type { ContactRepository } from '../entities/contacts/repository.js'
 import type { ContactRecord } from '../entities/contacts/validators.js'
 import type { DealRepository } from '../entities/deals/repository.js'
 import type { DealRecord } from '../entities/deals/validators.js'
+import type { EntityTagRepository } from '../entities/entity-tags/repository.js'
+import type { TagRepository } from '../entities/tags/repository.js'
 import type { TaskRepository } from '../entities/tasks/repository.js'
 import type { TaskRecord } from '../entities/tasks/validators.js'
 
@@ -33,6 +35,8 @@ export function createContactContextService(deps: {
   deals: DealRepository
   activities?: ActivityRepository
   tasks?: TaskRepository
+  entityTags?: EntityTagRepository
+  tags?: TagRepository
 }): ContactContextService {
   return {
     async getContactContext(ctx, input) {
@@ -98,6 +102,23 @@ export function createContactContextService(deps: {
           ).data
         : []
 
+      let tags: Array<{ id: string; name: string; color: string | null }> = []
+      if (deps.entityTags && deps.tags) {
+        const entityTagResults = await deps.entityTags.list(ctx, {
+          filter: {
+            entity_type: 'contacts',
+            entity_id: contact.id,
+          },
+          limit: 100,
+        })
+        const tagRecords = await Promise.all(
+          entityTagResults.data.map((et) => deps.tags!.get(ctx, et.tagId)),
+        )
+        tags = tagRecords
+          .filter((t): t is NonNullable<typeof t> => t !== null)
+          .map((t) => ({ id: t.id, name: t.name, color: t.color }))
+      }
+
       const latestActivityDate = recentActivities[0]?.occurredAt ?? null
       const maxDate =
         latestActivityDate && contact.lastContactedAt
@@ -111,7 +132,7 @@ export function createContactContextService(deps: {
         openDeals,
         openTasks,
         recentActivities,
-        tags: [],
+        tags,
         lastContactDate,
       }
     },

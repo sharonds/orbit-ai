@@ -887,6 +887,15 @@ export const webhookDeliveries = orbit.table(
   ],
 )
 
+Slice D core rules for operational metadata:
+
+- `imports.status` uses the service-layer lifecycle `pending -> processing -> completed|failed`
+- `imports.completedAt` must be `null` for non-terminal statuses and non-null for terminal statuses
+- `imports.rollbackData` is persisted operational metadata and is not part of the generic tenant read contract
+- `webhooks.status` uses the service-layer read model `active|disabled`
+- `webhook_deliveries.payload`, `signature`, `idempotency_key`, and `response_body` are persisted for delivery integrity and retry work, but generic admin/read surfaces must omit or redact them and return the sanitized delivery DTO shape instead
+- `entity_tags.tag_id` and `webhook_deliveries.webhook_id` must resolve inside the same tenant as the write context
+
 export const imports = orbit.table(
   'imports',
   {

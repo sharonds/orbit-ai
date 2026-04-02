@@ -6,7 +6,7 @@ import type { StorageAdapter } from '../adapters/interface.js'
 import { DEFAULT_ADAPTER_AUTHORITY_MODEL, asMigrationDatabase } from '../adapters/interface.js'
 import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
-import { initializePostgresWave2SliceCSchema } from '../adapters/postgres/schema.js'
+import { initializePostgresWave2SliceDSchema } from '../adapters/postgres/schema.js'
 import { generateId } from '../ids/generate-id.js'
 import { createInMemoryActivityRepository } from '../entities/activities/repository.js'
 import { createInMemoryApiKeyRepository } from '../entities/api-keys/repository.js'
@@ -27,6 +27,11 @@ import { createInMemorySequenceRepository } from '../entities/sequences/reposito
 import { createInMemoryStageRepository } from '../entities/stages/repository.js'
 import { createInMemoryTaskRepository } from '../entities/tasks/repository.js'
 import { createInMemoryUserRepository } from '../entities/users/repository.js'
+import { createInMemoryTagRepository } from '../entities/tags/repository.js'
+import { createInMemoryEntityTagRepository } from '../entities/entity-tags/repository.js'
+import { createInMemoryImportRepository } from '../entities/imports/repository.js'
+import { createInMemoryWebhookRepository } from '../entities/webhooks/repository.js'
+import { createInMemoryWebhookDeliveryRepository } from '../entities/webhook-deliveries/repository.js'
 import { createPostgresActivityRepository } from '../entities/activities/repository.js'
 import { createPostgresCompanyRepository } from '../entities/companies/repository.js'
 import { createPostgresContractRepository } from '../entities/contracts/repository.js'
@@ -43,6 +48,11 @@ import { createPostgresSequenceRepository } from '../entities/sequences/reposito
 import { createPostgresStageRepository } from '../entities/stages/repository.js'
 import { createPostgresTaskRepository } from '../entities/tasks/repository.js'
 import { createPostgresUserRepository } from '../entities/users/repository.js'
+import { createPostgresTagRepository } from '../entities/tags/repository.js'
+import { createPostgresEntityTagRepository } from '../entities/entity-tags/repository.js'
+import { createPostgresImportRepository } from '../entities/imports/repository.js'
+import { createPostgresWebhookRepository } from '../entities/webhooks/repository.js'
+import { createPostgresWebhookDeliveryRepository } from '../entities/webhook-deliveries/repository.js'
 import { createCoreServices } from './index.js'
 
 const ctx = {
@@ -125,7 +135,7 @@ function createPostgresTestAdapter() {
 }
 
 describe('core services registry', () => {
-  it('exposes the Slice C registry keys and keeps system reads separate', async () => {
+  it('exposes the Slice D registry keys and keeps system reads separate', async () => {
     const organizations = createInMemoryOrganizationRepository([
       {
         id: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
@@ -182,6 +192,11 @@ describe('core services registry', () => {
     const sequenceEnrollments = createInMemorySequenceEnrollmentRepository()
     const sequenceEvents = createInMemorySequenceEventRepository()
     const users = createInMemoryUserRepository()
+    const tags = createInMemoryTagRepository()
+    const entityTags = createInMemoryEntityTagRepository()
+    const imports = createInMemoryImportRepository()
+    const webhooks = createInMemoryWebhookRepository()
+    const webhookDeliveries = createInMemoryWebhookDeliveryRepository()
 
     const services = createCoreServices(createTestAdapter(), {
       organizations,
@@ -203,6 +218,11 @@ describe('core services registry', () => {
       sequenceEnrollments,
       sequenceEvents,
       users,
+      tags,
+      entityTags,
+      imports,
+      webhooks,
+      webhookDeliveries,
     })
 
     expect(Object.keys(services).sort()).toEqual([
@@ -212,6 +232,7 @@ describe('core services registry', () => {
       'contacts',
       'contracts',
       'deals',
+      'imports',
       'notes',
       'payments',
       'pipelines',
@@ -224,8 +245,10 @@ describe('core services registry', () => {
       'sequences',
       'stages',
       'system',
+      'tags',
       'tasks',
       'users',
+      'webhooks',
     ])
 
     const organizationsPage = await services.system.organizations.list(ctx, { limit: 10 })
@@ -239,6 +262,10 @@ describe('core services registry', () => {
     expect('create' in services.system.apiKeys).toBe(false)
     expect('update' in services.system.apiKeys).toBe(false)
     expect('delete' in services.system.apiKeys).toBe(false)
+    expect('create' in services.system.entityTags).toBe(false)
+    expect('update' in services.system.entityTags).toBe(false)
+    expect('delete' in services.system.entityTags).toBe(false)
+    expect('create' in services.system.webhookDeliveries).toBe(false)
   })
 
   it('builds search and contact context from the Wave 1 entity set', async () => {
@@ -265,6 +292,8 @@ describe('core services registry', () => {
       tasks,
       notes,
       users,
+      entityTags: createInMemoryEntityTagRepository(),
+      webhookDeliveries: createInMemoryWebhookDeliveryRepository(),
     })
     const company = await services.companies.create(ctx, {
       name: 'Acme',
@@ -341,6 +370,8 @@ describe('core services registry', () => {
       stages,
       deals,
       users,
+      entityTags: createInMemoryEntityTagRepository(),
+      webhookDeliveries: createInMemoryWebhookDeliveryRepository(),
     })
 
     const company = await services.companies.create(ctx, { name: 'Acme' })
@@ -358,11 +389,14 @@ describe('core services registry', () => {
     expect(() => services.activities).toThrow('is not implemented')
     expect(() => services.products).toThrow('is not implemented')
     expect(() => services.sequences).toThrow('is not implemented')
+    expect(() => services.tags).toThrow('is not implemented')
+    expect(() => services.webhooks).toThrow('is not implemented')
+    expect(() => services.imports).toThrow('is not implemented')
   })
 
   it('can build the registry from a Postgres adapter and Postgres-backed repositories', async () => {
     const { database, adapter } = createPostgresTestAdapter()
-    await initializePostgresWave2SliceCSchema(database)
+    await initializePostgresWave2SliceDSchema(database)
 
     const organizations = createPostgresOrganizationRepository(adapter)
     const activities = createPostgresActivityRepository(adapter)
@@ -380,6 +414,11 @@ describe('core services registry', () => {
     const stages = createPostgresStageRepository(adapter)
     const tasks = createPostgresTaskRepository(adapter)
     const users = createPostgresUserRepository(adapter)
+    const tags = createPostgresTagRepository(adapter)
+    const entityTags = createPostgresEntityTagRepository(adapter)
+    const imports = createPostgresImportRepository(adapter)
+    const webhooks = createPostgresWebhookRepository(adapter)
+    const webhookDeliveries = createPostgresWebhookDeliveryRepository(adapter)
 
     const services = createCoreServices(adapter, {
       organizations,
@@ -401,6 +440,11 @@ describe('core services registry', () => {
       sequenceEnrollments,
       sequenceEvents,
       users,
+      tags,
+      entityTags,
+      imports,
+      webhooks,
+      webhookDeliveries,
     })
 
     await organizations.create({
@@ -471,6 +515,23 @@ describe('core services registry', () => {
     expect(await services.sequenceEvents.get(ctx, sequenceEvent.id)).toMatchObject({
       id: sequenceEvent.id,
       sequenceEnrollmentId: sequenceEnrollment.id,
+    })
+
+    const tag = await services.tags.create(ctx, { name: 'VIP', color: '#ff0000' })
+    expect(await services.tags.get(ctx, tag.id)).toMatchObject({
+      id: tag.id,
+      name: 'VIP',
+    })
+
+    const webhook = await services.webhooks.create(ctx, {
+      url: 'https://example.com/hook',
+      secretEncrypted: 'enc_test_secret',
+      secretLastFour: 'cret',
+      events: ['contact.created'],
+    })
+    expect(await services.webhooks.get(ctx, webhook.id)).toMatchObject({
+      id: webhook.id,
+      url: 'https://example.com/hook',
     })
 
     await database.close()
