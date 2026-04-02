@@ -95,6 +95,52 @@ describe('task service', () => {
     })
   })
 
+  it('defaults completedAt when a task is created as completed', async () => {
+    const taskService = createTaskService({
+      tasks: createInMemoryTaskRepository(),
+      contacts: createInMemoryContactRepository(),
+      companies: createInMemoryCompanyRepository(),
+      deals: createInMemoryDealRepository(),
+      users: createInMemoryUserRepository(),
+    })
+
+    const before = Date.now()
+    const task = await taskService.create(ctx, {
+      title: 'Done already',
+      isCompleted: true,
+    })
+    const after = Date.now()
+
+    expect(task.completedAt).not.toBeNull()
+    expect(task.completedAt!.getTime()).toBeGreaterThanOrEqual(before)
+    expect(task.completedAt!.getTime()).toBeLessThanOrEqual(after)
+  })
+
+  it('defaults completedAt when a task transitions to completed', async () => {
+    const taskService = createTaskService({
+      tasks: createInMemoryTaskRepository(),
+      contacts: createInMemoryContactRepository(),
+      companies: createInMemoryCompanyRepository(),
+      deals: createInMemoryDealRepository(),
+      users: createInMemoryUserRepository(),
+    })
+
+    const created = await taskService.create(ctx, {
+      title: 'Mark later',
+      isCompleted: false,
+    })
+
+    const before = Date.now()
+    const updated = await taskService.update(ctx, created.id, {
+      isCompleted: true,
+    })
+    const after = Date.now()
+
+    expect(updated.completedAt).not.toBeNull()
+    expect(updated.completedAt!.getTime()).toBeGreaterThanOrEqual(before)
+    expect(updated.completedAt!.getTime()).toBeLessThanOrEqual(after)
+  })
+
   it('lists open tasks by due date and searches on task text', async () => {
     const { taskService } = await createLinkedDealGraph()
 

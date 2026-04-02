@@ -80,6 +80,27 @@ function assertTaskCompletionState(input: {
   }
 }
 
+function resolveCompletedAt(input: {
+  now: Date
+  isCompleted: boolean
+  completedAt: Date | null
+  previousIsCompleted?: boolean
+}): Date | null {
+  if (!input.isCompleted) {
+    return input.completedAt
+  }
+
+  if (input.completedAt !== null) {
+    return input.completedAt
+  }
+
+  if (input.previousIsCompleted === true) {
+    return null
+  }
+
+  return input.now
+}
+
 export function createTaskService(deps: {
   tasks: TaskRepository
   contacts: ContactRepository
@@ -96,12 +117,17 @@ export function createTaskService(deps: {
         dealId: parsed.dealId,
         assignedToUserId: parsed.assignedToUserId,
       })
-      assertTaskCompletionState({
-        isCompleted: parsed.isCompleted ?? false,
+      const now = new Date()
+      const isCompleted = parsed.isCompleted ?? false
+      const completedAt = resolveCompletedAt({
+        now,
+        isCompleted,
         completedAt: parsed.completedAt ?? null,
       })
-
-      const now = new Date()
+      assertTaskCompletionState({
+        isCompleted,
+        completedAt,
+      })
       return deps.tasks.create(
         ctx,
         taskRecordSchema.parse({
@@ -111,8 +137,8 @@ export function createTaskService(deps: {
           description: parsed.description ?? null,
           dueDate: parsed.dueDate ?? null,
           priority: parsed.priority ?? 'medium',
-          isCompleted: parsed.isCompleted ?? false,
-          completedAt: parsed.completedAt ?? null,
+          isCompleted,
+          completedAt,
           contactId: parsed.contactId ?? null,
           dealId: parsed.dealId ?? null,
           companyId: parsed.companyId ?? null,
@@ -137,7 +163,12 @@ export function createTaskService(deps: {
       })
 
       const nextIsCompleted = parsed.isCompleted ?? current.isCompleted
-      const nextCompletedAt = parsed.completedAt !== undefined ? parsed.completedAt ?? null : current.completedAt
+      const nextCompletedAt = resolveCompletedAt({
+        now: new Date(),
+        isCompleted: nextIsCompleted,
+        completedAt: parsed.completedAt !== undefined ? parsed.completedAt ?? null : current.completedAt,
+        previousIsCompleted: current.isCompleted,
+      })
       assertTaskCompletionState({
         isCompleted: nextIsCompleted,
         completedAt: nextCompletedAt,
@@ -152,7 +183,7 @@ export function createTaskService(deps: {
       if (parsed.dueDate !== undefined) patch.dueDate = parsed.dueDate ?? null
       if (parsed.priority !== undefined) patch.priority = parsed.priority
       if (parsed.isCompleted !== undefined) patch.isCompleted = parsed.isCompleted
-      if (parsed.completedAt !== undefined) patch.completedAt = parsed.completedAt ?? null
+      if (parsed.completedAt !== undefined || nextCompletedAt !== current.completedAt) patch.completedAt = nextCompletedAt
       if (parsed.contactId !== undefined) patch.contactId = parsed.contactId ?? null
       if (parsed.dealId !== undefined) patch.dealId = parsed.dealId ?? null
       if (parsed.companyId !== undefined) patch.companyId = parsed.companyId ?? null

@@ -162,8 +162,8 @@ Scope:
 Required behavior:
 
 - activities can link to contact, company, and deal
-- tasks can link to contact and deal and preserve due-date semantics
-- notes can link to contact and deal
+- tasks can link to contact, company, and deal and preserve due-date semantics
+- notes can link to contact, company, and deal
 - contact-context support data is no longer placeholder-only for activities and tasks
 
 Exit criteria:

@@ -221,6 +221,10 @@ export function createCoreServices(
   let activitiesRepository: ActivityRepository | null = null
   let tasksRepository: TaskRepository | null = null
   let notesRepository: NoteRepository | null = null
+  let optionalActivitiesRepository: ActivityRepository | undefined
+  let optionalTasksRepository: TaskRepository | undefined
+  let optionalActivitiesResolved = false
+  let optionalTasksResolved = false
 
   function getActivitiesRepository(): ActivityRepository {
     if (activitiesRepository) {
@@ -268,6 +272,38 @@ export function createCoreServices(
     })
 
     return notesRepository
+  }
+
+  function getOptionalActivitiesRepository(): ActivityRepository | undefined {
+    if (optionalActivitiesResolved) {
+      return optionalActivitiesRepository
+    }
+
+    optionalActivitiesRepository = resolveOptionalCoreRepository({
+      adapter,
+      override: overrides.activities,
+      sqliteFactory: () => createSqliteActivityRepository(adapter),
+      postgresFactory: () => createPostgresActivityRepository(adapter),
+    })
+    optionalActivitiesResolved = true
+
+    return optionalActivitiesRepository
+  }
+
+  function getOptionalTasksRepository(): TaskRepository | undefined {
+    if (optionalTasksResolved) {
+      return optionalTasksRepository
+    }
+
+    optionalTasksRepository = resolveOptionalCoreRepository({
+      adapter,
+      override: overrides.tasks,
+      sqliteFactory: () => createSqliteTaskRepository(adapter),
+      postgresFactory: () => createPostgresTaskRepository(adapter),
+    })
+    optionalTasksResolved = true
+
+    return optionalTasksRepository
   }
 
   let activitiesService: ReturnType<typeof createActivityService> | undefined
@@ -318,18 +354,8 @@ export function createCoreServices(
     search: createSearchService({ companies, contacts, deals, pipelines, stages, users }),
     schema: new OrbitSchemaEngine(),
     get contactContext() {
-      const optionalActivities = resolveOptionalCoreRepository({
-        adapter,
-        override: overrides.activities,
-        sqliteFactory: () => createSqliteActivityRepository(adapter),
-        postgresFactory: () => createPostgresActivityRepository(adapter),
-      })
-      const optionalTasks = resolveOptionalCoreRepository({
-        adapter,
-        override: overrides.tasks,
-        sqliteFactory: () => createSqliteTaskRepository(adapter),
-        postgresFactory: () => createPostgresTaskRepository(adapter),
-      })
+      const optionalActivities = getOptionalActivitiesRepository()
+      const optionalTasks = getOptionalTasksRepository()
 
       contactContextService ??= createContactContextService({
         contacts,
