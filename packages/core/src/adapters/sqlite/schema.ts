@@ -379,6 +379,83 @@ const SQLITE_WAVE_2_SLICE_D_SCHEMA_STATEMENTS = [
   `create index if not exists webhook_deliveries_next_attempt_idx on webhook_deliveries (next_attempt_at)`,
 ] as const
 
+const SQLITE_WAVE_2_SLICE_E_SCHEMA_STATEMENTS = [
+  ...SQLITE_WAVE_2_SLICE_D_SCHEMA_STATEMENTS,
+  `create table if not exists custom_field_definitions (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    entity_type text not null,
+    field_name text not null,
+    field_type text not null,
+    label text not null,
+    description text,
+    is_required integer not null default 0,
+    is_indexed integer not null default 0,
+    is_promoted integer not null default 0,
+    promoted_column_name text,
+    default_value text,
+    options text not null default '[]',
+    validation text not null default '{}',
+    created_at text not null,
+    updated_at text not null
+  )`,
+  `create unique index if not exists custom_fields_unique_idx on custom_field_definitions (organization_id, entity_type, field_name)`,
+  `create table if not exists audit_logs (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    actor_user_id text references users(id),
+    actor_api_key_id text references api_keys(id),
+    entity_type text not null,
+    entity_id text not null,
+    action text not null,
+    before text,
+    after text,
+    request_id text,
+    metadata text not null default '{}',
+    occurred_at text not null default (datetime('now')),
+    created_at text not null,
+    updated_at text not null
+  )`,
+  `create index if not exists audit_logs_entity_idx on audit_logs (organization_id, entity_type, entity_id)`,
+  `create index if not exists audit_logs_occurred_at_idx on audit_logs (occurred_at)`,
+  `create table if not exists schema_migrations (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    description text not null,
+    entity_type text,
+    operation_type text not null,
+    sql_statements text not null default '[]',
+    rollback_statements text not null default '[]',
+    applied_by_user_id text references users(id),
+    approved_by_user_id text references users(id),
+    applied_at text,
+    created_at text not null,
+    updated_at text not null
+  )`,
+  `create index if not exists schema_migrations_applied_at_idx on schema_migrations (applied_at)`,
+  `create table if not exists idempotency_keys (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    key text not null,
+    method text not null,
+    path text not null,
+    request_hash text not null,
+    response_code integer,
+    response_body text,
+    locked_until text,
+    completed_at text,
+    created_at text not null,
+    updated_at text not null
+  )`,
+  `create unique index if not exists idempotency_unique_idx on idempotency_keys (organization_id, key, method, path)`,
+] as const
+
+export async function initializeSqliteWave2SliceESchema(db: OrbitDatabase): Promise<void> {
+  for (const statement of SQLITE_WAVE_2_SLICE_E_SCHEMA_STATEMENTS) {
+    await db.execute(sql.raw(statement))
+  }
+}
+
 export async function initializeSqliteWave1Schema(db: OrbitDatabase): Promise<void> {
   for (const statement of SQLITE_WAVE_1_SCHEMA_STATEMENTS) {
     await db.execute(sql.raw(statement))
