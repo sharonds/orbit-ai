@@ -287,6 +287,41 @@ describe('core services registry', () => {
     expect(() => createCoreServices(createTestAdapter())).toThrow('is not implemented')
   })
 
+  it('preserves Wave 1 compatibility until Slice A services are explicitly accessed', async () => {
+    const companies = createInMemoryCompanyRepository()
+    const contacts = createInMemoryContactRepository()
+    const pipelines = createInMemoryPipelineRepository()
+    const stages = createInMemoryStageRepository()
+    const deals = createInMemoryDealRepository()
+    const users = createInMemoryUserRepository()
+
+    const services = createCoreServices(createTestAdapter(), {
+      organizations: createInMemoryOrganizationRepository(),
+      organizationMemberships: createInMemoryOrganizationMembershipRepository(),
+      apiKeys: createInMemoryApiKeyRepository(),
+      companies,
+      contacts,
+      pipelines,
+      stages,
+      deals,
+      users,
+    })
+
+    const company = await services.companies.create(ctx, { name: 'Acme' })
+    const contact = await services.contacts.create(ctx, {
+      name: 'Taylor',
+      email: 'taylor@acme.test',
+      companyId: company.id,
+      lastContactedAt: new Date('2026-03-31T10:00:00.000Z'),
+    })
+
+    const context = await services.contactContext.getContactContext(ctx, { contactId: contact.id })
+
+    expect(context?.openTasks).toEqual([])
+    expect(context?.recentActivities).toEqual([])
+    expect(() => services.activities).toThrow('is not implemented')
+  })
+
   it('can build the registry from a Postgres adapter and Postgres-backed repositories', async () => {
     const { database, adapter } = createPostgresTestAdapter()
     await initializePostgresWave2SliceASchema(database)

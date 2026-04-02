@@ -43,7 +43,7 @@ Completed:
 Current focus:
 
 - maintain the repo knowledge base as the live hub
-- execute Core Wave 2 services starting with Slice A
+- complete review and acceptance for Core Wave 2 Slice A
 - treat the Postgres persistence bridge as the accepted baseline feeding Wave 2
 - keep API/SDK execution blocked until Wave 2 service coverage is further along
 - keep execution docs and skills aligned with implementation progress
@@ -120,8 +120,8 @@ Immediate next actions:
    - Wave 1 service surface committed on `core-wave-1-services`
    - SQLite persistence bridge committed on `core-wave-1-services`
 3. Next:
-   - execute Slice A from [core-wave-2-services-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-wave-2-services-plan.md) on branch `core-wave-2-services`
-   - run code review, tenant-safety review, and plan-vs-execution review on the integrated branch
+   - accept [core-wave-2-slice-a-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-a-review.md) as the Slice A branch review artifact
+   - decide whether to open Slice B on `core-wave-2-services` or cut a follow-up branch
    - keep API/SDK execution blocked until the Wave 2 service surface is materially further along
 
 ## Open Items

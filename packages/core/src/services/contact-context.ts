@@ -31,8 +31,8 @@ export function createContactContextService(deps: {
   contacts: ContactRepository
   companies: CompanyRepository
   deals: DealRepository
-  activities: ActivityRepository
-  tasks: TaskRepository
+  activities?: ActivityRepository
+  tasks?: TaskRepository
 }): ContactContextService {
   return {
     async getContactContext(ctx, input) {
@@ -71,28 +71,32 @@ export function createContactContextService(deps: {
           limit: 100,
         })
       ).data
-      const openTasks = (
-        await deps.tasks.list(ctx, {
-          filter: {
-            contact_id: contact.id,
-            is_completed: false,
-          },
-          sort: [
-            { field: 'due_date', direction: 'asc' },
-            { field: 'created_at', direction: 'desc' },
-          ],
-          limit: 100,
-        })
-      ).data
-      const recentActivities = (
-        await deps.activities.list(ctx, {
-          filter: {
-            contact_id: contact.id,
-          },
-          sort: [{ field: 'occurred_at', direction: 'desc' }],
-          limit: 10,
-        })
-      ).data
+      const openTasks = deps.tasks
+        ? (
+            await deps.tasks.list(ctx, {
+              filter: {
+                contact_id: contact.id,
+                is_completed: false,
+              },
+              sort: [
+                { field: 'due_date', direction: 'asc' },
+                { field: 'created_at', direction: 'desc' },
+              ],
+              limit: 100,
+            })
+          ).data
+        : []
+      const recentActivities = deps.activities
+        ? (
+            await deps.activities.list(ctx, {
+              filter: {
+                contact_id: contact.id,
+              },
+              sort: [{ field: 'occurred_at', direction: 'desc' }],
+              limit: 10,
+            })
+          ).data
+        : []
 
       const latestActivityDate = recentActivities[0]?.occurredAt ?? null
       const maxDate =

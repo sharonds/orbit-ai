@@ -20,7 +20,10 @@ All four passed after the final Slice A fixes.
 
 Findings:
 
-- One medium issue was found during review and fixed before this artifact was written:
+- Two contract-regression issues were found during review and fixed before this artifact was written:
+  - `createCoreServices(...)` originally resolved Slice A repositories eagerly, which broke Wave 1 callers on unsupported/custom adapters even when they did not access `activities`, `tasks`, or `notes`.
+  - `createContactContextService(...)` originally required `activities` and `tasks`, which broke the earlier Wave 1-compatible factory signature.
+- One tenant-safety issue was also fixed during the branch pass:
   - Slice A user-linked fields (`loggedByUserId`, `assignedToUserId`, `createdByUserId`) originally accepted any valid user ID shape without proving same-tenant ownership at the service boundary.
 
 Final open findings:
@@ -44,6 +47,7 @@ Validated controls:
 3. Contact/company/deal links reject cross-tenant references
 4. User-linked fields now reject cross-tenant user references
 5. No secret-bearing read surface was introduced by Slice A
+6. Contact-context now degrades safely on adapters where Slice A repositories are not available instead of forcing unsupported repository resolution
 
 Findings:
 
