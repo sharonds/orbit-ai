@@ -103,11 +103,20 @@ export function createImportService(deps: {
 
       if (parsed.entityType !== undefined) patch.entityType = parsed.entityType
       if (parsed.fileName !== undefined) patch.fileName = parsed.fileName
-      if (parsed.totalRows !== undefined) patch.totalRows = parsed.totalRows
-      if (parsed.createdRows !== undefined) patch.createdRows = parsed.createdRows
-      if (parsed.updatedRows !== undefined) patch.updatedRows = parsed.updatedRows
-      if (parsed.skippedRows !== undefined) patch.skippedRows = parsed.skippedRows
-      if (parsed.failedRows !== undefined) patch.failedRows = parsed.failedRows
+
+      const counterFields = ['totalRows', 'createdRows', 'updatedRows', 'skippedRows', 'failedRows'] as const
+      for (const field of counterFields) {
+        if (parsed[field] !== undefined) {
+          if (parsed[field]! < 0) {
+            throw createOrbitError({
+              code: 'VALIDATION_FAILED',
+              message: `${field} must be non-negative`,
+              field,
+            })
+          }
+          patch[field] = parsed[field]
+        }
+      }
       if (parsed.startedByUserId !== undefined) patch.startedByUserId = parsed.startedByUserId ?? null
       if (parsed.completedAt !== undefined && !patch.completedAt) patch.completedAt = parsed.completedAt ?? null
 

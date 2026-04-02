@@ -94,6 +94,29 @@ describe('webhook service', () => {
     expect(webhook.status).toBe('active')
   })
 
+  it('rejects invalid webhook status on create', async () => {
+    const webhookService = createWebhookService({ webhooks: createInMemoryWebhookRepository() })
+
+    await expect(
+      webhookService.create(ctx, createWebhookInput({ status: 'bogus' })),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      field: 'status',
+    })
+  })
+
+  it('rejects invalid webhook status on update', async () => {
+    const webhookService = createWebhookService({ webhooks: createInMemoryWebhookRepository() })
+    const webhook = await webhookService.create(ctx, createWebhookInput())
+
+    await expect(
+      webhookService.update(ctx, webhook.id, { status: 'bogus' }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      field: 'status',
+    })
+  })
+
   it('tenant isolation: org B cannot see org A webhooks', async () => {
     const webhookService = createWebhookService({ webhooks: createInMemoryWebhookRepository() })
     const webhook = await webhookService.create(ctx, createWebhookInput())

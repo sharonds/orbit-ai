@@ -170,6 +170,39 @@ describe('sqlite persistence bridge', () => {
       fileName: 'contacts.csv',
     })
 
+    // Entity tag (via system admin for reads, repo directly for write)
+    const { createSqliteEntityTagRepository } = await import('../entities/entity-tags/repository.js')
+    const entityTagRepo = createSqliteEntityTagRepository(adapter)
+    const { generateId } = await import('../ids/generate-id.js')
+    const entityTag = await entityTagRepo.create(ctxA, {
+      id: generateId('entityTag'),
+      organizationId: ctxA.orgId,
+      tagId: tag.id,
+      entityType: 'contacts',
+      entityId: contact.id,
+      createdAt: new Date('2026-04-02T12:00:00.000Z'),
+      updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+    })
+
+    // Webhook delivery (via repo directly for write)
+    const { createSqliteWebhookDeliveryRepository } = await import('../entities/webhook-deliveries/repository.js')
+    const deliveryRepo = createSqliteWebhookDeliveryRepository(adapter)
+    const delivery = await deliveryRepo.create(ctxA, {
+      id: generateId('webhookDelivery'),
+      organizationId: ctxA.orgId,
+      webhookId: webhook.id,
+      eventId: 'evt_sqlite_1',
+      eventType: 'contact.created',
+      status: 'delivered',
+      responseStatus: 200,
+      attemptCount: 1,
+      nextAttemptAt: null,
+      deliveredAt: new Date('2026-04-02T12:00:00.000Z'),
+      lastError: null,
+      createdAt: new Date('2026-04-02T12:00:00.000Z'),
+      updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+    })
+
     const servicesB = createCoreServices(adapter)
     expect(await servicesB.companies.get(ctxA, company.id)).toEqual(company)
     expect(await servicesB.contacts.get(ctxA, contact.id)).toEqual(contact)
@@ -200,6 +233,11 @@ describe('sqlite persistence bridge', () => {
     // Verify webhook sanitization on persist round-trip
     expect('secretEncrypted' in webhook).toBe(false)
     expect(webhook.secretLastFour).toBe('cret')
+    // Verify entity tag and webhook delivery admin reads
+    expect(await servicesB.system.entityTags.get(ctxA, entityTag.id)).toEqual(entityTag)
+    expect(await servicesB.system.entityTags.get(ctxB, entityTag.id)).toBeNull()
+    expect(await servicesB.system.webhookDeliveries.get(ctxA, delivery.id)).toEqual(delivery)
+    expect(await servicesB.system.webhookDeliveries.get(ctxB, delivery.id)).toBeNull()
     await expect(servicesB.companies.update(ctxB, company.id, { name: 'Beta' })).rejects.toThrow(
       'Company',
     )

@@ -161,6 +161,23 @@ describe('import service', () => {
     expect(search.data).toHaveLength(1)
   })
 
+  it('rejects negative row counters', async () => {
+    const importService = createImportService(createTestDeps())
+    const record = await importService.create(ctx, {
+      entityType: 'contacts',
+      fileName: 'contacts.csv',
+    })
+
+    await importService.update(ctx, record.id, { status: 'processing' })
+
+    await expect(
+      importService.update(ctx, record.id, { createdRows: -1 }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      field: 'createdRows',
+    })
+  })
+
   it('tenant isolation: org B cannot see org A imports', async () => {
     const importService = createImportService(createTestDeps())
     const record = await importService.create(ctx, {
