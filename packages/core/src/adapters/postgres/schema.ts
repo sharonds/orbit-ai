@@ -144,8 +144,74 @@ const POSTGRES_WAVE_1_SCHEMA_STATEMENTS = [
   `create index if not exists deals_company_idx on deals (company_id)`,
 ] as const
 
+const POSTGRES_WAVE_2_SLICE_A_SCHEMA_STATEMENTS = [
+  ...POSTGRES_WAVE_1_SCHEMA_STATEMENTS,
+  `create table if not exists activities (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    type text not null,
+    subject text,
+    body text,
+    direction text not null default 'internal',
+    contact_id text references contacts(id),
+    deal_id text references deals(id),
+    company_id text references companies(id),
+    duration_minutes integer,
+    outcome text,
+    occurred_at timestamptz not null,
+    logged_by_user_id text references users(id),
+    metadata jsonb not null default '{}'::jsonb,
+    custom_fields jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create index if not exists activities_contact_idx on activities (contact_id)`,
+  `create index if not exists activities_deal_idx on activities (deal_id)`,
+  `create index if not exists activities_company_idx on activities (company_id)`,
+  `create index if not exists activities_occurred_at_idx on activities (occurred_at)`,
+  `create table if not exists tasks (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    title text not null,
+    description text,
+    due_date timestamptz,
+    priority text not null default 'medium',
+    is_completed boolean not null default false,
+    completed_at timestamptz,
+    contact_id text references contacts(id),
+    deal_id text references deals(id),
+    company_id text references companies(id),
+    assigned_to_user_id text references users(id),
+    custom_fields jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create index if not exists tasks_due_date_idx on tasks (due_date)`,
+  `create index if not exists tasks_assigned_to_idx on tasks (assigned_to_user_id)`,
+  `create table if not exists notes (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    content text not null,
+    contact_id text references contacts(id),
+    deal_id text references deals(id),
+    company_id text references companies(id),
+    created_by_user_id text references users(id),
+    custom_fields jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create index if not exists notes_contact_idx on notes (contact_id)`,
+  `create index if not exists notes_deal_idx on notes (deal_id)`,
+] as const
+
 export async function initializePostgresWave1Schema(db: OrbitDatabase): Promise<void> {
   for (const statement of POSTGRES_WAVE_1_SCHEMA_STATEMENTS) {
+    await db.execute(sql.raw(statement))
+  }
+}
+
+export async function initializePostgresWave2SliceASchema(db: OrbitDatabase): Promise<void> {
+  for (const statement of POSTGRES_WAVE_2_SLICE_A_SCHEMA_STATEMENTS) {
     await db.execute(sql.raw(statement))
   }
 }

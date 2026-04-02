@@ -3,7 +3,7 @@ import { newDb } from 'pg-mem'
 
 import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
-import { initializePostgresWave1Schema } from '../adapters/postgres/schema.js'
+import { initializePostgresWave2SliceASchema } from '../adapters/postgres/schema.js'
 import { createPostgresApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createPostgresOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createPostgresOrganizationRepository } from '../entities/organizations/repository.js'
@@ -25,7 +25,7 @@ async function createPostgresAdapter() {
   const { Pool } = memory.adapters.createPg()
   const pool = new Pool({ max: 1 })
   const database = createPostgresOrbitDatabase({ pool })
-  await initializePostgresWave1Schema(database)
+  await initializePostgresWave2SliceASchema(database)
 
   const adapter = createPostgresStorageAdapter({
     database,
@@ -41,6 +41,9 @@ async function createPostgresAdapter() {
         'pipelines',
         'stages',
         'deals',
+        'activities',
+        'tasks',
+        'notes',
       ],
     }),
   })
@@ -49,7 +52,7 @@ async function createPostgresAdapter() {
 }
 
 describe('postgres persistence bridge', () => {
-  it('persists Wave 1 records across fresh service registries', async () => {
+  it('persists Slice A records across fresh service registries', async () => {
     const { adapter, pool } = await createPostgresAdapter()
     const organizations = createPostgresOrganizationRepository(adapter)
 
@@ -89,11 +92,34 @@ describe('postgres persistence bridge', () => {
       stageId: stage.id,
       status: 'open',
     })
+    const activity = await servicesA.activities.create(ctxA, {
+      type: 'call',
+      subject: 'Discovery',
+      contactId: contact.id,
+      dealId: deal.id,
+      companyId: company.id,
+      occurredAt: new Date('2026-04-01T12:00:00.000Z'),
+    })
+    const task = await servicesA.tasks.create(ctxA, {
+      title: 'Send recap',
+      contactId: contact.id,
+      dealId: deal.id,
+      dueDate: new Date('2026-04-02T09:00:00.000Z'),
+    })
+    const note = await servicesA.notes.create(ctxA, {
+      content: 'Expansion likely this quarter',
+      contactId: contact.id,
+      dealId: deal.id,
+      companyId: company.id,
+    })
 
     const servicesB = createCoreServices(adapter)
     expect(await servicesB.companies.get(ctxA, company.id)).toEqual(company)
     expect(await servicesB.contacts.get(ctxA, contact.id)).toEqual(contact)
     expect(await servicesB.deals.get(ctxA, deal.id)).toEqual(deal)
+    expect(await servicesB.activities.get(ctxA, activity.id)).toEqual(activity)
+    expect(await servicesB.tasks.get(ctxA, task.id)).toEqual(task)
+    expect(await servicesB.notes.get(ctxA, note.id)).toEqual(note)
     await expect(servicesB.companies.update(ctxB, company.id, { name: 'Beta' })).rejects.toThrow('Company')
     await expect(servicesB.companies.delete(ctxB, company.id)).rejects.toThrow('Company')
 
@@ -103,7 +129,9 @@ describe('postgres persistence bridge', () => {
 
     expect(context?.company?.id).toBe(company.id)
     expect(context?.openDeals).toHaveLength(1)
-    expect(context?.lastContactDate).toBe('2026-04-01T11:30:00.000Z')
+    expect(context?.openTasks).toHaveLength(1)
+    expect(context?.recentActivities).toHaveLength(1)
+    expect(context?.lastContactDate).toBe('2026-04-01T12:00:00.000Z')
 
     await pool.end()
   })

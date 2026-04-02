@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createSqliteStorageAdapter } from '../adapters/sqlite/adapter.js'
 import { createSqliteOrbitDatabase } from '../adapters/sqlite/database.js'
-import { initializeSqliteWave1Schema } from '../adapters/sqlite/schema.js'
+import { initializeSqliteWave2SliceASchema } from '../adapters/sqlite/schema.js'
 import { createSqliteApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createSqliteOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createSqliteOrganizationRepository } from '../entities/organizations/repository.js'
@@ -20,7 +20,7 @@ const ctxB = {
 
 async function createSqliteAdapter() {
   const database = createSqliteOrbitDatabase()
-  await initializeSqliteWave1Schema(database)
+  await initializeSqliteWave2SliceASchema(database)
 
   return createSqliteStorageAdapter({
     database,
@@ -36,13 +36,16 @@ async function createSqliteAdapter() {
         'pipelines',
         'stages',
         'deals',
+        'activities',
+        'tasks',
+        'notes',
       ],
     }),
   })
 }
 
 describe('sqlite persistence bridge', () => {
-  it('persists Wave 1 records across service registries', async () => {
+  it('persists Slice A records across service registries', async () => {
     const adapter = await createSqliteAdapter()
     const organizations = createSqliteOrganizationRepository(adapter)
 
@@ -82,11 +85,34 @@ describe('sqlite persistence bridge', () => {
       stageId: stage.id,
       status: 'open',
     })
+    const activity = await servicesA.activities.create(ctxA, {
+      type: 'call',
+      subject: 'Discovery',
+      contactId: contact.id,
+      dealId: deal.id,
+      companyId: company.id,
+      occurredAt: new Date('2026-03-31T15:00:00.000Z'),
+    })
+    const task = await servicesA.tasks.create(ctxA, {
+      title: 'Send recap',
+      contactId: contact.id,
+      dealId: deal.id,
+      dueDate: new Date('2026-04-01T09:00:00.000Z'),
+    })
+    const note = await servicesA.notes.create(ctxA, {
+      content: 'Expansion likely this quarter',
+      contactId: contact.id,
+      dealId: deal.id,
+      companyId: company.id,
+    })
 
     const servicesB = createCoreServices(adapter)
     expect(await servicesB.companies.get(ctxA, company.id)).toEqual(company)
     expect(await servicesB.contacts.get(ctxA, contact.id)).toEqual(contact)
     expect(await servicesB.deals.get(ctxA, deal.id)).toEqual(deal)
+    expect(await servicesB.activities.get(ctxA, activity.id)).toEqual(activity)
+    expect(await servicesB.tasks.get(ctxA, task.id)).toEqual(task)
+    expect(await servicesB.notes.get(ctxA, note.id)).toEqual(note)
     await expect(servicesB.companies.update(ctxB, company.id, { name: 'Beta' })).rejects.toThrow(
       'Company',
     )
@@ -98,7 +124,9 @@ describe('sqlite persistence bridge', () => {
 
     expect(context?.company?.id).toBe(company.id)
     expect(context?.openDeals).toHaveLength(1)
-    expect(context?.lastContactDate).toBe('2026-03-31T14:30:00.000Z')
+    expect(context?.openTasks).toHaveLength(1)
+    expect(context?.recentActivities).toHaveLength(1)
+    expect(context?.lastContactDate).toBe('2026-03-31T15:00:00.000Z')
   })
 
   it('keeps tenant reads scoped while exposing admin/system records separately', async () => {

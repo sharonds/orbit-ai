@@ -2,38 +2,59 @@ import { describe, expect, it } from 'vitest'
 import { getTableColumns } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/pg-core'
 
-import { companies, contacts, deals, pipelines, stages } from './tables.js'
-import { companiesRelations, contactsRelations, dealsRelations, pipelinesRelations, stagesRelations } from './relations.js'
+import { activities, companies, contacts, deals, notes, pipelines, stages, tasks } from './tables.js'
+import {
+  activitiesRelations,
+  companiesRelations,
+  contactsRelations,
+  dealsRelations,
+  notesRelations,
+  pipelinesRelations,
+  stagesRelations,
+  tasksRelations,
+} from './relations.js'
 
 describe('operational schema slice 2', () => {
-  it('defines the five operational tenant tables with organization scope', () => {
-    for (const table of [companies, contacts, pipelines, stages, deals]) {
+  it('defines the operational tenant tables with organization scope', () => {
+    for (const table of [companies, contacts, pipelines, stages, deals, activities, tasks, notes]) {
       const columns = getTableColumns(table)
       expect(Object.keys(columns)).toContain('organizationId')
     }
   })
 
-  it('keeps the expected relation graph compiled for the operational tables', () => {
+  it('keeps the expected relation graph compiled for the operational and engagement tables', () => {
+    expect(activitiesRelations.table).toBe(activities)
     expect(companiesRelations.table).toBe(companies)
     expect(contactsRelations.table).toBe(contacts)
     expect(pipelinesRelations.table).toBe(pipelines)
     expect(stagesRelations.table).toBe(stages)
     expect(dealsRelations.table).toBe(deals)
+    expect(tasksRelations.table).toBe(tasks)
+    expect(notesRelations.table).toBe(notes)
 
     expect(getTableConfig(companies).foreignKeys).toHaveLength(2)
     expect(getTableConfig(contacts).foreignKeys).toHaveLength(3)
     expect(getTableConfig(pipelines).foreignKeys).toHaveLength(1)
     expect(getTableConfig(stages).foreignKeys).toHaveLength(2)
     expect(getTableConfig(deals).foreignKeys).toHaveLength(6)
+    expect(getTableConfig(activities).foreignKeys).toHaveLength(5)
+    expect(getTableConfig(tasks).foreignKeys).toHaveLength(5)
+    expect(getTableConfig(notes).foreignKeys).toHaveLength(5)
   })
 
-  it('defines the expected operational indexes', () => {
+  it('defines the expected operational and engagement indexes', () => {
     const pipelineConfig = getTableConfig(pipelines)
     const stageConfig = getTableConfig(stages)
     const dealConfig = getTableConfig(deals)
+    const activityConfig = getTableConfig(activities)
+    const taskConfig = getTableConfig(tasks)
+    const noteConfig = getTableConfig(notes)
 
     expect(pipelineConfig.indexes.length).toBeGreaterThanOrEqual(1)
     expect(stageConfig.indexes.length).toBeGreaterThanOrEqual(2)
     expect(dealConfig.indexes.length).toBeGreaterThanOrEqual(4)
+    expect(activityConfig.indexes.length).toBeGreaterThanOrEqual(4)
+    expect(taskConfig.indexes.length).toBeGreaterThanOrEqual(2)
+    expect(noteConfig.indexes.length).toBeGreaterThanOrEqual(2)
   })
 })

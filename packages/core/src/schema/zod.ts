@@ -3,14 +3,17 @@ import { z } from 'zod'
 
 import { assertOrbitId } from '../ids/parse-id.js'
 import {
+  activities,
   apiKeys,
   companies,
   contacts,
   deals,
+  notes,
   organizationMemberships,
   organizations,
   pipelines,
   stages,
+  tasks,
   users,
 } from './tables.js'
 
@@ -241,4 +244,73 @@ export const dealUpdateSchema = dealUpdateBaseSchema.superRefine((value, ctx) =>
       path: ['wonAt'],
     })
   }
+})
+
+export const activitySelectSchema = createSelectSchema(activities, {
+  id: orbitId('activity'),
+  organizationId: orbitId('organization'),
+  contactId: orbitId('contact').optional().nullable(),
+  dealId: orbitId('deal').optional().nullable(),
+  companyId: orbitId('company').optional().nullable(),
+  loggedByUserId: orbitId('user').optional().nullable(),
+})
+export const activityInsertSchema = createInsertSchema(activities, {
+  organizationId: orbitId('organization'),
+  contactId: orbitId('contact').optional().nullable(),
+  dealId: orbitId('deal').optional().nullable(),
+  companyId: orbitId('company').optional().nullable(),
+  loggedByUserId: orbitId('user').optional().nullable(),
+})
+export const activityUpdateSchema = createUpdateSchema(activities, {
+  organizationId: orbitId('organization').optional(),
+  contactId: orbitId('contact').optional().nullable(),
+  dealId: orbitId('deal').optional().nullable(),
+  companyId: orbitId('company').optional().nullable(),
+  loggedByUserId: orbitId('user').optional().nullable(),
+})
+
+export const taskSelectSchema = createSelectSchema(tasks, {
+  id: orbitId('task'),
+  organizationId: orbitId('organization'),
+  contactId: orbitId('contact').optional().nullable(),
+  dealId: orbitId('deal').optional().nullable(),
+  companyId: orbitId('company').optional().nullable(),
+  assignedToUserId: orbitId('user').optional().nullable(),
+})
+export const taskInsertSchema = createInsertSchema(tasks, {
+  organizationId: orbitId('organization'),
+  contactId: orbitId('contact').optional().nullable(),
+  dealId: orbitId('deal').optional().nullable(),
+  companyId: orbitId('company').optional().nullable(),
+  assignedToUserId: orbitId('user').optional().nullable(),
+})
+export const taskUpdateSchema = createUpdateSchema(tasks, {
+  organizationId: orbitId('organization').optional(),
+  contactId: orbitId('contact').optional().nullable(),
+  dealId: orbitId('deal').optional().nullable(),
+  companyId: orbitId('company').optional().nullable(),
+  assignedToUserId: orbitId('user').optional().nullable(),
+})
+
+export const noteSelectSchema = createSelectSchema(notes, {
+  id: orbitId('note'),
+  organizationId: orbitId('organization'),
+  contactId: orbitId('contact').optional().nullable(),
+  dealId: orbitId('deal').optional().nullable(),
+  companyId: orbitId('company').optional().nullable(),
+  createdByUserId: orbitId('user').optional().nullable(),
+})
+export const noteInsertSchema = createInsertSchema(notes, {
+  organizationId: orbitId('organization'),
+  contactId: orbitId('contact').optional().nullable(),
+  dealId: orbitId('deal').optional().nullable(),
+  companyId: orbitId('company').optional().nullable(),
+  createdByUserId: orbitId('user').optional().nullable(),
+})
+export const noteUpdateSchema = createUpdateSchema(notes, {
+  organizationId: orbitId('organization').optional(),
+  contactId: orbitId('contact').optional().nullable(),
+  dealId: orbitId('deal').optional().nullable(),
+  companyId: orbitId('company').optional().nullable(),
+  createdByUserId: orbitId('user').optional().nullable(),
 })

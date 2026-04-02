@@ -1,5 +1,18 @@
 import { relations } from 'drizzle-orm'
-import { apiKeys, companies, contacts, deals, organizationMemberships, organizations, pipelines, stages, users } from './tables.js'
+import {
+  activities,
+  apiKeys,
+  companies,
+  contacts,
+  deals,
+  notes,
+  organizationMemberships,
+  organizations,
+  pipelines,
+  stages,
+  tasks,
+  users,
+} from './tables.js'
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({
   users: many(users),
@@ -10,6 +23,9 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   pipelines: many(pipelines),
   stages: many(stages),
   deals: many(deals),
+  activities: many(activities),
+  tasks: many(tasks),
+  notes: many(notes),
 }))
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -27,6 +43,9 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   assignedCompanies: many(companies),
   assignedContacts: many(contacts),
   assignedDeals: many(deals),
+  loggedActivities: many(activities),
+  assignedTasks: many(tasks),
+  createdNotes: many(notes),
 }))
 
 export const organizationMembershipsRelations = relations(organizationMemberships, ({ one }) => ({
@@ -68,6 +87,9 @@ export const companiesRelations = relations(companies, ({ one, many }) => ({
   }),
   contacts: many(contacts),
   deals: many(deals),
+  activities: many(activities),
+  tasks: many(tasks),
+  notes: many(notes),
 }))
 
 export const contactsRelations = relations(contacts, ({ one, many }) => ({
@@ -84,6 +106,9 @@ export const contactsRelations = relations(contacts, ({ one, many }) => ({
     references: [companies.id],
   }),
   deals: many(deals),
+  activities: many(activities),
+  tasks: many(tasks),
+  notes: many(notes),
 }))
 
 export const pipelinesRelations = relations(pipelines, ({ one, many }) => ({
@@ -107,7 +132,7 @@ export const stagesRelations = relations(stages, ({ one, many }) => ({
   deals: many(deals),
 }))
 
-export const dealsRelations = relations(deals, ({ one }) => ({
+export const dealsRelations = relations(deals, ({ one, many }) => ({
   organization: one(organizations, {
     fields: [deals.organizationId],
     references: [organizations.id],
@@ -130,6 +155,78 @@ export const dealsRelations = relations(deals, ({ one }) => ({
   }),
   assignedTo: one(users, {
     fields: [deals.assignedToUserId],
+    references: [users.id],
+  }),
+  activities: many(activities),
+  tasks: many(tasks),
+  notes: many(notes),
+}))
+
+export const activitiesRelations = relations(activities, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [activities.organizationId],
+    references: [organizations.id],
+  }),
+  contact: one(contacts, {
+    fields: [activities.contactId],
+    references: [contacts.id],
+  }),
+  deal: one(deals, {
+    fields: [activities.dealId],
+    references: [deals.id],
+  }),
+  company: one(companies, {
+    fields: [activities.companyId],
+    references: [companies.id],
+  }),
+  loggedBy: one(users, {
+    fields: [activities.loggedByUserId],
+    references: [users.id],
+  }),
+}))
+
+export const tasksRelations = relations(tasks, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [tasks.organizationId],
+    references: [organizations.id],
+  }),
+  contact: one(contacts, {
+    fields: [tasks.contactId],
+    references: [contacts.id],
+  }),
+  deal: one(deals, {
+    fields: [tasks.dealId],
+    references: [deals.id],
+  }),
+  company: one(companies, {
+    fields: [tasks.companyId],
+    references: [companies.id],
+  }),
+  assignedTo: one(users, {
+    fields: [tasks.assignedToUserId],
+    references: [users.id],
+  }),
+}))
+
+export const notesRelations = relations(notes, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [notes.organizationId],
+    references: [organizations.id],
+  }),
+  contact: one(contacts, {
+    fields: [notes.contactId],
+    references: [contacts.id],
+  }),
+  deal: one(deals, {
+    fields: [notes.dealId],
+    references: [deals.id],
+  }),
+  company: one(companies, {
+    fields: [notes.companyId],
+    references: [companies.id],
+  }),
+  createdBy: one(users, {
+    fields: [notes.createdByUserId],
     references: [users.id],
   }),
 }))
