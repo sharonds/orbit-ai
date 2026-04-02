@@ -9,6 +9,7 @@ import {
   toSqliteJson,
 } from '../../repositories/sqlite/shared.js'
 import { createTenantPostgresRepository, fromPostgresDate, fromPostgresJson } from '../../repositories/postgres/shared.js'
+import { assertTenantPatchOrganizationInvariant } from '../../repositories/tenant-guards.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import { paymentRecordSchema, type PaymentRecord } from './validators.js'
 
@@ -71,6 +72,8 @@ export function createInMemoryPaymentRepository(seed: PaymentRecord[] = []): Pay
       if (!current) {
         return null
       }
+
+      assertTenantPatchOrganizationInvariant(current.organizationId, patch)
 
       const next = paymentRecordSchema.parse({
         ...current,
