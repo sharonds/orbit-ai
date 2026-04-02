@@ -130,8 +130,74 @@ const SQLITE_WAVE_1_SCHEMA_STATEMENTS = [
   )`,
 ] as const
 
+const SQLITE_WAVE_2_SLICE_A_SCHEMA_STATEMENTS = [
+  ...SQLITE_WAVE_1_SCHEMA_STATEMENTS,
+  `create table if not exists activities (
+    id text primary key,
+    organization_id text not null,
+    type text not null,
+    subject text,
+    body text,
+    direction text not null default 'internal',
+    contact_id text,
+    deal_id text,
+    company_id text,
+    duration_minutes integer,
+    outcome text,
+    occurred_at text not null,
+    logged_by_user_id text,
+    metadata text not null default '{}',
+    custom_fields text not null default '{}',
+    created_at text not null,
+    updated_at text not null
+  )`,
+  `create index if not exists activities_contact_idx on activities (contact_id)`,
+  `create index if not exists activities_deal_idx on activities (deal_id)`,
+  `create index if not exists activities_company_idx on activities (company_id)`,
+  `create index if not exists activities_occurred_at_idx on activities (occurred_at)`,
+  `create table if not exists tasks (
+    id text primary key,
+    organization_id text not null,
+    title text not null,
+    description text,
+    due_date text,
+    priority text not null default 'medium',
+    is_completed integer not null default 0,
+    completed_at text,
+    contact_id text,
+    deal_id text,
+    company_id text,
+    assigned_to_user_id text,
+    custom_fields text not null default '{}',
+    created_at text not null,
+    updated_at text not null
+  )`,
+  `create index if not exists tasks_due_date_idx on tasks (due_date)`,
+  `create index if not exists tasks_assigned_to_idx on tasks (assigned_to_user_id)`,
+  `create table if not exists notes (
+    id text primary key,
+    organization_id text not null,
+    content text not null,
+    contact_id text,
+    deal_id text,
+    company_id text,
+    created_by_user_id text,
+    custom_fields text not null default '{}',
+    created_at text not null,
+    updated_at text not null
+  )`,
+  `create index if not exists notes_contact_idx on notes (contact_id)`,
+  `create index if not exists notes_deal_idx on notes (deal_id)`,
+] as const
+
 export async function initializeSqliteWave1Schema(db: OrbitDatabase): Promise<void> {
   for (const statement of SQLITE_WAVE_1_SCHEMA_STATEMENTS) {
+    await db.execute(sql.raw(statement))
+  }
+}
+
+export async function initializeSqliteWave2SliceASchema(db: OrbitDatabase): Promise<void> {
+  for (const statement of SQLITE_WAVE_2_SLICE_A_SCHEMA_STATEMENTS) {
     await db.execute(sql.raw(statement))
   }
 }

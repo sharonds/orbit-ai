@@ -1,8 +1,8 @@
 # Orbit AI KB
 
-Date: 2026-04-01
+Date: 2026-04-02
 Status: Active working hub
-Current baseline commit: `5572e15`
+Current baseline commit: `1d98388`
 
 ## What Orbit Is
 
@@ -38,12 +38,14 @@ Completed:
 - `@orbit-ai/core` Wave 1 remediation
 - `@orbit-ai/core` pre-API hardening follow-up
 - `@orbit-ai/core` Postgres persistence bridge
+- `@orbit-ai/core` Wave 2 execution plan
 
 Current focus:
 
 - maintain the repo knowledge base as the live hub
-- treat the Postgres persistence bridge as the active core acceptance point
-- keep API/SDK execution blocked until the next core slice is explicitly chosen
+- complete review and acceptance for Core Wave 2 Slice A
+- treat the Postgres persistence bridge as the accepted baseline feeding Wave 2
+- keep API/SDK execution blocked until Wave 2 service coverage is further along
 - keep execution docs and skills aligned with implementation progress
 
 Not started yet:
@@ -94,12 +96,14 @@ Use these files first:
   - [core-wave-1-remediation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-wave-1-remediation-plan.md)
   - [core-persistence-bridge-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-persistence-bridge-plan.md)
   - [core-postgres-persistence-bridge-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-postgres-persistence-bridge-plan.md)
+  - [core-wave-2-services-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-wave-2-services-plan.md)
   - [core-wave-1-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-review.md)
   - [core-wave-1-full-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-full-review.md)
   - [core-wave-1-remediation-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-remediation-review.md)
   - [core-pre-api-hardening-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-pre-api-hardening-review.md)
   - [core-persistence-bridge-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-persistence-bridge-review.md)
   - [core-postgres-persistence-bridge-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-postgres-persistence-bridge-review.md)
+  - [core-wave-2-slice-a-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-a-review.md)
   - [orbit-skills-plan.md](/Users/sharonsciammas/orbit-ai/docs/skills/orbit-skills-plan.md)
 
 ## What Is Next
@@ -116,9 +120,9 @@ Immediate next actions:
    - Wave 1 service surface committed on `core-wave-1-services`
    - SQLite persistence bridge committed on `core-wave-1-services`
 3. Next:
-   - accept [core-postgres-persistence-bridge-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-postgres-persistence-bridge-review.md) as the completed Postgres bridge review artifact
-   - choose the next core execution slice or the next package-level implementation plan
-   - keep API/SDK execution blocked until that next slice is explicitly chosen
+   - accept [core-wave-2-slice-a-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-a-review.md) as the Slice A branch review artifact
+   - decide whether to open Slice B on `core-wave-2-services` or cut a follow-up branch
+   - keep API/SDK execution blocked until the Wave 2 service surface is materially further along
 
 ## Open Items
 
@@ -129,6 +133,7 @@ These are still open, but they do not block the KB:
 - public release sequencing across packages
 - contribution and open-source governance docs
 - whether Postgres-family persistence lands before or alongside core Wave 2
+- how far Wave 2 proceeds beyond Slice A in the current branch before opening the next slice
 
 ## Decision Log
 
@@ -166,6 +171,8 @@ These are still open, but they do not block the KB:
 - 2026-04-01: Executed the Postgres persistence bridge on branch `core-postgres-persistence-bridge` in `ba3dfb1`, adding the generic Postgres runtime adapter, Postgres-backed Wave 1 repositories, and the integrated persistence proof harness.
 - 2026-04-01: Refined the Postgres bridge proof harness in `5572e15`, tightening the adapter and registry tests that validate tenant reuse, auth lookup, and persistence reuse.
 - 2026-04-01: Recorded the bridge review outcome in [core-postgres-persistence-bridge-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-postgres-persistence-bridge-review.md); the next core step is the next package-level implementation slice, pending instruction.
+- 2026-04-02: Committed [core-wave-2-services-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-wave-2-services-plan.md) on `main` in `1d98388` and opened branch `core-wave-2-services` to execute Wave 2 starting with Slice A.
+- 2026-04-02: Executed Core Wave 2 Slice A locally on branch `core-wave-2-services`, covering `activities`, `tasks`, `notes`, contact-context integration, and SQLite/Postgres persistence proofs; recorded the outcome in [core-wave-2-slice-a-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-a-review.md).
 
 ## Working Rule
 
