@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest'
 import { newDb } from 'pg-mem'
+import { sql } from 'drizzle-orm'
+import { describe, expect, it } from 'vitest'
 
 import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
-import { initializePostgresWave2SliceCSchema } from '../adapters/postgres/schema.js'
+import { initializePostgresWave2SliceDSchema } from '../adapters/postgres/schema.js'
 import { createPostgresApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createPostgresOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createPostgresOrganizationRepository } from '../entities/organizations/repository.js'
@@ -25,7 +26,7 @@ async function createPostgresAdapter() {
   const { Pool } = memory.adapters.createPg()
   const pool = new Pool({ max: 1 })
   const database = createPostgresOrbitDatabase({ pool })
-  await initializePostgresWave2SliceCSchema(database)
+  await initializePostgresWave2SliceDSchema(database)
 
   const adapter = createPostgresStorageAdapter({
     database,
@@ -51,6 +52,11 @@ async function createPostgresAdapter() {
         'sequence_steps',
         'sequence_enrollments',
         'sequence_events',
+        'tags',
+        'entity_tags',
+        'imports',
+        'webhooks',
+        'webhook_deliveries',
       ],
     }),
   })
@@ -59,9 +65,10 @@ async function createPostgresAdapter() {
 }
 
 describe('postgres persistence bridge', () => {
-  it('persists Slice C records across fresh service registries', async () => {
+  it('persists Slice D records across fresh service registries', async () => {
     const { adapter, pool } = await createPostgresAdapter()
     const organizations = createPostgresOrganizationRepository(adapter)
+    const users = createPostgresUserRepository(adapter)
 
     await organizations.create({
       id: ctxA.orgId,
@@ -75,6 +82,19 @@ describe('postgres persistence bridge', () => {
     })
 
     const servicesA = createCoreServices(adapter)
+    await users.create(ctxA, {
+      id: ctxA.userId,
+      organizationId: ctxA.orgId,
+      email: 'owner@acme.test',
+      name: 'Owner',
+      role: 'owner',
+      avatarUrl: null,
+      externalAuthId: null,
+      isActive: true,
+      metadata: {},
+      createdAt: new Date('2026-04-01T11:00:00.000Z'),
+      updatedAt: new Date('2026-04-01T11:00:00.000Z'),
+    })
     const company = await servicesA.companies.create(ctxA, {
       name: 'Acme',
       domain: 'acme.test',
@@ -156,6 +176,56 @@ describe('postgres persistence bridge', () => {
       sequenceStepId: sequenceStep.id,
       eventType: 'step.entered',
     })
+    const tag = await servicesA.tags.create(ctxA, {
+      name: 'VIP',
+      color: '#ff0000',
+    })
+    const webhook = await servicesA.webhooks.create(ctxA, {
+      url: 'https://example.com/hook',
+      secretEncrypted: 'enc_test_secret',
+      secretLastFour: 'cret',
+      events: ['contact.created'],
+    })
+    const importJob = await servicesA.imports.create(ctxA, {
+      entityType: 'contacts',
+      fileName: 'contacts.csv',
+      startedByUserId: ctxA.userId,
+    })
+
+    const { createPostgresEntityTagRepository } = await import('../entities/entity-tags/repository.js')
+    const entityTagRepo = createPostgresEntityTagRepository(adapter)
+    const { generateId } = await import('../ids/generate-id.js')
+    const entityTag = await entityTagRepo.create(ctxA, {
+      id: generateId('entityTag'),
+      organizationId: ctxA.orgId,
+      tagId: tag.id,
+      entityType: 'contacts',
+      entityId: contact.id,
+      createdAt: new Date('2026-04-02T12:00:00.000Z'),
+      updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+    })
+
+    const { createPostgresWebhookDeliveryRepository } = await import('../entities/webhook-deliveries/repository.js')
+    const deliveryRepo = createPostgresWebhookDeliveryRepository(adapter)
+    const delivery = await deliveryRepo.create(ctxA, {
+      id: generateId('webhookDelivery'),
+      organizationId: ctxA.orgId,
+      webhookId: webhook.id,
+      eventId: 'evt_pg_1',
+      eventType: 'contact.created',
+      payload: { contactId: contact.id },
+      signature: 'sig_pg_1',
+      idempotencyKey: 'idem_pg_1',
+      status: 'succeeded',
+      responseStatus: 200,
+      responseBody: '{"ok":true}',
+      attemptCount: 1,
+      nextAttemptAt: null,
+      deliveredAt: new Date('2026-04-02T12:00:00.000Z'),
+      lastError: null,
+      createdAt: new Date('2026-04-02T12:00:00.000Z'),
+      updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+    })
 
     const servicesB = createCoreServices(adapter)
     expect(await servicesB.companies.get(ctxA, company.id)).toEqual(company)
@@ -171,6 +241,9 @@ describe('postgres persistence bridge', () => {
     expect(await servicesB.sequenceSteps.get(ctxA, sequenceStep.id)).toEqual(sequenceStep)
     expect(await servicesB.sequenceEnrollments.get(ctxA, sequenceEnrollment.id)).toEqual(sequenceEnrollment)
     expect(await servicesB.sequenceEvents.get(ctxA, sequenceEvent.id)).toEqual(sequenceEvent)
+    expect(await servicesB.tags.get(ctxA, tag.id)).toEqual(tag)
+    expect(await servicesB.webhooks.get(ctxA, webhook.id)).toEqual(webhook)
+    expect(await servicesB.imports.get(ctxA, importJob.id)).toEqual(importJob)
     expect(await servicesB.products.get(ctxB, product.id)).toBeNull()
     expect(await servicesB.payments.get(ctxB, payment.id)).toBeNull()
     expect(await servicesB.contracts.get(ctxB, contract.id)).toBeNull()
@@ -178,6 +251,27 @@ describe('postgres persistence bridge', () => {
     expect(await servicesB.sequenceSteps.get(ctxB, sequenceStep.id)).toBeNull()
     expect(await servicesB.sequenceEnrollments.get(ctxB, sequenceEnrollment.id)).toBeNull()
     expect(await servicesB.sequenceEvents.get(ctxB, sequenceEvent.id)).toBeNull()
+    expect(await servicesB.tags.get(ctxB, tag.id)).toBeNull()
+    expect(await servicesB.webhooks.get(ctxB, webhook.id)).toBeNull()
+    expect(await servicesB.imports.get(ctxB, importJob.id)).toBeNull()
+    expect('secretEncrypted' in webhook).toBe(false)
+    expect('rollbackData' in importJob).toBe(false)
+    expect(await servicesB.system.entityTags.get(ctxA, entityTag.id)).toEqual(entityTag)
+    const sanitizedDelivery = await servicesB.system.webhookDeliveries.get(ctxA, delivery.id)
+    expect(sanitizedDelivery).toMatchObject({
+      id: delivery.id,
+      webhookId: webhook.id,
+      eventId: 'evt_pg_1',
+      eventType: 'contact.created',
+      status: 'succeeded',
+      responseStatus: 200,
+      attemptCount: 1,
+      deliveredAt: new Date('2026-04-02T12:00:00.000Z'),
+    })
+    expect('payload' in (sanitizedDelivery ?? {})).toBe(false)
+    expect('signature' in (sanitizedDelivery ?? {})).toBe(false)
+    expect('idempotencyKey' in (sanitizedDelivery ?? {})).toBe(false)
+    expect('responseBody' in (sanitizedDelivery ?? {})).toBe(false)
     await expect(servicesB.companies.update(ctxB, company.id, { name: 'Beta' })).rejects.toThrow('Company')
     await expect(servicesB.companies.delete(ctxB, company.id)).rejects.toThrow('Company')
 
@@ -190,6 +284,158 @@ describe('postgres persistence bridge', () => {
     expect(context?.openTasks).toHaveLength(1)
     expect(context?.recentActivities).toHaveLength(1)
     expect(context?.lastContactDate).toBe('2026-04-01T12:00:00.000Z')
+
+    await pool.end()
+  })
+
+  it('normalizes legacy webhook statuses on postgres reads', async () => {
+    const { adapter, pool } = await createPostgresAdapter()
+    const organizations = createPostgresOrganizationRepository(adapter)
+    const now = new Date('2026-04-02T12:00:00.000Z')
+    const legacyWebhookId = 'webhook_01ARYZ6S41YYYYYYYYYYYYYYYY'
+
+    await organizations.create({
+      id: ctxA.orgId,
+      name: 'Acme',
+      slug: 'acme',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await adapter.execute(sql`
+      insert into webhooks (
+        id,
+        organization_id,
+        url,
+        description,
+        events,
+        secret_encrypted,
+        secret_last_four,
+        secret_created_at,
+        status,
+        last_triggered_at,
+        created_at,
+        updated_at
+      ) values (
+        ${legacyWebhookId},
+        ${ctxA.orgId},
+        ${'https://example.com/legacy'},
+        ${null},
+        ${JSON.stringify([])},
+        ${'enc_legacy'},
+        ${'gacy'},
+        ${now},
+        ${'inactive'},
+        ${null},
+        ${now},
+        ${now}
+      )
+    `)
+
+    const services = createCoreServices(adapter)
+    const webhook = await services.webhooks.get(ctxA, legacyWebhookId)
+
+    expect(webhook?.status).toBe('disabled')
+    expect('secretEncrypted' in (webhook ?? {})).toBe(false)
+
+    const search = await services.webhooks.search(ctxA, { query: 'legacy', limit: 10 })
+    expect(search.data).toHaveLength(1)
+    expect(search.data[0]?.status).toBe('disabled')
+
+    await pool.end()
+  })
+
+  it('rejects cross-tenant Slice D relation writes on the postgres adapter path', async () => {
+    const { adapter, pool } = await createPostgresAdapter()
+    const organizations = createPostgresOrganizationRepository(adapter)
+    const users = createPostgresUserRepository(adapter)
+    const now = new Date('2026-04-02T12:00:00.000Z')
+
+    await organizations.create({
+      id: ctxA.orgId,
+      name: 'Acme',
+      slug: 'acme',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+    await organizations.create({
+      id: ctxB.orgId,
+      name: 'Beta',
+      slug: 'beta',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+    await users.create(ctxA, {
+      id: ctxA.userId,
+      organizationId: ctxA.orgId,
+      email: 'owner@acme.test',
+      name: 'Owner',
+      role: 'owner',
+      avatarUrl: null,
+      externalAuthId: null,
+      isActive: true,
+      metadata: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const services = createCoreServices(adapter)
+    const tagB = await services.tags.create(ctxB, { name: 'Other Org' })
+    const webhookB = await services.webhooks.create(ctxB, {
+      url: 'https://example.com/other',
+      secretEncrypted: 'enc_other_secret',
+      secretLastFour: 'cret',
+      events: ['contact.created'],
+    })
+
+    const { createPostgresEntityTagRepository } = await import('../entities/entity-tags/repository.js')
+    const entityTagRepo = createPostgresEntityTagRepository(adapter)
+    const { createPostgresWebhookDeliveryRepository } = await import('../entities/webhook-deliveries/repository.js')
+    const deliveryRepo = createPostgresWebhookDeliveryRepository(adapter)
+    const { generateId } = await import('../ids/generate-id.js')
+
+    await expect(
+      entityTagRepo.create(ctxA, {
+        id: generateId('entityTag'),
+        organizationId: ctxA.orgId,
+        tagId: tagB.id,
+        entityType: 'contacts',
+        entityId: 'contact_01ARYZ6S41YYYYYYYYYYYYYYYY',
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).rejects.toMatchObject({ code: 'RELATION_NOT_FOUND' })
+
+    await expect(
+      deliveryRepo.create(ctxA, {
+        id: generateId('webhookDelivery'),
+        organizationId: ctxA.orgId,
+        webhookId: webhookB.id,
+        eventId: 'evt_cross_org_pg',
+        eventType: 'contact.created',
+        payload: {},
+        signature: 'sig_cross_org_pg',
+        idempotencyKey: 'idem_cross_org_pg',
+        status: 'pending',
+        responseStatus: null,
+        responseBody: null,
+        attemptCount: 0,
+        nextAttemptAt: null,
+        deliveredAt: null,
+        lastError: null,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).rejects.toMatchObject({ code: 'RELATION_NOT_FOUND' })
 
     await pool.end()
   })

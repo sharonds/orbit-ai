@@ -4,6 +4,8 @@ import { createInMemoryActivityRepository } from '../entities/activities/reposit
 import { createInMemoryCompanyRepository } from '../entities/companies/repository.js'
 import { createInMemoryContactRepository } from '../entities/contacts/repository.js'
 import { createInMemoryDealRepository } from '../entities/deals/repository.js'
+import { createInMemoryEntityTagRepository } from '../entities/entity-tags/repository.js'
+import { createInMemoryTagRepository } from '../entities/tags/repository.js'
 import { createInMemoryTaskRepository } from '../entities/tasks/repository.js'
 import { createContactContextService } from './contact-context.js'
 
@@ -140,5 +142,65 @@ describe('contact context service', () => {
     expect(context?.recentActivities[0]?.subject).toBe('Latest touchpoint')
     expect(context?.openTasks[0]?.title).toBe('Follow up')
     expect(context?.lastContactDate).toBe('2026-04-01T09:00:00.000Z')
+  })
+
+  it('returns real tags from entity tag integration', async () => {
+    const contactId = 'contact_01ARYZ6S41YYYYYYYYYYYYYYYY'
+    const contacts = createInMemoryContactRepository([
+      {
+        id: contactId,
+        organizationId: ctx.orgId,
+        name: 'Taylor',
+        email: 'taylor@example.com',
+        phone: null,
+        title: null,
+        sourceChannel: null,
+        status: 'lead',
+        assignedToUserId: null,
+        companyId: null,
+        leadScore: 0,
+        isHot: false,
+        lastContactedAt: null,
+        customFields: {},
+        createdAt: new Date('2026-04-02T12:00:00.000Z'),
+        updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+      },
+    ])
+
+    const tagId = 'tag_01ARYZ6S41YYYYYYYYYYYYYYYY'
+    const tags = createInMemoryTagRepository([
+      {
+        id: tagId,
+        organizationId: ctx.orgId,
+        name: 'VIP',
+        color: '#gold',
+        createdAt: new Date('2026-04-02T12:00:00.000Z'),
+        updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+      },
+    ])
+
+    const entityTags = createInMemoryEntityTagRepository([
+      {
+        id: 'etag_01ARYZ6S41YYYYYYYYYYYYYYYY',
+        organizationId: ctx.orgId,
+        tagId,
+        entityType: 'contacts',
+        entityId: contactId,
+        createdAt: new Date('2026-04-02T12:00:00.000Z'),
+        updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+      },
+    ])
+
+    const service = createContactContextService({
+      contacts,
+      companies: createInMemoryCompanyRepository(),
+      deals: createInMemoryDealRepository(),
+      entityTags,
+      tags,
+    })
+
+    const context = await service.getContactContext(ctx, { contactId })
+    expect(context?.tags).toHaveLength(1)
+    expect(context?.tags[0]).toEqual({ id: tagId, name: 'VIP', color: '#gold' })
   })
 })

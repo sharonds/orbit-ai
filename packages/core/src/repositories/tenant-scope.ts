@@ -21,6 +21,11 @@ export const IMPLEMENTED_TENANT_TABLES = [
   'sequence_steps',
   'sequence_enrollments',
   'sequence_events',
+  'tags',
+  'entity_tags',
+  'imports',
+  'webhooks',
+  'webhook_deliveries',
 ] as const
 
 export type BootstrapTableName = (typeof BOOTSTRAP_TABLES)[number]

@@ -372,3 +372,96 @@ export const sequenceEvents = orbit.table(
   },
   (table) => [index('sequence_events_enrollment_idx').on(table.sequenceEnrollmentId)],
 )
+
+export const tags = orbit.table(
+  'tags',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    name: text('name').notNull(),
+    color: text('color'),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex('tags_org_name_idx').on(table.organizationId, table.name)],
+)
+
+export const entityTags = orbit.table(
+  'entity_tags',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    tagId: text('tag_id').notNull().references(() => tags.id),
+    entityType: text('entity_type').notNull(),
+    entityId: text('entity_id').notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('entity_tags_unique_idx').on(table.organizationId, table.tagId, table.entityType, table.entityId),
+    index('entity_tags_lookup_idx').on(table.organizationId, table.entityType, table.entityId),
+  ],
+)
+
+export const imports = orbit.table(
+  'imports',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    entityType: text('entity_type').notNull(),
+    fileName: text('file_name').notNull(),
+    totalRows: integer('total_rows').notNull().default(0),
+    createdRows: integer('created_rows').notNull().default(0),
+    updatedRows: integer('updated_rows').notNull().default(0),
+    skippedRows: integer('skipped_rows').notNull().default(0),
+    failedRows: integer('failed_rows').notNull().default(0),
+    status: text('status').notNull().default('pending'),
+    rollbackData: jsonb('rollback_data').$type<Record<string, unknown>>().notNull().default({}),
+    startedByUserId: text('started_by_user_id').references(() => users.id),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [index('imports_entity_type_idx').on(table.entityType)],
+)
+
+export const webhooks = orbit.table(
+  'webhooks',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    url: text('url').notNull(),
+    description: text('description'),
+    events: jsonb('events').$type<string[]>().notNull().default([]),
+    secretEncrypted: text('secret_encrypted').notNull(),
+    secretLastFour: text('secret_last_four').notNull(),
+    secretCreatedAt: timestamp('secret_created_at', { withTimezone: true }).defaultNow().notNull(),
+    status: text('status').notNull().default('active'),
+    lastTriggeredAt: timestamp('last_triggered_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [index('webhooks_status_idx').on(table.status)],
+)
+
+export const webhookDeliveries = orbit.table(
+  'webhook_deliveries',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    webhookId: text('webhook_id').notNull().references(() => webhooks.id),
+    eventId: text('event_id').notNull(),
+    eventType: text('event_type').notNull(),
+    payload: metadata(),
+    signature: text('signature').notNull(),
+    idempotencyKey: text('idempotency_key').notNull(),
+    status: text('status').notNull().default('pending'),
+    responseStatus: integer('response_status'),
+    responseBody: text('response_body'),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    lastError: text('last_error'),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('webhook_deliveries_event_idx').on(table.webhookId, table.eventId),
+    index('webhook_deliveries_next_attempt_idx').on(table.nextAttemptAt),
+  ],
+)
