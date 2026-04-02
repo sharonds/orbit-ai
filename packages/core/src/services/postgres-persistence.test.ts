@@ -3,7 +3,7 @@ import { newDb } from 'pg-mem'
 
 import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
-import { initializePostgresWave2SliceBSchema } from '../adapters/postgres/schema.js'
+import { initializePostgresWave2SliceCSchema } from '../adapters/postgres/schema.js'
 import { createPostgresApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createPostgresOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createPostgresOrganizationRepository } from '../entities/organizations/repository.js'
@@ -25,7 +25,7 @@ async function createPostgresAdapter() {
   const { Pool } = memory.adapters.createPg()
   const pool = new Pool({ max: 1 })
   const database = createPostgresOrbitDatabase({ pool })
-  await initializePostgresWave2SliceBSchema(database)
+  await initializePostgresWave2SliceCSchema(database)
 
   const adapter = createPostgresStorageAdapter({
     database,
@@ -47,6 +47,10 @@ async function createPostgresAdapter() {
         'products',
         'payments',
         'contracts',
+        'sequences',
+        'sequence_steps',
+        'sequence_enrollments',
+        'sequence_events',
       ],
     }),
   })
@@ -55,7 +59,7 @@ async function createPostgresAdapter() {
 }
 
 describe('postgres persistence bridge', () => {
-  it('persists Slice B records across fresh service registries', async () => {
+  it('persists Slice C records across fresh service registries', async () => {
     const { adapter, pool } = await createPostgresAdapter()
     const organizations = createPostgresOrganizationRepository(adapter)
 
@@ -134,6 +138,24 @@ describe('postgres persistence bridge', () => {
       companyId: company.id,
       dealId: deal.id,
     })
+    const sequence = await servicesA.sequences.create(ctxA, {
+      name: 'Outbound',
+    })
+    const sequenceStep = await servicesA.sequenceSteps.create(ctxA, {
+      sequenceId: sequence.id,
+      stepOrder: 1,
+      actionType: 'email',
+      templateSubject: 'Welcome to Orbit',
+    })
+    const sequenceEnrollment = await servicesA.sequenceEnrollments.create(ctxA, {
+      sequenceId: sequence.id,
+      contactId: contact.id,
+    })
+    const sequenceEvent = await servicesA.sequenceEvents.create(ctxA, {
+      sequenceEnrollmentId: sequenceEnrollment.id,
+      sequenceStepId: sequenceStep.id,
+      eventType: 'step.entered',
+    })
 
     const servicesB = createCoreServices(adapter)
     expect(await servicesB.companies.get(ctxA, company.id)).toEqual(company)
@@ -145,9 +167,17 @@ describe('postgres persistence bridge', () => {
     expect(await servicesB.products.get(ctxA, product.id)).toEqual(product)
     expect(await servicesB.payments.get(ctxA, payment.id)).toEqual(payment)
     expect(await servicesB.contracts.get(ctxA, contract.id)).toEqual(contract)
+    expect(await servicesB.sequences.get(ctxA, sequence.id)).toEqual(sequence)
+    expect(await servicesB.sequenceSteps.get(ctxA, sequenceStep.id)).toEqual(sequenceStep)
+    expect(await servicesB.sequenceEnrollments.get(ctxA, sequenceEnrollment.id)).toEqual(sequenceEnrollment)
+    expect(await servicesB.sequenceEvents.get(ctxA, sequenceEvent.id)).toEqual(sequenceEvent)
     expect(await servicesB.products.get(ctxB, product.id)).toBeNull()
     expect(await servicesB.payments.get(ctxB, payment.id)).toBeNull()
     expect(await servicesB.contracts.get(ctxB, contract.id)).toBeNull()
+    expect(await servicesB.sequences.get(ctxB, sequence.id)).toBeNull()
+    expect(await servicesB.sequenceSteps.get(ctxB, sequenceStep.id)).toBeNull()
+    expect(await servicesB.sequenceEnrollments.get(ctxB, sequenceEnrollment.id)).toBeNull()
+    expect(await servicesB.sequenceEvents.get(ctxB, sequenceEvent.id)).toBeNull()
     await expect(servicesB.companies.update(ctxB, company.id, { name: 'Beta' })).rejects.toThrow('Company')
     await expect(servicesB.companies.delete(ctxB, company.id)).rejects.toThrow('Company')
 
