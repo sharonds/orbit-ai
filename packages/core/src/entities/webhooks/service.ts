@@ -1,6 +1,7 @@
 import { generateId } from '../../ids/generate-id.js'
 import type { EntityService } from '../../services/entity-service.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
+import { createOrbitError } from '../../types/errors.js'
 import type { WebhookRepository } from './repository.js'
 import {
   sanitizeWebhookRecord,
@@ -13,6 +14,18 @@ import {
   type WebhookUpdateInput,
 } from './validators.js'
 
+const VALID_WEBHOOK_STATUSES = new Set(['active', 'inactive', 'failed'])
+
+function assertValidWebhookStatus(status: string): void {
+  if (!VALID_WEBHOOK_STATUSES.has(status)) {
+    throw createOrbitError({
+      code: 'VALIDATION_FAILED',
+      message: `Invalid webhook status '${status}'. Must be one of: active, inactive, failed`,
+      field: 'status',
+    })
+  }
+}
+
 export function createWebhookService(deps: {
   webhooks: WebhookRepository
 }): EntityService<WebhookCreateInput, WebhookUpdateInput, SanitizedWebhookRecord> {
@@ -20,6 +33,9 @@ export function createWebhookService(deps: {
     async create(ctx, input) {
       const parsed = webhookCreateInputSchema.parse(input)
       const now = new Date()
+
+      const status = parsed.status ?? 'active'
+      assertValidWebhookStatus(status)
 
       const record = await deps.webhooks.create(
         ctx,
@@ -32,7 +48,7 @@ export function createWebhookService(deps: {
           secretEncrypted: parsed.secretEncrypted,
           secretLastFour: parsed.secretLastFour,
           secretCreatedAt: parsed.secretCreatedAt ?? now,
-          status: parsed.status ?? 'active',
+          status,
           lastTriggeredAt: null,
           createdAt: now,
           updatedAt: now,
@@ -56,7 +72,10 @@ export function createWebhookService(deps: {
       if (parsed.url !== undefined) patch.url = parsed.url
       if (parsed.description !== undefined) patch.description = parsed.description ?? null
       if (parsed.events !== undefined) patch.events = parsed.events
-      if (parsed.status !== undefined) patch.status = parsed.status
+      if (parsed.status !== undefined) {
+        assertValidWebhookStatus(parsed.status)
+        patch.status = parsed.status
+      }
       if (parsed.lastTriggeredAt !== undefined) patch.lastTriggeredAt = parsed.lastTriggeredAt ?? null
 
       const updated = assertFound(await deps.webhooks.update(ctx, id, patch), `Webhook ${id} not found`)
