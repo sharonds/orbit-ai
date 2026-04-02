@@ -393,6 +393,83 @@ const POSTGRES_WAVE_2_SLICE_D_SCHEMA_STATEMENTS = [
   `create index if not exists webhook_deliveries_next_attempt_idx on webhook_deliveries (next_attempt_at)`,
 ] as const
 
+const POSTGRES_WAVE_2_SLICE_E_SCHEMA_STATEMENTS = [
+  ...POSTGRES_WAVE_2_SLICE_D_SCHEMA_STATEMENTS,
+  `create table if not exists custom_field_definitions (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    entity_type text not null,
+    field_name text not null,
+    field_type text not null,
+    label text not null,
+    description text,
+    is_required boolean not null default false,
+    is_indexed boolean not null default false,
+    is_promoted boolean not null default false,
+    promoted_column_name text,
+    default_value jsonb,
+    options jsonb not null default '[]'::jsonb,
+    validation jsonb not null default '{}'::jsonb,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create unique index if not exists custom_fields_unique_idx on custom_field_definitions (organization_id, entity_type, field_name)`,
+  `create table if not exists audit_logs (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    actor_user_id text references users(id),
+    actor_api_key_id text references api_keys(id),
+    entity_type text not null,
+    entity_id text not null,
+    action text not null,
+    before jsonb,
+    after jsonb,
+    request_id text,
+    metadata jsonb not null default '{}'::jsonb,
+    occurred_at timestamptz not null default now(),
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create index if not exists audit_logs_entity_idx on audit_logs (organization_id, entity_type, entity_id)`,
+  `create index if not exists audit_logs_occurred_at_idx on audit_logs (occurred_at)`,
+  `create table if not exists schema_migrations (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    description text not null,
+    entity_type text,
+    operation_type text not null,
+    sql_statements jsonb not null default '[]'::jsonb,
+    rollback_statements jsonb not null default '[]'::jsonb,
+    applied_by_user_id text references users(id),
+    approved_by_user_id text references users(id),
+    applied_at timestamptz,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create index if not exists schema_migrations_applied_at_idx on schema_migrations (applied_at)`,
+  `create table if not exists idempotency_keys (
+    id text primary key,
+    organization_id text not null references organizations(id),
+    key text not null,
+    method text not null,
+    path text not null,
+    request_hash text not null,
+    response_code integer,
+    response_body jsonb,
+    locked_until timestamptz,
+    completed_at timestamptz,
+    created_at timestamptz not null,
+    updated_at timestamptz not null
+  )`,
+  `create unique index if not exists idempotency_unique_idx on idempotency_keys (organization_id, key, method, path)`,
+] as const
+
+export async function initializePostgresWave2SliceESchema(db: OrbitDatabase): Promise<void> {
+  for (const statement of POSTGRES_WAVE_2_SLICE_E_SCHEMA_STATEMENTS) {
+    await db.execute(sql.raw(statement))
+  }
+}
+
 export async function initializePostgresWave1Schema(db: OrbitDatabase): Promise<void> {
   for (const statement of POSTGRES_WAVE_1_SCHEMA_STATEMENTS) {
     await db.execute(sql.raw(statement))
