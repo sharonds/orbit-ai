@@ -175,3 +175,74 @@ export const deals = orbit.table(
     index('deals_company_idx').on(table.companyId),
   ],
 )
+
+export const activities = orbit.table(
+  'activities',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    type: text('type').notNull(),
+    subject: text('subject'),
+    body: text('body'),
+    direction: text('direction').notNull().default('internal'),
+    contactId: text('contact_id').references(() => contacts.id),
+    dealId: text('deal_id').references(() => deals.id),
+    companyId: text('company_id').references(() => companies.id),
+    durationMinutes: integer('duration_minutes'),
+    outcome: text('outcome'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    loggedByUserId: text('logged_by_user_id').references(() => users.id),
+    metadata: metadata(),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    index('activities_contact_idx').on(table.contactId),
+    index('activities_deal_idx').on(table.dealId),
+    index('activities_company_idx').on(table.companyId),
+    index('activities_occurred_at_idx').on(table.occurredAt),
+  ],
+)
+
+export const tasks = orbit.table(
+  'tasks',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    title: text('title').notNull(),
+    description: text('description'),
+    dueDate: timestamp('due_date', { withTimezone: true }),
+    priority: text('priority').notNull().default('medium'),
+    isCompleted: boolean('is_completed').notNull().default(false),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    contactId: text('contact_id').references(() => contacts.id),
+    dealId: text('deal_id').references(() => deals.id),
+    companyId: text('company_id').references(() => companies.id),
+    assignedToUserId: text('assigned_to_user_id').references(() => users.id),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    index('tasks_due_date_idx').on(table.dueDate),
+    index('tasks_assigned_to_idx').on(table.assignedToUserId),
+  ],
+)
+
+export const notes = orbit.table(
+  'notes',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    content: text('content').notNull(),
+    contactId: text('contact_id').references(() => contacts.id),
+    dealId: text('deal_id').references(() => deals.id),
+    companyId: text('company_id').references(() => companies.id),
+    createdByUserId: text('created_by_user_id').references(() => users.id),
+    customFields: customFieldsColumn,
+    ...timestamps,
+  },
+  (table) => [
+    index('notes_contact_idx').on(table.contactId),
+    index('notes_deal_idx').on(table.dealId),
+  ],
+)

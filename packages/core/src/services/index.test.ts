@@ -6,21 +6,27 @@ import type { StorageAdapter } from '../adapters/interface.js'
 import { DEFAULT_ADAPTER_AUTHORITY_MODEL, asMigrationDatabase } from '../adapters/interface.js'
 import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
-import { initializePostgresWave1Schema } from '../adapters/postgres/schema.js'
+import { initializePostgresWave2SliceASchema } from '../adapters/postgres/schema.js'
 import { generateId } from '../ids/generate-id.js'
+import { createInMemoryActivityRepository } from '../entities/activities/repository.js'
 import { createInMemoryApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createInMemoryCompanyRepository } from '../entities/companies/repository.js'
 import { createInMemoryContactRepository } from '../entities/contacts/repository.js'
 import { createInMemoryDealRepository } from '../entities/deals/repository.js'
+import { createInMemoryNoteRepository } from '../entities/notes/repository.js'
 import { createInMemoryOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createInMemoryOrganizationRepository } from '../entities/organizations/repository.js'
 import { createInMemoryPipelineRepository } from '../entities/pipelines/repository.js'
 import { createInMemoryStageRepository } from '../entities/stages/repository.js'
+import { createInMemoryTaskRepository } from '../entities/tasks/repository.js'
 import { createInMemoryUserRepository } from '../entities/users/repository.js'
+import { createPostgresActivityRepository } from '../entities/activities/repository.js'
 import { createPostgresCompanyRepository } from '../entities/companies/repository.js'
+import { createPostgresNoteRepository } from '../entities/notes/repository.js'
 import { createPostgresOrganizationRepository } from '../entities/organizations/repository.js'
 import { createPostgresPipelineRepository } from '../entities/pipelines/repository.js'
 import { createPostgresStageRepository } from '../entities/stages/repository.js'
+import { createPostgresTaskRepository } from '../entities/tasks/repository.js'
 import { createPostgresUserRepository } from '../entities/users/repository.js'
 import { createCoreServices } from './index.js'
 
@@ -104,7 +110,7 @@ function createPostgresTestAdapter() {
 }
 
 describe('core services registry', () => {
-  it('exposes the Wave 1 registry keys and keeps system reads separate', async () => {
+  it('exposes the Slice A registry keys and keeps system reads separate', async () => {
     const organizations = createInMemoryOrganizationRepository([
       {
         id: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
@@ -150,6 +156,9 @@ describe('core services registry', () => {
     const pipelines = createInMemoryPipelineRepository()
     const stages = createInMemoryStageRepository()
     const deals = createInMemoryDealRepository()
+    const activities = createInMemoryActivityRepository()
+    const tasks = createInMemoryTaskRepository()
+    const notes = createInMemoryNoteRepository()
     const users = createInMemoryUserRepository()
 
     const services = createCoreServices(createTestAdapter(), {
@@ -161,19 +170,25 @@ describe('core services registry', () => {
       pipelines,
       stages,
       deals,
+      activities,
+      tasks,
+      notes,
       users,
     })
 
     expect(Object.keys(services).sort()).toEqual([
+      'activities',
       'companies',
       'contactContext',
       'contacts',
       'deals',
+      'notes',
       'pipelines',
       'schema',
       'search',
       'stages',
       'system',
+      'tasks',
       'users',
     ])
 
@@ -196,6 +211,9 @@ describe('core services registry', () => {
     const pipelines = createInMemoryPipelineRepository()
     const stages = createInMemoryStageRepository()
     const deals = createInMemoryDealRepository()
+    const activities = createInMemoryActivityRepository()
+    const tasks = createInMemoryTaskRepository()
+    const notes = createInMemoryNoteRepository()
     const users = createInMemoryUserRepository()
 
     const services = createCoreServices(createTestAdapter(), {
@@ -207,6 +225,9 @@ describe('core services registry', () => {
       pipelines,
       stages,
       deals,
+      activities,
+      tasks,
+      notes,
       users,
     })
     const company = await services.companies.create(ctx, {
@@ -233,6 +254,21 @@ describe('core services registry', () => {
       stageId: stage.id,
       status: 'open',
     })
+    await services.activities.create(ctx, {
+      type: 'call',
+      subject: 'Discovery call',
+      contactId: contact.id,
+      occurredAt: new Date('2026-03-31T11:00:00.000Z'),
+    })
+    await services.tasks.create(ctx, {
+      title: 'Send recap',
+      contactId: contact.id,
+      dueDate: new Date('2026-04-01T08:00:00.000Z'),
+    })
+    await services.notes.create(ctx, {
+      content: 'Strong champion signal',
+      contactId: contact.id,
+    })
 
     const search = await services.search.search(ctx, { query: 'acme', limit: 20 })
     const context = await services.contactContext.getContactContext(ctx, { contactId: contact.id })
@@ -241,24 +277,62 @@ describe('core services registry', () => {
     expect(search.data.some((item) => item.objectType === 'contact')).toBe(true)
     expect(context?.company?.id).toBe(company.id)
     expect(context?.openDeals).toHaveLength(1)
-    expect(context?.openTasks).toEqual([])
-    expect(context?.recentActivities).toEqual([])
+    expect(context?.openTasks).toHaveLength(1)
+    expect(context?.recentActivities).toHaveLength(1)
     expect(context?.tags).toEqual([])
-    expect(context?.lastContactDate).toBe('2026-03-31T10:00:00.000Z')
+    expect(context?.lastContactDate).toBe('2026-03-31T11:00:00.000Z')
   })
 
   it('fails loudly when an adapter has no implemented repository bridge and no overrides', () => {
     expect(() => createCoreServices(createTestAdapter())).toThrow('is not implemented')
   })
 
+  it('preserves Wave 1 compatibility until Slice A services are explicitly accessed', async () => {
+    const companies = createInMemoryCompanyRepository()
+    const contacts = createInMemoryContactRepository()
+    const pipelines = createInMemoryPipelineRepository()
+    const stages = createInMemoryStageRepository()
+    const deals = createInMemoryDealRepository()
+    const users = createInMemoryUserRepository()
+
+    const services = createCoreServices(createTestAdapter(), {
+      organizations: createInMemoryOrganizationRepository(),
+      organizationMemberships: createInMemoryOrganizationMembershipRepository(),
+      apiKeys: createInMemoryApiKeyRepository(),
+      companies,
+      contacts,
+      pipelines,
+      stages,
+      deals,
+      users,
+    })
+
+    const company = await services.companies.create(ctx, { name: 'Acme' })
+    const contact = await services.contacts.create(ctx, {
+      name: 'Taylor',
+      email: 'taylor@acme.test',
+      companyId: company.id,
+      lastContactedAt: new Date('2026-03-31T10:00:00.000Z'),
+    })
+
+    const context = await services.contactContext.getContactContext(ctx, { contactId: contact.id })
+
+    expect(context?.openTasks).toEqual([])
+    expect(context?.recentActivities).toEqual([])
+    expect(() => services.activities).toThrow('is not implemented')
+  })
+
   it('can build the registry from a Postgres adapter and Postgres-backed repositories', async () => {
     const { database, adapter } = createPostgresTestAdapter()
-    await initializePostgresWave1Schema(database)
+    await initializePostgresWave2SliceASchema(database)
 
     const organizations = createPostgresOrganizationRepository(adapter)
+    const activities = createPostgresActivityRepository(adapter)
     const companies = createPostgresCompanyRepository(adapter)
+    const notes = createPostgresNoteRepository(adapter)
     const pipelines = createPostgresPipelineRepository(adapter)
     const stages = createPostgresStageRepository(adapter)
+    const tasks = createPostgresTaskRepository(adapter)
     const users = createPostgresUserRepository(adapter)
 
     const services = createCoreServices(adapter, {
@@ -270,6 +344,9 @@ describe('core services registry', () => {
       pipelines,
       stages,
       deals: createInMemoryDealRepository(),
+      activities,
+      tasks,
+      notes,
       users,
     })
 

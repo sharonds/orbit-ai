@@ -11,6 +11,9 @@ export const IMPLEMENTED_TENANT_TABLES = [
   'pipelines',
   'stages',
   'deals',
+  'activities',
+  'tasks',
+  'notes',
 ] as const
 
 export type BootstrapTableName = (typeof BOOTSTRAP_TABLES)[number]

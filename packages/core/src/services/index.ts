@@ -1,5 +1,11 @@
 import type { StorageAdapter } from '../adapters/interface.js'
 import { PostgresStorageAdapter } from '../adapters/postgres/adapter.js'
+import { createActivityService } from '../entities/activities/service.js'
+import {
+  createPostgresActivityRepository,
+  createSqliteActivityRepository,
+  type ActivityRepository,
+} from '../entities/activities/repository.js'
 import { createApiKeyAdminService } from '../entities/api-keys/service.js'
 import { SqliteStorageAdapter } from '../adapters/sqlite/adapter.js'
 import {
@@ -26,6 +32,12 @@ import {
 } from '../entities/deals/repository.js'
 import { createDealService } from '../entities/deals/service.js'
 import {
+  createPostgresNoteRepository,
+  createSqliteNoteRepository,
+  type NoteRepository,
+} from '../entities/notes/repository.js'
+import { createNoteService } from '../entities/notes/service.js'
+import {
   createPostgresOrganizationMembershipRepository,
   createSqliteOrganizationMembershipRepository,
   type OrganizationMembershipRepository,
@@ -50,6 +62,12 @@ import {
 } from '../entities/stages/repository.js'
 import { createStageService } from '../entities/stages/service.js'
 import {
+  createPostgresTaskRepository,
+  createSqliteTaskRepository,
+  type TaskRepository,
+} from '../entities/tasks/repository.js'
+import { createTaskService } from '../entities/tasks/service.js'
+import {
   createPostgresUserRepository,
   createSqliteUserRepository,
   type UserRepository,
@@ -70,6 +88,35 @@ interface CoreRepositoryOverrides {
   apiKeys?: ApiKeyRepository
   organizations?: OrganizationRepository
   organizationMemberships?: OrganizationMembershipRepository
+  activities?: ActivityRepository
+  tasks?: TaskRepository
+  notes?: NoteRepository
+}
+
+function resolveOptionalCoreRepository<T>({
+  adapter,
+  sqliteFactory,
+  postgresFactory,
+  override,
+}: {
+  adapter: StorageAdapter
+  sqliteFactory: () => T
+  postgresFactory?: () => T
+  override: T | undefined
+}): T | undefined {
+  if (override) {
+    return override
+  }
+
+  if (adapter instanceof SqliteStorageAdapter) {
+    return sqliteFactory()
+  }
+
+  if (adapter instanceof PostgresStorageAdapter && postgresFactory) {
+    return postgresFactory()
+  }
+
+  return undefined
 }
 
 function resolveCoreRepository<T>({
@@ -171,6 +218,98 @@ export function createCoreServices(
     postgresFactory: () => createPostgresDealRepository(adapter),
     name: 'deals repository',
   })
+  let activitiesRepository: ActivityRepository | null = null
+  let tasksRepository: TaskRepository | null = null
+  let notesRepository: NoteRepository | null = null
+  let optionalActivitiesRepository: ActivityRepository | undefined
+  let optionalTasksRepository: TaskRepository | undefined
+  let optionalActivitiesResolved = false
+  let optionalTasksResolved = false
+
+  function getActivitiesRepository(): ActivityRepository {
+    if (activitiesRepository) {
+      return activitiesRepository
+    }
+
+    activitiesRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.activities,
+      sqliteFactory: () => createSqliteActivityRepository(adapter),
+      postgresFactory: () => createPostgresActivityRepository(adapter),
+      name: 'activities repository',
+    })
+
+    return activitiesRepository
+  }
+
+  function getTasksRepository(): TaskRepository {
+    if (tasksRepository) {
+      return tasksRepository
+    }
+
+    tasksRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.tasks,
+      sqliteFactory: () => createSqliteTaskRepository(adapter),
+      postgresFactory: () => createPostgresTaskRepository(adapter),
+      name: 'tasks repository',
+    })
+
+    return tasksRepository
+  }
+
+  function getNotesRepository(): NoteRepository {
+    if (notesRepository) {
+      return notesRepository
+    }
+
+    notesRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.notes,
+      sqliteFactory: () => createSqliteNoteRepository(adapter),
+      postgresFactory: () => createPostgresNoteRepository(adapter),
+      name: 'notes repository',
+    })
+
+    return notesRepository
+  }
+
+  function getOptionalActivitiesRepository(): ActivityRepository | undefined {
+    if (optionalActivitiesResolved) {
+      return optionalActivitiesRepository
+    }
+
+    optionalActivitiesRepository = resolveOptionalCoreRepository({
+      adapter,
+      override: overrides.activities,
+      sqliteFactory: () => createSqliteActivityRepository(adapter),
+      postgresFactory: () => createPostgresActivityRepository(adapter),
+    })
+    optionalActivitiesResolved = true
+
+    return optionalActivitiesRepository
+  }
+
+  function getOptionalTasksRepository(): TaskRepository | undefined {
+    if (optionalTasksResolved) {
+      return optionalTasksRepository
+    }
+
+    optionalTasksRepository = resolveOptionalCoreRepository({
+      adapter,
+      override: overrides.tasks,
+      sqliteFactory: () => createSqliteTaskRepository(adapter),
+      postgresFactory: () => createPostgresTaskRepository(adapter),
+    })
+    optionalTasksResolved = true
+
+    return optionalTasksRepository
+  }
+
+  let activitiesService: ReturnType<typeof createActivityService> | undefined
+  let tasksService: ReturnType<typeof createTaskService> | undefined
+  let notesService: ReturnType<typeof createNoteService> | undefined
+  let contactContextService: ReturnType<typeof createContactContextService> | undefined
 
   return {
     companies: createCompanyService(companies),
@@ -178,10 +317,56 @@ export function createCoreServices(
     pipelines: createPipelineService(pipelines),
     stages: createStageService({ stages, pipelines }),
     deals: createDealService({ deals, pipelines, stages, contacts, companies }),
+    get activities() {
+      activitiesService ??= createActivityService({
+        activities: getActivitiesRepository(),
+        contacts,
+        companies,
+        deals,
+        users,
+      })
+
+      return activitiesService
+    },
+    get tasks() {
+      tasksService ??= createTaskService({
+        tasks: getTasksRepository(),
+        contacts,
+        companies,
+        deals,
+        users,
+      })
+
+      return tasksService
+    },
+    get notes() {
+      notesService ??= createNoteService({
+        notes: getNotesRepository(),
+        contacts,
+        companies,
+        deals,
+        users,
+      })
+
+      return notesService
+    },
     users: createUserService(users),
     search: createSearchService({ companies, contacts, deals, pipelines, stages, users }),
     schema: new OrbitSchemaEngine(),
-    contactContext: createContactContextService({ contacts, companies, deals }),
+    get contactContext() {
+      const optionalActivities = getOptionalActivitiesRepository()
+      const optionalTasks = getOptionalTasksRepository()
+
+      contactContextService ??= createContactContextService({
+        contacts,
+        companies,
+        deals,
+        ...(optionalActivities ? { activities: optionalActivities } : {}),
+        ...(optionalTasks ? { tasks: optionalTasks } : {}),
+      })
+
+      return contactContextService
+    },
     system: {
       organizations: createOrganizationAdminService(organizations),
       organizationMemberships: createOrganizationMembershipAdminService(organizationMemberships),
