@@ -3,22 +3,24 @@
 Date: 2026-04-02
 Branch: `core-wave-2-slice-d`
 Reviewer: Codex
-Status: Accepted after remediation
+Status: Accepted after final remediation and independent review rerun
 
 ## Executive Summary
 
-Slice D is now aligned with the accepted execution plan and is ready for acceptance.
+The reopened Slice D findings are now fixed, and the branch is back to an accepted state.
 
-The initial blocking gaps from the first review pass were fixed on this branch:
+This branch now includes:
 
-- `imports.update(...)` now revalidates `startedByUserId` inside the same tenant
-- `imports.completedAt` now stays coupled to terminal lifecycle states
-- `entity_tags.tagId` and `webhook_deliveries.webhookId` now require same-tenant parent resolution on write paths
+- `imports.update(...)` revalidates `startedByUserId` inside the same tenant
+- `imports.completedAt` stays coupled to terminal lifecycle states
+- `entity_tags.tagId` and `webhook_deliveries.webhookId` require same-tenant parent resolution on write paths
 - the frozen `imports.rollbackData` and `webhook_deliveries` persisted fields were restored
-- generic webhook-delivery admin reads now omit sensitive delivery internals
-- SQLite and Postgres proof coverage now exercises the Slice D relation and redaction cases directly
+- tenant-facing import reads now omit `rollbackData`
+- generic webhook-delivery admin reads omit sensitive delivery internals
+- legacy `webhooks.status` rows now normalize to the canonical `active|disabled` read model on in-memory, SQLite, and Postgres reads
+- SQLite and Postgres proof coverage exercises the Slice D relation, redaction, and legacy-compatibility cases directly
 
-Final code review and security review on the remediated branch found no remaining blocking issues in Slice D scope.
+The final independent code review and security review rerun found no remaining blocking issues in Slice D scope.
 
 ## Validation Summary
 
@@ -31,7 +33,7 @@ Executed successfully:
 
 Observed results:
 
-- `200` tests passed across `49` test files
+- `203` tests passed across `49` test files
 - no type errors
 - build completed successfully
 - no diff formatting issues
@@ -42,20 +44,23 @@ No blocking code-review findings remain in Slice D scope.
 
 Confirmed:
 
-- service registry shape matches the Slice D plan
+- service registry shape still matches the Slice D plan
 - `system.entityTags` and `system.webhookDeliveries` remain read-only
-- import lifecycle validation is coherent and covered by regression tests
-- SQLite and Postgres persistence proofs cover the Slice D entities and the newly hardened relation checks
+- tenant-facing import DTOs no longer expose `rollbackData`
+- legacy webhook rows normalize on `get`, `list`, and `search`, with in-memory plus SQLite/Postgres persistence coverage
+- SQLite and Postgres persistence proofs cover the Slice D entities and the hardened relation checks
 - no Slice E metadata work, transport workflows, or schema-engine authority behavior were pulled forward
 
 ## Security Review Result
 
-No blocking tenant-safety or secret-surface findings remain in Slice D scope.
+No blocking security findings remain in Slice D scope.
 
 Confirmed:
 
+- import reads strip `rollbackData` at the service boundary while persistence keeps the operational field stored
 - webhook service reads redact `secretEncrypted` on `create`, `get`, `list`, and `search`
 - webhook-delivery admin reads omit `payload`, `signature`, `idempotencyKey`, and `responseBody`
+- legacy webhook status normalization preserves backward-compatible reads without reopening secret surfaces
 - `entity_tags` and `webhook_deliveries` reject cross-tenant parent references on in-memory, SQLite, and Postgres write paths
 - `imports.startedByUserId` rejects foreign-tenant user references on both create and update
 - no Slice D request-path code reaches migration authority or privileged raw adapter surfaces
@@ -70,6 +75,7 @@ Delivered:
 - admin/system services: `system.entityTags`, `system.webhookDeliveries`
 - contact-context tag integration
 - restored persisted metadata fields and explicit delivery redaction behavior
+- tenant-facing import DTO sanitization and legacy webhook-status normalization
 - SQLite/Postgres validation and regression coverage for the touched entity set
 
 Carry-forward items that remain intentionally out of scope for this branch:
@@ -86,4 +92,4 @@ Updated on this branch:
 - [docs/specs/01-core.md](/Users/sharonsciammas/orbit-ai/docs/specs/01-core.md)
 - [docs/KB.md](/Users/sharonsciammas/orbit-ai/docs/KB.md)
 
-These updates make the Slice D lifecycle and redaction rules explicit instead of leaving them implicit in tests only.
+These updates now also record the reopened-review remediation and the final accepted rerun outcome.

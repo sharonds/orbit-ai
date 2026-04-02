@@ -47,8 +47,8 @@ Completed:
 Current focus:
 
 - maintain the repo knowledge base as the live hub
-- complete PR review and acceptance for Core Wave 2 Slice D
-- keep tenant hardening carry-forwards explicit after the Slice D metadata and redaction hardening pass
+- merge the accepted Core Wave 2 Slice D branch
+- keep tenant hardening carry-forwards explicit after the Slice D metadata, redaction, and compatibility hardening pass
 - treat the Postgres persistence bridge as the accepted baseline feeding Wave 2
 - keep API/SDK execution blocked until Wave 2 service coverage is further along
 - keep execution docs and skills aligned with implementation progress
@@ -128,8 +128,8 @@ Immediate next actions:
    - Wave 1 service surface committed on `core-wave-1-services`
    - SQLite persistence bridge committed on `core-wave-1-services`
 3. Next:
-   - accept [core-wave-2-slice-d-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-d-review.md) as the Slice D branch review artifact
-   - merge Slice D after the final metadata, tenant-relation, and redaction review pass
+   - accept [core-wave-2-slice-d-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-d-review.md) as the final Slice D review artifact
+   - merge Slice D after the accepted final review rerun
    - start Slice E on a fresh follow-up branch after Slice D lands
    - open a separate tenant-hardening follow-up for Postgres RLS DDL, tenant-table org-leading indexes, and shared table-name allowlist assertions
    - keep API/SDK execution blocked until the Wave 2 service surface is materially further along
@@ -193,6 +193,8 @@ These are still open, but they do not block the KB:
 - 2026-04-02: Executed Core Wave 2 Slice D on branch `core-wave-2-slice-d`, covering `tags`, `imports`, `webhooks`, `system.entityTags`, and `system.webhookDeliveries`, plus contact-context tag integration and SQLite/Postgres persistence proofs.
 - 2026-04-02: Landed the Slice D hardening pass on `core-wave-2-slice-d`, restoring the frozen `imports.rollbackData` and `webhook_deliveries` storage fields, enforcing same-tenant relation resolution for `entity_tags`, `imports.startedByUserId`, and `webhook_deliveries.webhookId`, tightening import lifecycle validation, and sanitizing delivery admin reads.
 - 2026-04-02: Recorded the final Slice D review outcome in [core-wave-2-slice-d-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-d-review.md); the remaining carry-forwards stay on the separate tenant-hardening branch rather than the Slice D branch.
+- 2026-04-02: Re-ran the final Slice D code review and security review with independent sub-agent passes; the review artifact was reopened after finding that `imports.rollbackData` still leaks through generic tenant import reads and that the tightened `webhooks.status` enum breaks reads of legacy `inactive|failed` persisted rows.
+- 2026-04-02: Fixed the reopened Slice D findings by sanitizing tenant import DTOs, normalizing legacy webhook statuses on read and search paths, expanding regression coverage, rerunning core validation, and rerunning independent code/security review passes with no blocking findings; [core-wave-2-slice-d-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-d-review.md) is accepted again.
 
 ## Working Rule
 

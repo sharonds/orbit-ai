@@ -11,7 +11,12 @@ import { assertTenantPatchOrganizationInvariant } from '../../repositories/tenan
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
-import { webhookRecordSchema, type WebhookRecord } from './validators.js'
+import {
+  parseStoredWebhookRecord,
+  webhookRecordSchema,
+  type LegacyWebhookRecord,
+  type WebhookRecord,
+} from './validators.js'
 
 export interface WebhookRepository {
   create(ctx: OrbitAuthContext, record: WebhookRecord): Promise<WebhookRecord>
@@ -26,8 +31,10 @@ const WEBHOOK_SEARCHABLE_FIELDS = ['url', 'description', 'status']
 const WEBHOOK_FILTERABLE_FIELDS = ['id', 'organization_id', 'url', 'status']
 const WEBHOOK_DEFAULT_SORT = [{ field: 'created_at', direction: 'desc' as const }]
 
-export function createInMemoryWebhookRepository(seed: WebhookRecord[] = []): WebhookRepository {
-  const rows = new Map(seed.map((record) => [record.id, webhookRecordSchema.parse(record)]))
+export function createInMemoryWebhookRepository(
+  seed: Array<WebhookRecord | LegacyWebhookRecord> = [],
+): WebhookRepository {
+  const rows = new Map(seed.map((record) => [record.id, parseStoredWebhookRecord(record)]))
 
   function scopedRows(ctx: OrbitAuthContext): WebhookRecord[] {
     const orgId = assertOrgContext(ctx)
@@ -129,7 +136,7 @@ export function createSqliteWebhookRepository(adapter: StorageAdapter): WebhookR
       }
     },
     deserialize(row) {
-      return webhookRecordSchema.parse({
+      return parseStoredWebhookRecord({
         id: row.id,
         organizationId: row.organization_id,
         url: row.url,
@@ -184,7 +191,7 @@ export function createPostgresWebhookRepository(adapter: StorageAdapter): Webhoo
       }
     },
     deserialize(row) {
-      return webhookRecordSchema.parse({
+      return parseStoredWebhookRecord({
         id: row.id,
         organizationId: row.organization_id,
         url: row.url,

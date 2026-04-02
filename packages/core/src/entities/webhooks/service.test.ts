@@ -124,6 +124,54 @@ describe('webhook service', () => {
     expect(await webhookService.get(ctxB, webhook.id)).toBeNull()
   })
 
+  it('normalizes legacy stored webhook statuses on read', async () => {
+    const now = new Date('2026-04-02T12:00:00.000Z')
+    const legacyInactiveId = generateId('webhook')
+    const legacyFailedId = generateId('webhook')
+    const webhookService = createWebhookService({
+      webhooks: createInMemoryWebhookRepository([
+        {
+          id: legacyInactiveId,
+          organizationId: ctx.orgId,
+          url: 'https://example.com/legacy-inactive',
+          description: null,
+          events: [],
+          secretEncrypted: 'enc_value',
+          secretLastFour: 'alue',
+          secretCreatedAt: now,
+          status: 'inactive',
+          lastTriggeredAt: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: legacyFailedId,
+          organizationId: ctx.orgId,
+          url: 'https://example.com/legacy-failed',
+          description: null,
+          events: [],
+          secretEncrypted: 'enc_value',
+          secretLastFour: 'alue',
+          secretCreatedAt: now,
+          status: 'failed',
+          lastTriggeredAt: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]),
+    })
+
+    expect((await webhookService.get(ctx, legacyInactiveId))?.status).toBe('disabled')
+    expect((await webhookService.get(ctx, legacyFailedId))?.status).toBe('disabled')
+
+    const list = await webhookService.list(ctx, { limit: 10 })
+    expect(list.data.map((record) => record.status)).toEqual(['disabled', 'disabled'])
+
+    const search = await webhookService.search(ctx, { query: 'legacy', limit: 10 })
+    expect(search.data).toHaveLength(2)
+    expect(search.data.map((record) => record.status)).toEqual(['disabled', 'disabled'])
+  })
+
   it('rejects in-memory repository updates that try to mutate organizationId', async () => {
     const repository = createInMemoryWebhookRepository()
     const now = new Date('2026-04-02T12:00:00.000Z')
