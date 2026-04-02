@@ -3,7 +3,7 @@ import { newDb } from 'pg-mem'
 
 import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
-import { initializePostgresWave2SliceCSchema } from '../adapters/postgres/schema.js'
+import { initializePostgresWave2SliceDSchema } from '../adapters/postgres/schema.js'
 import { createPostgresApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createPostgresOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createPostgresOrganizationRepository } from '../entities/organizations/repository.js'
@@ -25,7 +25,7 @@ async function createPostgresAdapter() {
   const { Pool } = memory.adapters.createPg()
   const pool = new Pool({ max: 1 })
   const database = createPostgresOrbitDatabase({ pool })
-  await initializePostgresWave2SliceCSchema(database)
+  await initializePostgresWave2SliceDSchema(database)
 
   const adapter = createPostgresStorageAdapter({
     database,
