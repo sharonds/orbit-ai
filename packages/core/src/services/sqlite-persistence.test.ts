@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
 import { createSqliteStorageAdapter } from '../adapters/sqlite/adapter.js'
@@ -237,7 +238,7 @@ describe('sqlite persistence bridge', () => {
     // Verify webhook sanitization on persist round-trip
     expect('secretEncrypted' in webhook).toBe(false)
     expect(webhook.secretLastFour).toBe('cret')
-    expect(importJob.rollbackData).toEqual({})
+    expect('rollbackData' in importJob).toBe(false)
     // Verify entity tag and webhook delivery admin reads
     expect(await servicesB.system.entityTags.get(ctxA, entityTag.id)).toEqual(entityTag)
     expect(await servicesB.system.entityTags.get(ctxB, entityTag.id)).toBeNull()
@@ -271,6 +272,64 @@ describe('sqlite persistence bridge', () => {
     expect(context?.openTasks).toHaveLength(1)
     expect(context?.recentActivities).toHaveLength(1)
     expect(context?.lastContactDate).toBe('2026-03-31T15:00:00.000Z')
+  })
+
+  it('normalizes legacy webhook statuses on sqlite reads', async () => {
+    const adapter = await createSqliteAdapter()
+    const organizations = createSqliteOrganizationRepository(adapter)
+    const now = '2026-04-02T12:00:00.000Z'
+    const legacyWebhookId = 'webhook_01ARYZ6S41YYYYYYYYYYYYYYYY'
+
+    await organizations.create({
+      id: ctxA.orgId,
+      name: 'Acme',
+      slug: 'acme',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: new Date(now),
+      updatedAt: new Date(now),
+    })
+
+    await adapter.execute(sql`
+      insert into webhooks (
+        id,
+        organization_id,
+        url,
+        description,
+        events,
+        secret_encrypted,
+        secret_last_four,
+        secret_created_at,
+        status,
+        last_triggered_at,
+        created_at,
+        updated_at
+      ) values (
+        ${legacyWebhookId},
+        ${ctxA.orgId},
+        ${'https://example.com/legacy'},
+        ${null},
+        ${JSON.stringify([])},
+        ${'enc_legacy'},
+        ${'gacy'},
+        ${now},
+        ${'inactive'},
+        ${null},
+        ${now},
+        ${now}
+      )
+    `)
+
+    const services = createCoreServices(adapter)
+    const webhook = await services.webhooks.get(ctxA, legacyWebhookId)
+
+    expect(webhook?.status).toBe('disabled')
+    expect('secretEncrypted' in (webhook ?? {})).toBe(false)
+
+    const search = await services.webhooks.search(ctxA, { query: 'legacy', limit: 10 })
+    expect(search.data).toHaveLength(1)
+    expect(search.data[0]?.status).toBe('disabled')
   })
 
   it('rejects cross-tenant Slice D relation writes on the sqlite adapter path', async () => {

@@ -3,11 +3,29 @@ import { z } from 'zod'
 import { webhookInsertSchema, webhookSelectSchema, webhookUpdateSchema } from '../../schema/zod.js'
 
 const webhookStatusSchema = z.enum(['active', 'disabled'])
+const storedWebhookStatusSchema = z.enum(['active', 'disabled', 'inactive', 'failed'])
 
 export const webhookRecordSchema = webhookSelectSchema.extend({
   status: webhookStatusSchema,
 })
 export type WebhookRecord = z.infer<typeof webhookRecordSchema>
+export type LegacyWebhookRecord = Omit<WebhookRecord, 'status'> & {
+  status: 'inactive' | 'failed'
+}
+
+export function normalizeStoredWebhookStatus(status: unknown): WebhookRecord['status'] {
+  const parsed = storedWebhookStatusSchema.parse(status)
+  return parsed === 'active' ? 'active' : 'disabled'
+}
+
+export function parseStoredWebhookRecord(
+  record: Record<string, unknown> & { status: unknown },
+): WebhookRecord {
+  return webhookRecordSchema.parse({
+    ...record,
+    status: normalizeStoredWebhookStatus(record.status),
+  })
+}
 
 // Sanitized: omits secretEncrypted
 export const sanitizedWebhookRecordSchema = webhookRecordSchema.omit({

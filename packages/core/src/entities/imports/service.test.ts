@@ -50,6 +50,7 @@ describe('import service', () => {
     expect(record.skippedRows).toBe(0)
     expect(record.failedRows).toBe(0)
     expect(record.completedAt).toBeNull()
+    expect('rollbackData' in record).toBe(false)
   })
 
   it('allows pending -> processing -> completed transitions', async () => {
@@ -172,9 +173,11 @@ describe('import service', () => {
 
     const list = await importService.list(ctx, { limit: 10 })
     expect(list.data).toHaveLength(2)
+    expect('rollbackData' in list.data[0]!).toBe(false)
 
     const search = await importService.search(ctx, { query: 'contacts', limit: 10 })
     expect(search.data).toHaveLength(1)
+    expect('rollbackData' in search.data[0]!).toBe(false)
   })
 
   it('rejects negative row counters', async () => {

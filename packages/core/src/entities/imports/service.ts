@@ -13,6 +13,8 @@ import {
   type ImportCreateInput,
   type ImportRecord,
   type ImportUpdateInput,
+  type SanitizedImportRecord,
+  sanitizeImportRecord,
 } from './validators.js'
 
 const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -51,11 +53,11 @@ async function assertStartedByUserIdInTenant(
 }
 
 export interface ImportService {
-  create(ctx: OrbitAuthContext, input: ImportCreateInput): Promise<ImportRecord>
-  get(ctx: OrbitAuthContext, id: string): Promise<ImportRecord | null>
-  update(ctx: OrbitAuthContext, id: string, input: ImportUpdateInput): Promise<ImportRecord>
-  list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<ImportRecord>>
-  search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<ImportRecord>>
+  create(ctx: OrbitAuthContext, input: ImportCreateInput): Promise<SanitizedImportRecord>
+  get(ctx: OrbitAuthContext, id: string): Promise<SanitizedImportRecord | null>
+  update(ctx: OrbitAuthContext, id: string, input: ImportUpdateInput): Promise<SanitizedImportRecord>
+  list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<SanitizedImportRecord>>
+  search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<SanitizedImportRecord>>
 }
 
 export function createImportService(deps: {
@@ -71,7 +73,7 @@ export function createImportService(deps: {
         await assertStartedByUserIdInTenant(ctx, deps.users, parsed.startedByUserId)
       }
 
-      return deps.imports.create(
+      const record = await deps.imports.create(
         ctx,
         importRecordSchema.parse({
           id: generateId('importJob'),
@@ -91,9 +93,12 @@ export function createImportService(deps: {
           updatedAt: now,
         }),
       )
+
+      return sanitizeImportRecord(record)
     },
     async get(ctx, id) {
-      return deps.imports.get(ctx, id)
+      const record = await deps.imports.get(ctx, id)
+      return record ? sanitizeImportRecord(record) : null
     },
     async update(ctx, id, input) {
       const parsed = importUpdateInputSchema.parse(input)
@@ -158,13 +163,22 @@ export function createImportService(deps: {
         patch.completedAt = nextCompletedAt
       }
 
-      return assertFound(await deps.imports.update(ctx, id, patch), `Import ${id} not found`)
+      const updated = assertFound(await deps.imports.update(ctx, id, patch), `Import ${id} not found`)
+      return sanitizeImportRecord(updated)
     },
     async list(ctx, query) {
-      return deps.imports.list(ctx, query)
+      const result = await deps.imports.list(ctx, query)
+      return {
+        ...result,
+        data: result.data.map(sanitizeImportRecord),
+      }
     },
     async search(ctx, query) {
-      return deps.imports.search(ctx, query)
+      const result = await deps.imports.search(ctx, query)
+      return {
+        ...result,
+        data: result.data.map(sanitizeImportRecord),
+      }
     },
   }
 }

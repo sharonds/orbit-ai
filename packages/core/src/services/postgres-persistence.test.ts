@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
 import { newDb } from 'pg-mem'
+import { sql } from 'drizzle-orm'
+import { describe, expect, it } from 'vitest'
 
 import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
@@ -254,7 +255,7 @@ describe('postgres persistence bridge', () => {
     expect(await servicesB.webhooks.get(ctxB, webhook.id)).toBeNull()
     expect(await servicesB.imports.get(ctxB, importJob.id)).toBeNull()
     expect('secretEncrypted' in webhook).toBe(false)
-    expect(importJob.rollbackData).toEqual({})
+    expect('rollbackData' in importJob).toBe(false)
     expect(await servicesB.system.entityTags.get(ctxA, entityTag.id)).toEqual(entityTag)
     const sanitizedDelivery = await servicesB.system.webhookDeliveries.get(ctxA, delivery.id)
     expect(sanitizedDelivery).toMatchObject({
@@ -283,6 +284,66 @@ describe('postgres persistence bridge', () => {
     expect(context?.openTasks).toHaveLength(1)
     expect(context?.recentActivities).toHaveLength(1)
     expect(context?.lastContactDate).toBe('2026-04-01T12:00:00.000Z')
+
+    await pool.end()
+  })
+
+  it('normalizes legacy webhook statuses on postgres reads', async () => {
+    const { adapter, pool } = await createPostgresAdapter()
+    const organizations = createPostgresOrganizationRepository(adapter)
+    const now = new Date('2026-04-02T12:00:00.000Z')
+    const legacyWebhookId = 'webhook_01ARYZ6S41YYYYYYYYYYYYYYYY'
+
+    await organizations.create({
+      id: ctxA.orgId,
+      name: 'Acme',
+      slug: 'acme',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await adapter.execute(sql`
+      insert into webhooks (
+        id,
+        organization_id,
+        url,
+        description,
+        events,
+        secret_encrypted,
+        secret_last_four,
+        secret_created_at,
+        status,
+        last_triggered_at,
+        created_at,
+        updated_at
+      ) values (
+        ${legacyWebhookId},
+        ${ctxA.orgId},
+        ${'https://example.com/legacy'},
+        ${null},
+        ${JSON.stringify([])},
+        ${'enc_legacy'},
+        ${'gacy'},
+        ${now},
+        ${'inactive'},
+        ${null},
+        ${now},
+        ${now}
+      )
+    `)
+
+    const services = createCoreServices(adapter)
+    const webhook = await services.webhooks.get(ctxA, legacyWebhookId)
+
+    expect(webhook?.status).toBe('disabled')
+    expect('secretEncrypted' in (webhook ?? {})).toBe(false)
+
+    const search = await services.webhooks.search(ctxA, { query: 'legacy', limit: 10 })
+    expect(search.data).toHaveLength(1)
+    expect(search.data[0]?.status).toBe('disabled')
 
     await pool.end()
   })

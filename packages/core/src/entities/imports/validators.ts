@@ -9,6 +9,15 @@ export const importRecordSchema = importSelectSchema.extend({
 })
 export type ImportRecord = z.infer<typeof importRecordSchema>
 
+export const sanitizedImportRecordSchema = importRecordSchema.omit({
+  rollbackData: true,
+})
+export type SanitizedImportRecord = z.infer<typeof sanitizedImportRecordSchema>
+
+export function sanitizeImportRecord(record: ImportRecord): SanitizedImportRecord {
+  return sanitizedImportRecordSchema.parse(record)
+}
+
 export const importCreateInputSchema = importInsertSchema.omit({
   createdRows: true,
   updatedRows: true,
