@@ -19,14 +19,33 @@ const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
   pending: ['processing'],
   processing: ['completed', 'failed'],
 }
+const TERMINAL_IMPORT_STATUSES = new Set<ImportRecord['status']>(['completed', 'failed'])
 
 function assertValidStatusTransition(currentStatus: string, newStatus: string): void {
+  if (currentStatus === newStatus) {
+    return
+  }
+
   const allowed = VALID_STATUS_TRANSITIONS[currentStatus]
   if (!allowed || !allowed.includes(newStatus)) {
     throw createOrbitError({
       code: 'VALIDATION_FAILED',
       message: `Invalid status transition from '${currentStatus}' to '${newStatus}'`,
       field: 'status',
+    })
+  }
+}
+
+async function assertStartedByUserIdInTenant(
+  ctx: OrbitAuthContext,
+  users: UserRepository,
+  startedByUserId: string,
+): Promise<void> {
+  const user = await users.get(ctx, startedByUserId)
+  if (!user) {
+    throw createOrbitError({
+      code: 'RELATION_NOT_FOUND',
+      message: `User ${startedByUserId} not found in this organization`,
     })
   }
 }
@@ -48,15 +67,8 @@ export function createImportService(deps: {
       const parsed = importCreateInputSchema.parse(input)
       const now = new Date()
 
-      // Validate startedByUserId if provided
       if (parsed.startedByUserId) {
-        const user = await deps.users.get(ctx, parsed.startedByUserId)
-        if (!user) {
-          throw createOrbitError({
-            code: 'RELATION_NOT_FOUND',
-            message: `User ${parsed.startedByUserId} not found in this organization`,
-          })
-        }
+        await assertStartedByUserIdInTenant(ctx, deps.users, parsed.startedByUserId)
       }
 
       return deps.imports.create(
@@ -72,6 +84,7 @@ export function createImportService(deps: {
           skippedRows: 0,
           failedRows: 0,
           status: 'pending',
+          rollbackData: {},
           startedByUserId: parsed.startedByUserId ?? null,
           completedAt: null,
           createdAt: now,
@@ -85,20 +98,16 @@ export function createImportService(deps: {
     async update(ctx, id, input) {
       const parsed = importUpdateInputSchema.parse(input)
       const current = assertFound(await deps.imports.get(ctx, id), `Import ${id} not found`)
+      const nextStatus = parsed.status ?? current.status
+      let nextCompletedAt = parsed.completedAt !== undefined ? parsed.completedAt ?? null : current.completedAt
 
       const patch: Partial<ImportRecord> = {
         updatedAt: new Date(),
       }
 
-      // Validate status transition
       if (parsed.status !== undefined) {
         assertValidStatusTransition(current.status, parsed.status)
         patch.status = parsed.status
-
-        // Auto-set completedAt when transitioning to completed or failed
-        if ((parsed.status === 'completed' || parsed.status === 'failed') && !current.completedAt) {
-          patch.completedAt = parsed.completedAt ?? new Date()
-        }
       }
 
       if (parsed.entityType !== undefined) patch.entityType = parsed.entityType
@@ -117,8 +126,37 @@ export function createImportService(deps: {
           patch[field] = parsed[field]
         }
       }
-      if (parsed.startedByUserId !== undefined) patch.startedByUserId = parsed.startedByUserId ?? null
-      if (parsed.completedAt !== undefined && !patch.completedAt) patch.completedAt = parsed.completedAt ?? null
+
+      if (parsed.startedByUserId !== undefined) {
+        if (parsed.startedByUserId) {
+          await assertStartedByUserIdInTenant(ctx, deps.users, parsed.startedByUserId)
+        }
+        patch.startedByUserId = parsed.startedByUserId ?? null
+      }
+
+      if (TERMINAL_IMPORT_STATUSES.has(nextStatus)) {
+        if (parsed.completedAt === null) {
+          throw createOrbitError({
+            code: 'VALIDATION_FAILED',
+            message: `completedAt is required when import status is '${nextStatus}'`,
+            field: 'completedAt',
+          })
+        }
+
+        if (nextCompletedAt === null) {
+          nextCompletedAt = new Date()
+        }
+      } else if (nextCompletedAt !== null) {
+        throw createOrbitError({
+          code: 'VALIDATION_FAILED',
+          message: `completedAt must be null when import status is '${nextStatus}'`,
+          field: 'completedAt',
+        })
+      }
+
+      if (parsed.completedAt !== undefined || nextCompletedAt !== current.completedAt) {
+        patch.completedAt = nextCompletedAt
+      }
 
       return assertFound(await deps.imports.update(ctx, id, patch), `Import ${id} not found`)
     },

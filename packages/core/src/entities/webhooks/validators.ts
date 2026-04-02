@@ -2,7 +2,11 @@ import { z } from 'zod'
 
 import { webhookInsertSchema, webhookSelectSchema, webhookUpdateSchema } from '../../schema/zod.js'
 
-export const webhookRecordSchema = webhookSelectSchema
+const webhookStatusSchema = z.enum(['active', 'disabled'])
+
+export const webhookRecordSchema = webhookSelectSchema.extend({
+  status: webhookStatusSchema,
+})
 export type WebhookRecord = z.infer<typeof webhookRecordSchema>
 
 // Sanitized: omits secretEncrypted

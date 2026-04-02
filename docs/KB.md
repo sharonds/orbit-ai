@@ -42,12 +42,13 @@ Completed:
 - `@orbit-ai/core` Wave 2 Slice A
 - `@orbit-ai/core` Wave 2 Slice B
 - `@orbit-ai/core` Wave 2 Slice C
+- `@orbit-ai/core` Wave 2 Slice D
 
 Current focus:
 
 - maintain the repo knowledge base as the live hub
-- complete PR review and acceptance for Core Wave 2 Slice C
-- keep tenant hardening carry-forwards explicit after the Slice C graph-integrity hardening follow-up
+- complete PR review and acceptance for Core Wave 2 Slice D
+- keep tenant hardening carry-forwards explicit after the Slice D metadata and redaction hardening pass
 - treat the Postgres persistence bridge as the accepted baseline feeding Wave 2
 - keep API/SDK execution blocked until Wave 2 service coverage is further along
 - keep execution docs and skills aligned with implementation progress
@@ -110,6 +111,7 @@ Use these files first:
   - [core-wave-2-slice-a-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-a-review.md)
   - [core-wave-2-slice-b-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-b-review.md)
   - [core-wave-2-slice-c-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-c-review.md)
+  - [core-wave-2-slice-d-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-d-review.md)
   - [orbit-skills-plan.md](/Users/sharonsciammas/orbit-ai/docs/skills/orbit-skills-plan.md)
 
 ## What Is Next
@@ -126,9 +128,9 @@ Immediate next actions:
    - Wave 1 service surface committed on `core-wave-1-services`
    - SQLite persistence bridge committed on `core-wave-1-services`
 3. Next:
-   - accept [core-wave-2-slice-c-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-c-review.md) as the Slice C branch review artifact
-   - merge the Slice C graph-integrity hardening follow-up that blocks history-breaking reparent/delete paths
-   - start Slice D on a fresh follow-up branch after Slice C lands
+   - accept [core-wave-2-slice-d-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-d-review.md) as the Slice D branch review artifact
+   - merge Slice D after the final metadata, tenant-relation, and redaction review pass
+   - start Slice E on a fresh follow-up branch after Slice D lands
    - open a separate tenant-hardening follow-up for Postgres RLS DDL, tenant-table org-leading indexes, and shared table-name allowlist assertions
    - keep API/SDK execution blocked until the Wave 2 service surface is materially further along
 
@@ -141,7 +143,7 @@ These are still open, but they do not block the KB:
 - public release sequencing across packages
 - contribution and open-source governance docs
 - whether Postgres-family persistence lands before or alongside core Wave 2
-- the exact Slice D secret-bearing redaction and admin-surface rules before implementation starts
+- the exact Slice E metadata scope and acceptance split after Slice D
 
 ## Decision Log
 
@@ -188,6 +190,9 @@ These are still open, but they do not block the KB:
 - 2026-04-02: Landed a Slice C follow-up hardening patch on `core-wave-2-slice-c` to block history-breaking step/enrollment reparenting and parent deletes once event history exists, and enabled SQLite foreign-key enforcement for the Slice C graph while leaving broader Postgres RLS/index hardening for a separate follow-up.
 - 2026-04-02: Applied the Slice C review remediation pass on `core-wave-2-slice-c`, adding the missing enrollment-only delete guard regression test, enforcing `exitedAt` for `sequence_enrollments.status = 'exited'`, mapping duplicate sequence names to typed `CONFLICT` errors, and documenting the current `(sequenceId, contactId, status)` reenrollment-history constraint.
 - 2026-04-02: Closed the final Slice C review gap on `core-wave-2-slice-c` by adding regression coverage for duplicate sequence-name updates and for repository-thrown `sequences_org_name_idx` conflicts being coerced to typed `CONFLICT` errors on both create and update.
+- 2026-04-02: Executed Core Wave 2 Slice D on branch `core-wave-2-slice-d`, covering `tags`, `imports`, `webhooks`, `system.entityTags`, and `system.webhookDeliveries`, plus contact-context tag integration and SQLite/Postgres persistence proofs.
+- 2026-04-02: Landed the Slice D hardening pass on `core-wave-2-slice-d`, restoring the frozen `imports.rollbackData` and `webhook_deliveries` storage fields, enforcing same-tenant relation resolution for `entity_tags`, `imports.startedByUserId`, and `webhook_deliveries.webhookId`, tightening import lifecycle validation, and sanitizing delivery admin reads.
+- 2026-04-02: Recorded the final Slice D review outcome in [core-wave-2-slice-d-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-d-review.md); the remaining carry-forwards stay on the separate tenant-hardening branch rather than the Slice D branch.
 
 ## Working Rule
 

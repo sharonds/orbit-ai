@@ -1,11 +1,20 @@
+import { sql } from 'drizzle-orm'
+
 import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
-import { createTenantSqliteRepository, fromSqliteDate, toSqliteDate } from '../../repositories/sqlite/shared.js'
-import { createTenantPostgresRepository, fromPostgresDate } from '../../repositories/postgres/shared.js'
+import {
+  createTenantSqliteRepository,
+  fromSqliteDate,
+  fromSqliteJson,
+  toSqliteDate,
+  toSqliteJson,
+} from '../../repositories/sqlite/shared.js'
+import { createTenantPostgresRepository, fromPostgresDate, fromPostgresJson } from '../../repositories/postgres/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import { createOrbitError } from '../../types/errors.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
 import { webhookDeliveryRecordSchema, type WebhookDeliveryRecord } from './validators.js'
+import type { WebhookRepository } from '../webhooks/repository.js'
 
 export interface WebhookDeliveryRepository {
   create(ctx: OrbitAuthContext, record: WebhookDeliveryRecord): Promise<WebhookDeliveryRecord>
@@ -27,8 +36,25 @@ const DEFAULT_SORT: Array<{ field: string; direction: 'asc' | 'desc' }> = [
   { field: 'created_at', direction: 'desc' },
 ]
 
+async function assertWebhookExistsInTenant(
+  webhooks: Pick<WebhookRepository, 'get'>,
+  ctx: OrbitAuthContext,
+  webhookId: string,
+): Promise<void> {
+  const webhook = await webhooks.get(ctx, webhookId)
+  if (!webhook) {
+    throw createOrbitError({
+      code: 'RELATION_NOT_FOUND',
+      message: `Webhook ${webhookId} not found in this organization`,
+    })
+  }
+}
+
 export function createInMemoryWebhookDeliveryRepository(
   seed: WebhookDeliveryRecord[] = [],
+  deps: {
+    webhooks?: Pick<WebhookRepository, 'get'>
+  } = {},
 ): WebhookDeliveryRepository {
   const rows = new Map(seed.map((record) => [record.id, webhookDeliveryRecordSchema.parse(record)]))
 
@@ -43,6 +69,11 @@ export function createInMemoryWebhookDeliveryRepository(
       if (record.organizationId !== orgId) {
         throw new Error('Webhook delivery organization mismatch')
       }
+
+      if (!deps.webhooks) {
+        throw new Error('Webhook delivery in-memory writes require a webhook repository dependency')
+      }
+      await assertWebhookExistsInTenant(deps.webhooks, ctx, record.webhookId)
 
       // Check unique constraint: (webhookId, eventId)
       for (const existing of rows.values()) {
@@ -82,8 +113,12 @@ export function createSqliteWebhookDeliveryRepository(adapter: StorageAdapter): 
       'webhook_id',
       'event_id',
       'event_type',
+      'payload',
+      'signature',
+      'idempotency_key',
       'status',
       'response_status',
+      'response_body',
       'attempt_count',
       'next_attempt_at',
       'delivered_at',
@@ -101,8 +136,12 @@ export function createSqliteWebhookDeliveryRepository(adapter: StorageAdapter): 
         webhook_id: record.webhookId,
         event_id: record.eventId,
         event_type: record.eventType,
+        payload: toSqliteJson(record.payload),
+        signature: record.signature,
+        idempotency_key: record.idempotencyKey,
         status: record.status,
         response_status: record.responseStatus ?? null,
+        response_body: record.responseBody ?? null,
         attempt_count: record.attemptCount,
         next_attempt_at: toSqliteDate(record.nextAttemptAt),
         delivered_at: toSqliteDate(record.deliveredAt),
@@ -118,8 +157,12 @@ export function createSqliteWebhookDeliveryRepository(adapter: StorageAdapter): 
         webhookId: row.webhook_id,
         eventId: row.event_id,
         eventType: row.event_type,
+        payload: fromSqliteJson(row.payload, {}),
+        signature: row.signature,
+        idempotencyKey: row.idempotency_key,
         status: row.status,
         responseStatus: row.response_status ?? null,
+        responseBody: row.response_body ?? null,
         attemptCount: row.attempt_count,
         nextAttemptAt: fromSqliteDate(row.next_attempt_at),
         deliveredAt: fromSqliteDate(row.delivered_at),
@@ -131,7 +174,27 @@ export function createSqliteWebhookDeliveryRepository(adapter: StorageAdapter): 
   })
 
   return {
-    create: base.create.bind(base),
+    async create(ctx, record) {
+      const orgId = assertOrgContext(ctx)
+      if (record.organizationId !== orgId) {
+        throw new Error('Webhook delivery organization mismatch')
+      }
+
+      const webhooks = await adapter.withTenantContext(ctx, async (db) =>
+        db.query<Record<string, unknown>>(
+          sql`select id from webhooks where id = ${record.webhookId} and organization_id = ${orgId} limit 1`,
+        ),
+      )
+
+      if (!webhooks[0]) {
+        throw createOrbitError({
+          code: 'RELATION_NOT_FOUND',
+          message: `Webhook ${record.webhookId} not found in this organization`,
+        })
+      }
+
+      return base.create(ctx, record)
+    },
     get: base.get.bind(base),
     list: base.list.bind(base),
   }
@@ -146,8 +209,12 @@ export function createPostgresWebhookDeliveryRepository(adapter: StorageAdapter)
       'webhook_id',
       'event_id',
       'event_type',
+      'payload',
+      'signature',
+      'idempotency_key',
       'status',
       'response_status',
+      'response_body',
       'attempt_count',
       'next_attempt_at',
       'delivered_at',
@@ -165,8 +232,12 @@ export function createPostgresWebhookDeliveryRepository(adapter: StorageAdapter)
         webhook_id: record.webhookId,
         event_id: record.eventId,
         event_type: record.eventType,
+        payload: record.payload,
+        signature: record.signature,
+        idempotency_key: record.idempotencyKey,
         status: record.status,
         response_status: record.responseStatus ?? null,
+        response_body: record.responseBody ?? null,
         attempt_count: record.attemptCount,
         next_attempt_at: record.nextAttemptAt,
         delivered_at: record.deliveredAt,
@@ -182,8 +253,12 @@ export function createPostgresWebhookDeliveryRepository(adapter: StorageAdapter)
         webhookId: row.webhook_id,
         eventId: row.event_id,
         eventType: row.event_type,
+        payload: fromPostgresJson(row.payload, {}),
+        signature: row.signature,
+        idempotencyKey: row.idempotency_key,
         status: row.status,
         responseStatus: row.response_status ?? null,
+        responseBody: row.response_body ?? null,
         attemptCount: row.attempt_count,
         nextAttemptAt: fromPostgresDate(row.next_attempt_at),
         deliveredAt: fromPostgresDate(row.delivered_at),
@@ -195,7 +270,27 @@ export function createPostgresWebhookDeliveryRepository(adapter: StorageAdapter)
   })
 
   return {
-    create: base.create.bind(base),
+    async create(ctx, record) {
+      const orgId = assertOrgContext(ctx)
+      if (record.organizationId !== orgId) {
+        throw new Error('Webhook delivery organization mismatch')
+      }
+
+      const webhooks = await adapter.withTenantContext(ctx, async (db) =>
+        db.query<Record<string, unknown>>(
+          sql`select id from webhooks where id = ${record.webhookId} and organization_id = ${orgId} limit 1`,
+        ),
+      )
+
+      if (!webhooks[0]) {
+        throw createOrbitError({
+          code: 'RELATION_NOT_FOUND',
+          message: `Webhook ${record.webhookId} not found in this organization`,
+        })
+      }
+
+      return base.create(ctx, record)
+    },
     get: base.get.bind(base),
     list: base.list.bind(base),
   }

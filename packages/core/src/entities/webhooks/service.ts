@@ -14,13 +14,13 @@ import {
   type WebhookUpdateInput,
 } from './validators.js'
 
-const VALID_WEBHOOK_STATUSES = new Set(['active', 'inactive', 'failed'])
+const VALID_WEBHOOK_STATUSES = new Set(['active', 'disabled'])
 
 function assertValidWebhookStatus(status: string): void {
   if (!VALID_WEBHOOK_STATUSES.has(status)) {
     throw createOrbitError({
       code: 'VALIDATION_FAILED',
-      message: `Invalid webhook status '${status}'. Must be one of: active, inactive, failed`,
+      message: `Invalid webhook status '${status}'. Must be one of: active, disabled`,
       field: 'status',
     })
   }
@@ -34,7 +34,7 @@ export function createWebhookService(deps: {
       const parsed = webhookCreateInputSchema.parse(input)
       const now = new Date()
 
-      const status = parsed.status ?? 'active'
+      const status = (parsed.status ?? 'active') as WebhookRecord['status']
       assertValidWebhookStatus(status)
 
       const record = await deps.webhooks.create(
@@ -74,7 +74,7 @@ export function createWebhookService(deps: {
       if (parsed.events !== undefined) patch.events = parsed.events
       if (parsed.status !== undefined) {
         assertValidWebhookStatus(parsed.status)
-        patch.status = parsed.status
+        patch.status = parsed.status as WebhookRecord['status']
       }
       if (parsed.lastTriggeredAt !== undefined) patch.lastTriggeredAt = parsed.lastTriggeredAt ?? null
 

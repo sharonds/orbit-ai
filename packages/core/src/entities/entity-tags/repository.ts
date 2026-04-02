@@ -1,3 +1,5 @@
+import { sql } from 'drizzle-orm'
+
 import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
 import { createTenantSqliteRepository, fromSqliteDate, toSqliteDate } from '../../repositories/sqlite/shared.js'
 import { createTenantPostgresRepository, fromPostgresDate } from '../../repositories/postgres/shared.js'
@@ -6,6 +8,7 @@ import { createOrbitError } from '../../types/errors.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
 import { entityTagRecordSchema, type EntityTagRecord } from './validators.js'
+import type { TagRepository } from '../tags/repository.js'
 
 export interface EntityTagRepository {
   create(ctx: OrbitAuthContext, record: EntityTagRecord): Promise<EntityTagRecord>
@@ -20,7 +23,26 @@ const DEFAULT_SORT: Array<{ field: string; direction: 'asc' | 'desc' }> = [
   { field: 'created_at', direction: 'desc' },
 ]
 
-export function createInMemoryEntityTagRepository(seed: EntityTagRecord[] = []): EntityTagRepository {
+async function assertTagExistsInTenant(
+  tagLookup: Pick<TagRepository, 'get'>,
+  ctx: OrbitAuthContext,
+  tagId: string,
+): Promise<void> {
+  const tag = await tagLookup.get(ctx, tagId)
+  if (!tag) {
+    throw createOrbitError({
+      code: 'RELATION_NOT_FOUND',
+      message: `Tag ${tagId} not found in this organization`,
+    })
+  }
+}
+
+export function createInMemoryEntityTagRepository(
+  seed: EntityTagRecord[] = [],
+  deps: {
+    tags?: Pick<TagRepository, 'get'>
+  } = {},
+): EntityTagRepository {
   const rows = new Map(seed.map((record) => [record.id, entityTagRecordSchema.parse(record)]))
 
   function scopedRows(ctx: OrbitAuthContext): EntityTagRecord[] {
@@ -34,6 +56,11 @@ export function createInMemoryEntityTagRepository(seed: EntityTagRecord[] = []):
       if (record.organizationId !== orgId) {
         throw new Error('Entity tag organization mismatch')
       }
+
+      if (!deps.tags) {
+        throw new Error('Entity tag in-memory writes require a tag repository dependency')
+      }
+      await assertTagExistsInTenant(deps.tags, ctx, record.tagId)
 
       // Check unique constraint: (organizationId, tagId, entityType, entityId)
       for (const existing of rows.values()) {
@@ -118,7 +145,27 @@ export function createSqliteEntityTagRepository(adapter: StorageAdapter): Entity
   })
 
   return {
-    create: base.create.bind(base),
+    async create(ctx, record) {
+      const orgId = assertOrgContext(ctx)
+      if (record.organizationId !== orgId) {
+        throw new Error('Entity tag organization mismatch')
+      }
+
+      const tags = await adapter.withTenantContext(ctx, async (db) =>
+        db.query<Record<string, unknown>>(
+          sql`select id from tags where id = ${record.tagId} and organization_id = ${orgId} limit 1`,
+        ),
+      )
+
+      if (!tags[0]) {
+        throw createOrbitError({
+          code: 'RELATION_NOT_FOUND',
+          message: `Tag ${record.tagId} not found in this organization`,
+        })
+      }
+
+      return base.create(ctx, record)
+    },
     get: base.get.bind(base),
     delete: base.delete.bind(base),
     list: base.list.bind(base),
@@ -165,7 +212,27 @@ export function createPostgresEntityTagRepository(adapter: StorageAdapter): Enti
   })
 
   return {
-    create: base.create.bind(base),
+    async create(ctx, record) {
+      const orgId = assertOrgContext(ctx)
+      if (record.organizationId !== orgId) {
+        throw new Error('Entity tag organization mismatch')
+      }
+
+      const tags = await adapter.withTenantContext(ctx, async (db) =>
+        db.query<Record<string, unknown>>(
+          sql`select id from tags where id = ${record.tagId} and organization_id = ${orgId} limit 1`,
+        ),
+      )
+
+      if (!tags[0]) {
+        throw createOrbitError({
+          code: 'RELATION_NOT_FOUND',
+          message: `Tag ${record.tagId} not found in this organization`,
+        })
+      }
+
+      return base.create(ctx, record)
+    },
     get: base.get.bind(base),
     delete: base.delete.bind(base),
     list: base.list.bind(base),

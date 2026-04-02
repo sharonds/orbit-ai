@@ -135,7 +135,7 @@ function createPostgresTestAdapter() {
 }
 
 describe('core services registry', () => {
-  it('exposes the Slice C registry keys and keeps system reads separate', async () => {
+  it('exposes the Slice D registry keys and keeps system reads separate', async () => {
     const organizations = createInMemoryOrganizationRepository([
       {
         id: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
