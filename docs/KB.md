@@ -186,6 +186,7 @@ These are still open, but they do not block the KB:
 - 2026-04-02: Landed a Slice B follow-up hardening patch on `core-wave-2-slice-b` to block repository-level `organizationId` mutation in shared tenant repositories and Slice B in-memory repositories, added regression coverage, and explicitly left Postgres RLS DDL plus broader org-index work for a separate tenant-hardening follow-up.
 - 2026-04-02: Executed Core Wave 2 Slice C on branch `core-wave-2-slice-c`, covering `sequences`, `sequence_steps`, `sequence_enrollments`, and append-style `sequence_events`, plus lazy registry wiring, tenant-scope registration, and SQLite/Postgres persistence proofs.
 - 2026-04-02: Landed a Slice C follow-up hardening patch on `core-wave-2-slice-c` to block history-breaking step/enrollment reparenting and parent deletes once event history exists, and enabled SQLite foreign-key enforcement for the Slice C graph while leaving broader Postgres RLS/index hardening for a separate follow-up.
+- 2026-04-02: Applied the Slice C review remediation pass on `core-wave-2-slice-c`, adding the missing enrollment-only delete guard regression test, enforcing `exitedAt` for `sequence_enrollments.status = 'exited'`, mapping duplicate sequence names to typed `CONFLICT` errors, and documenting the current `(sequenceId, contactId, status)` reenrollment-history constraint.
 
 ## Working Rule
 

@@ -79,6 +79,14 @@ function assertEnrollmentState(input: {
   exitedAt: Date | null
   exitReason: string | null
 }): void {
+  if (input.status === 'exited' && input.exitedAt === null) {
+    throw createOrbitError({
+      code: 'VALIDATION_FAILED',
+      message: 'Exited sequence enrollment requires exitedAt',
+      field: 'exitedAt',
+    })
+  }
+
   if (input.status === 'active' && input.exitedAt !== null) {
     throw createOrbitError({
       code: 'VALIDATION_FAILED',

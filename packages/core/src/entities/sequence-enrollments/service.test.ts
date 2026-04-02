@@ -159,6 +159,17 @@ describe('sequence enrollment service', () => {
       sequenceEnrollmentService.create(ctx, {
         sequenceId: sequence.id,
         contactId: contact.id,
+        status: 'exited',
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      field: 'exitedAt',
+    })
+
+    await expect(
+      sequenceEnrollmentService.create(ctx, {
+        sequenceId: sequence.id,
+        contactId: contact.id,
         status: 'paused',
         exitReason: 'manual_stop',
       }),
@@ -173,6 +184,15 @@ describe('sequence enrollment service', () => {
     const enrollment = await sequenceEnrollmentService.create(ctx, {
       sequenceId: sequence.id,
       contactId: contact.id,
+    })
+
+    await expect(
+      sequenceEnrollmentService.update(ctx, enrollment.id, {
+        status: 'exited',
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      field: 'exitedAt',
     })
 
     const updated = await sequenceEnrollmentService.update(ctx, enrollment.id, {

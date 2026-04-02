@@ -24,6 +24,7 @@ Findings fixed during the branch pass:
 - Initial Slice C insert validation required `sequenceEnrollments.enrolledAt` and `sequenceEvents.occurredAt` too early, which blocked the intended service-level defaults. The final Zod contracts now keep those fields optional on create so the service layer can stamp stable defaults.
 - Initial Slice C graph validation only ran at event-creation time. Sub-agent review found that later `sequenceStep.sequenceId` and `sequenceEnrollment.sequenceId` / `contactId` updates could silently invalidate already-written history. The final services now block reparenting once history exists.
 - Sub-agent review also found delete behavior was adapter-divergent: SQLite could orphan Slice C children while Postgres would reject the same delete through foreign keys. The final Slice C services now reject parent deletes while dependent graph records or event history exist, and SQLite now enables foreign-key enforcement so the Slice C graph stays aligned with Postgres semantics.
+- Follow-up review found one missing lifecycle rule and two regression gaps. The final Slice C services now reject `status: 'exited'` without `exitedAt`, map duplicate sequence names to typed `CONFLICT` errors, and carry explicit regression coverage for the enrollment-only sequence delete guard plus sequence name uniqueness.
 
 Final open findings:
 
@@ -46,6 +47,7 @@ Validated controls:
 2. New Slice C tables are registered as tenant-scoped in [tenant-scope.ts](/Users/sharonsciammas/orbit-ai/packages/core/src/repositories/tenant-scope.ts)
 3. `sequence_steps.sequenceId` must resolve inside the tenant and `stepOrder` stays unique within the parent sequence
 4. `sequence_enrollments.sequenceId` and `contactId` must resolve inside the tenant and `(sequenceId, contactId, status)` stays unique per organization
+   This is a deliberate Slice C history tradeoff: repeated reenrollment history is not modeled as multiple rows with the same terminal status.
 5. `sequence_events.sequenceStepId`, when present, must belong to the same sequence graph as the referenced enrollment
 6. Slice C now blocks step/enrollment reparenting and parent deletes once event history exists, preserving append-only history semantics
 7. SQLite now enables foreign-key enforcement and the Slice C bootstrap defines the same parent references as Postgres for the automation graph

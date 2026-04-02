@@ -46,6 +46,49 @@ async function assertSequenceDeleteAllowed(
   }
 }
 
+async function assertUniqueSequenceName(
+  ctx: Parameters<EntityService<SequenceCreateInput, SequenceUpdateInput, SequenceRecord>['create']>[0],
+  repository: SequenceRepository,
+  name: string,
+  currentId?: string,
+): Promise<void> {
+  const existing = await repository.list(ctx, {
+    filter: {
+      name,
+    },
+    limit: 2,
+  })
+
+  const conflict = existing.data.find((record) => record.id !== currentId)
+  if (conflict) {
+    throw createOrbitError({
+      code: 'CONFLICT',
+      message: `Sequence name ${name} already exists in this organization`,
+      field: 'name',
+    })
+  }
+}
+
+function coerceSequenceConflict(error: unknown, name: string): never {
+  if (
+    error instanceof Error &&
+    (
+      error.message.includes('sequences_org_name_idx') ||
+      (error.message.toLowerCase().includes('unique') &&
+        (error.message.includes('organization_id') || error.message.includes('organizationId')) &&
+        error.message.includes('name'))
+    )
+  ) {
+    throw createOrbitError({
+      code: 'CONFLICT',
+      message: `Sequence name ${name} already exists in this organization`,
+      field: 'name',
+    })
+  }
+
+  throw error
+}
+
 export function createSequenceService(deps: {
   sequences: SequenceRepository
   sequenceSteps: SequenceStepRepository
@@ -55,28 +98,35 @@ export function createSequenceService(deps: {
     async create(ctx, input) {
       const parsed = sequenceCreateInputSchema.parse(input)
       const now = new Date()
+      await assertUniqueSequenceName(ctx, deps.sequences, parsed.name)
 
-      return deps.sequences.create(
-        ctx,
-        sequenceRecordSchema.parse({
-          id: generateId('sequence'),
-          organizationId: ctx.orgId,
-          name: parsed.name,
-          description: parsed.description ?? null,
-          triggerEvent: parsed.triggerEvent ?? null,
-          status: parsed.status ?? 'draft',
-          customFields: parsed.customFields ?? {},
-          createdAt: now,
-          updatedAt: now,
-        }),
-      )
+      try {
+        return await deps.sequences.create(
+          ctx,
+          sequenceRecordSchema.parse({
+            id: generateId('sequence'),
+            organizationId: ctx.orgId,
+            name: parsed.name,
+            description: parsed.description ?? null,
+            triggerEvent: parsed.triggerEvent ?? null,
+            status: parsed.status ?? 'draft',
+            customFields: parsed.customFields ?? {},
+            createdAt: now,
+            updatedAt: now,
+          }),
+        )
+      } catch (error) {
+        coerceSequenceConflict(error, parsed.name)
+      }
     },
     async get(ctx, id) {
       return deps.sequences.get(ctx, id)
     },
     async update(ctx, id, input) {
       const parsed = sequenceUpdateInputSchema.parse(input)
-      assertFound(await deps.sequences.get(ctx, id), `Sequence ${id} not found`)
+      const current = assertFound(await deps.sequences.get(ctx, id), `Sequence ${id} not found`)
+      const nextName = parsed.name ?? current.name
+      await assertUniqueSequenceName(ctx, deps.sequences, nextName, id)
 
       const patch: Partial<SequenceRecord> = {
         updatedAt: new Date(),
@@ -88,7 +138,11 @@ export function createSequenceService(deps: {
       if (parsed.status !== undefined) patch.status = parsed.status
       if (parsed.customFields !== undefined) patch.customFields = parsed.customFields
 
-      return assertFound(await deps.sequences.update(ctx, id, patch), `Sequence ${id} not found`)
+      try {
+        return assertFound(await deps.sequences.update(ctx, id, patch), `Sequence ${id} not found`)
+      } catch (error) {
+        coerceSequenceConflict(error, nextName)
+      }
     },
     async delete(ctx, id) {
       await assertSequenceDeleteAllowed(ctx, deps, id)
