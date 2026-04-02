@@ -26,6 +26,10 @@ export const IMPLEMENTED_TENANT_TABLES = [
   'imports',
   'webhooks',
   'webhook_deliveries',
+  'custom_field_definitions',
+  'audit_logs',
+  'schema_migrations',
+  'idempotency_keys',
 ] as const
 
 export type BootstrapTableName = (typeof BOOTSTRAP_TABLES)[number]
