@@ -12,6 +12,7 @@ import {
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
+import { assertTenantPatchOrganizationInvariant } from '../../repositories/tenant-guards.js'
 import { productRecordSchema, type ProductRecord } from './validators.js'
 
 export interface ProductRepository {
@@ -60,6 +61,8 @@ export function createInMemoryProductRepository(seed: ProductRecord[] = []): Pro
       if (!current) {
         return null
       }
+
+      assertTenantPatchOrganizationInvariant(current.organizationId, patch)
 
       const next = productRecordSchema.parse({
         ...current,

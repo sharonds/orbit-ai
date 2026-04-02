@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { generateId } from '../../ids/generate-id.js'
 import { createInMemoryProductRepository } from './repository.js'
 import { createProductService } from './service.js'
 
@@ -80,5 +81,28 @@ describe('product service', () => {
 
     await productService.delete(ctx, product.id)
     expect(await productService.get(ctx, product.id)).toBeNull()
+  })
+
+  it('rejects in-memory repository updates that try to mutate organizationId', async () => {
+    const repository = createInMemoryProductRepository()
+    const product = await repository.create(ctx, {
+      id: generateId('product'),
+      organizationId: ctx.orgId,
+      name: 'Starter',
+      price: '49.00',
+      currency: 'USD',
+      description: null,
+      isActive: true,
+      sortOrder: 0,
+      customFields: {},
+      createdAt: new Date('2026-04-02T12:00:00.000Z'),
+      updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+    })
+
+    await expect(
+      repository.update(ctx, product.id, {
+        organizationId: 'org_01ARYZ6S41ZZZZZZZZZZZZZZZZ',
+      }),
+    ).rejects.toThrow('Tenant record organization mismatch')
   })
 })

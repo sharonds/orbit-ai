@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { generateId } from '../../ids/generate-id.js'
 import { createInMemoryContractRepository } from './repository.js'
 import { createContractService } from './service.js'
 import { createInMemoryCompanyRepository } from '../companies/repository.js'
@@ -16,6 +17,11 @@ import { createStageService } from '../stages/service.js'
 const ctx = {
   orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
   userId: 'user_01ARYZ6S41YYYYYYYYYYYYYYYY',
+} as const
+
+const otherCtx = {
+  orgId: 'org_01ARYZ6S41ZZZZZZZZZZZZZZZZ',
+  userId: 'user_01ARYZ6S41ZZZZZZZZZZZZZZZZ',
 } as const
 
 async function createLinkedDealGraph() {
@@ -168,5 +174,31 @@ describe('contract service', () => {
 
     await contractService.delete(ctx, contract.id)
     expect(await contractService.get(ctx, contract.id)).toBeNull()
+  })
+
+  it('rejects in-memory repository updates that try to mutate organizationId', async () => {
+    const repository = createInMemoryContractRepository()
+    const contract = await repository.create(ctx, {
+      id: generateId('contract'),
+      organizationId: ctx.orgId,
+      title: 'MSA',
+      content: null,
+      status: 'draft',
+      signedAt: null,
+      expiresAt: null,
+      dealId: null,
+      contactId: null,
+      companyId: null,
+      externalSignatureId: null,
+      customFields: {},
+      createdAt: new Date('2026-04-02T12:00:00.000Z'),
+      updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+    })
+
+    await expect(
+      repository.update(ctx, contract.id, {
+        organizationId: otherCtx.orgId,
+      }),
+    ).rejects.toThrow('Tenant record organization mismatch')
   })
 })

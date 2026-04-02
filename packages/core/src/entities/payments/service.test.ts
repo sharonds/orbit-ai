@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { generateId } from '../../ids/generate-id.js'
 import { createInMemoryPaymentRepository, type PaymentRepository } from './repository.js'
 import { createPaymentService } from './service.js'
 import { createInMemoryCompanyRepository } from '../companies/repository.js'
@@ -263,5 +264,31 @@ describe('payment service', () => {
 
     await paymentService.delete(ctx, payment.id)
     expect(await paymentService.get(ctx, payment.id)).toBeNull()
+  })
+
+  it('rejects in-memory repository updates that try to mutate organizationId', async () => {
+    const repository = createInMemoryPaymentRepository()
+    const payment = await repository.create(ctx, {
+      id: generateId('payment'),
+      organizationId: ctx.orgId,
+      amount: '50.00',
+      currency: 'USD',
+      status: 'pending',
+      method: null,
+      dealId: null,
+      contactId: null,
+      externalId: null,
+      paidAt: null,
+      metadata: {},
+      customFields: {},
+      createdAt: new Date('2026-04-02T12:00:00.000Z'),
+      updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+    })
+
+    await expect(
+      repository.update(ctx, payment.id, {
+        organizationId: otherCtx.orgId,
+      }),
+    ).rejects.toThrow('Tenant record organization mismatch')
   })
 })

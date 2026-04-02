@@ -87,6 +87,12 @@ describe('sqlite shared repository helpers', () => {
       }),
     ).rejects.toThrow('Tenant record organization mismatch')
 
+    await expect(
+      repository.update(ctxA, created.id, {
+        organizationId: assertOrgContext(ctxB),
+      } as Partial<WidgetRecord>),
+    ).rejects.toThrow('Tenant record organization mismatch')
+
     const updated = await repository.update(ctxA, created.id, { name: 'Gamma' })
     expect(updated?.name).toBe('Gamma')
     expect(await repository.delete(ctxA, created.id)).toBe(true)

@@ -27,6 +27,7 @@ Findings fixed during the branch pass:
 - Product and payment currency defaults were initially too strict at the Zod layer; insert validation now keeps `currency` optional on create so the service-level default remains reachable and aligned with the canonical table defaults.
 - Sub-agent review also found that payment and contract status fields were still effectively open-ended. The final services now reject unsupported statuses instead of silently bypassing the transition model.
 - Sub-agent review also found that payment duplicate races could still fall through to raw adapter errors. The final payment service now translates external-ID unique-index violations into typed `CONFLICT` errors and adds regression coverage for both repository-thrown unique errors and adapter-backed duplicate writes.
+- Final hardening review found that tenant repository updates still allowed `organizationId` mutation if a caller bypassed the service layer. The branch now blocks cross-org `organizationId` patches in the shared SQLite/Postgres tenant repository helpers and in the Slice B in-memory repositories, with regression coverage for both paths.
 
 Final open findings:
 
@@ -54,15 +55,17 @@ Validated controls:
 7. No new admin/system or secret-bearing read surface was introduced by Slice B
 8. SQLite and Postgres persistence proofs both pass for the full Slice B entity set
 9. Payment duplicate writes now normalize to typed `CONFLICT` responses even when the repository throws a unique-index style error
+10. Shared tenant repository updates and Slice B in-memory repository updates now reject `organizationId` mutation attempts before any cross-tenant write can land
 
 Findings:
 
-- No remaining concrete tenant-isolation, uniqueness, or secret-exposure issues were found after the final fixes.
+- No remaining concrete Slice B tenant-isolation, uniqueness, or secret-exposure issues were found after the final fixes.
 
 Residual risks:
 
 - The canonical core spec defines `payments.status` and `contracts.status` as text fields but does not yet freeze a platform-wide lifecycle enum. Slice B now enforces one service-layer transition model for core correctness; later API/SDK milestones should either adopt that lifecycle explicitly or reconcile it before broader transport exposure.
 - Slice B validates relation existence inside the tenant, but it does not yet enforce deeper graph-consistency rules such as “payment contact and deal must already agree with each other” or “contract contact/company/deal must already form a coherent linked graph” across every combination.
+- Postgres schema bootstrap still does not emit tenant-table RLS DDL, and tenant tables still need a broader org-leading index review. Those are inherited hardening items and should land in a dedicated follow-up rather than be mixed into the Slice B service branch.
 
 Outcome: `PASS`
 
@@ -86,4 +89,4 @@ Outcome: `PASS`
 
 Slice B is ready as the next accepted `@orbit-ai/core` milestone on `core-wave-2-slice-b`.
 
-The next branch action should be to merge Slice B and then open Slice C on a fresh follow-up branch so automation-state review stays isolated from the revenue/catalog service history.
+The next branch action should be to merge Slice B and then open Slice C on a fresh follow-up branch so automation-state review stays isolated from the revenue/catalog service history. The remaining database-hardening carry-forwards should be tracked in a separate tenant-hardening branch or PR.
