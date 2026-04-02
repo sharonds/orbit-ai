@@ -32,6 +32,10 @@ import { createInMemoryEntityTagRepository } from '../entities/entity-tags/repos
 import { createInMemoryImportRepository } from '../entities/imports/repository.js'
 import { createInMemoryWebhookRepository } from '../entities/webhooks/repository.js'
 import { createInMemoryWebhookDeliveryRepository } from '../entities/webhook-deliveries/repository.js'
+import { createInMemoryCustomFieldDefinitionRepository } from '../entities/custom-field-definitions/repository.js'
+import { createInMemoryAuditLogRepository } from '../entities/audit-logs/repository.js'
+import { createInMemorySchemaMigrationRepository } from '../entities/schema-migrations/repository.js'
+import { createInMemoryIdempotencyKeyRepository } from '../entities/idempotency-keys/repository.js'
 import { createPostgresActivityRepository } from '../entities/activities/repository.js'
 import { createPostgresCompanyRepository } from '../entities/companies/repository.js'
 import { createPostgresContractRepository } from '../entities/contracts/repository.js'
@@ -223,6 +227,10 @@ describe('core services registry', () => {
       imports,
       webhooks,
       webhookDeliveries,
+      customFieldDefinitions: createInMemoryCustomFieldDefinitionRepository(),
+      auditLogs: createInMemoryAuditLogRepository(),
+      schemaMigrations: createInMemorySchemaMigrationRepository(),
+      idempotencyKeys: createInMemoryIdempotencyKeyRepository(),
     })
 
     expect(Object.keys(services).sort()).toEqual([
@@ -535,5 +543,56 @@ describe('core services registry', () => {
     })
 
     await database.close()
+  })
+})
+
+describe('Wave 2 Slice E registry shape', () => {
+  it('exposes all 9 system entries with get and list', () => {
+    const customFieldDefinitions = createInMemoryCustomFieldDefinitionRepository()
+    const auditLogs = createInMemoryAuditLogRepository()
+    const schemaMigrations = createInMemorySchemaMigrationRepository()
+    const idempotencyKeys = createInMemoryIdempotencyKeyRepository()
+
+    const services = createCoreServices(createTestAdapter(), {
+      organizations: createInMemoryOrganizationRepository(),
+      organizationMemberships: createInMemoryOrganizationMembershipRepository(),
+      apiKeys: createInMemoryApiKeyRepository(),
+      companies: createInMemoryCompanyRepository(),
+      contacts: createInMemoryContactRepository(),
+      pipelines: createInMemoryPipelineRepository(),
+      stages: createInMemoryStageRepository(),
+      deals: createInMemoryDealRepository(),
+      users: createInMemoryUserRepository(),
+      entityTags: createInMemoryEntityTagRepository(),
+      webhookDeliveries: createInMemoryWebhookDeliveryRepository(),
+      customFieldDefinitions,
+      auditLogs,
+      schemaMigrations,
+      idempotencyKeys,
+    })
+
+    // system has 5 eager keys + 4 lazy getters; check known eager keys
+    const eagerSystemKeys = Object.keys(services.system).sort()
+    expect(eagerSystemKeys).toContain('apiKeys')
+    expect(eagerSystemKeys).toContain('entityTags')
+    expect(eagerSystemKeys).toContain('organizationMemberships')
+    expect(eagerSystemKeys).toContain('organizations')
+    expect(eagerSystemKeys).toContain('webhookDeliveries')
+
+    // All system entries have get and list
+    expect(typeof services.system.customFieldDefinitions.get).toBe('function')
+    expect(typeof services.system.customFieldDefinitions.list).toBe('function')
+    expect(typeof services.system.auditLogs.get).toBe('function')
+    expect(typeof services.system.auditLogs.list).toBe('function')
+    expect(typeof services.system.schemaMigrations.get).toBe('function')
+    expect(typeof services.system.schemaMigrations.list).toBe('function')
+    expect(typeof services.system.idempotencyKeys.get).toBe('function')
+    expect(typeof services.system.idempotencyKeys.list).toBe('function')
+
+    // system.schemaMigrations is read-only metadata, not schema-engine execution
+    expect(services.system.schemaMigrations).not.toHaveProperty('apply')
+    expect(services.system.schemaMigrations).not.toHaveProperty('approve')
+    expect(services.system.schemaMigrations).not.toHaveProperty('rollback')
+    expect(services.system.schemaMigrations).not.toHaveProperty('preview')
   })
 })

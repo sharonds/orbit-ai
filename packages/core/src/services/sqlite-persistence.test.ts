@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createSqliteStorageAdapter } from '../adapters/sqlite/adapter.js'
 import { createSqliteOrbitDatabase } from '../adapters/sqlite/database.js'
-import { initializeSqliteWave2SliceDSchema } from '../adapters/sqlite/schema.js'
+import { initializeSqliteWave2SliceESchema } from '../adapters/sqlite/schema.js'
 import { createSqliteApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createSqliteOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createSqliteOrganizationRepository } from '../entities/organizations/repository.js'
@@ -21,7 +21,7 @@ const ctxB = {
 
 async function createSqliteAdapter() {
   const database = createSqliteOrbitDatabase()
-  await initializeSqliteWave2SliceDSchema(database)
+  await initializeSqliteWave2SliceESchema(database)
 
   return createSqliteStorageAdapter({
     database,
@@ -52,6 +52,10 @@ async function createSqliteAdapter() {
         'imports',
         'webhooks',
         'webhook_deliveries',
+        'custom_field_definitions',
+        'audit_logs',
+        'schema_migrations',
+        'idempotency_keys',
       ],
     }),
   })
@@ -440,6 +444,164 @@ describe('sqlite persistence bridge', () => {
       code: 'CONFLICT',
       field: 'externalId',
     })
+  })
+
+  it('persists Slice E records across service registries', async () => {
+    const adapter = await createSqliteAdapter()
+    const organizations = createSqliteOrganizationRepository(adapter)
+    const { generateId } = await import('../ids/generate-id.js')
+    const now = new Date('2026-04-02T13:00:00.000Z')
+
+    await organizations.create({
+      id: ctxA.orgId,
+      name: 'Acme',
+      slug: 'acme',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+    await organizations.create({
+      id: ctxB.orgId,
+      name: 'Beta',
+      slug: 'beta',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const { createSqliteCustomFieldDefinitionRepository } = await import('../entities/custom-field-definitions/repository.js')
+    const { createSqliteAuditLogRepository } = await import('../entities/audit-logs/repository.js')
+    const { createSqliteSchemaMigrationRepository } = await import('../entities/schema-migrations/repository.js')
+    const { createSqliteIdempotencyKeyRepository } = await import('../entities/idempotency-keys/repository.js')
+
+    const customFieldRepo = createSqliteCustomFieldDefinitionRepository(adapter)
+    const auditLogRepo = createSqliteAuditLogRepository(adapter)
+    const schemaMigrationRepo = createSqliteSchemaMigrationRepository(adapter)
+    const idempotencyKeyRepo = createSqliteIdempotencyKeyRepository(adapter)
+
+    const customField = await customFieldRepo.create(ctxA, {
+      id: generateId('customField'),
+      organizationId: ctxA.orgId,
+      entityType: 'contacts',
+      fieldName: 'industry',
+      fieldType: 'text',
+      label: 'Industry',
+      description: null,
+      isRequired: false,
+      isIndexed: false,
+      isPromoted: false,
+      promotedColumnName: null,
+      defaultValue: null,
+      options: [],
+      validation: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const auditLog = await auditLogRepo.create(ctxA, {
+      id: generateId('auditLog'),
+      organizationId: ctxA.orgId,
+      actorUserId: null,
+      actorApiKeyId: null,
+      entityType: 'contacts',
+      entityId: 'contact_test_01',
+      action: 'created',
+      before: null,
+      after: { name: 'Taylor' },
+      requestId: null,
+      metadata: {},
+      occurredAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const schemaMigration = await schemaMigrationRepo.create(ctxA, {
+      id: generateId('migration'),
+      organizationId: ctxA.orgId,
+      description: 'Add industry field',
+      entityType: 'contacts',
+      operationType: 'add_column',
+      sqlStatements: ['ALTER TABLE contacts ADD COLUMN industry TEXT'],
+      rollbackStatements: ['ALTER TABLE contacts DROP COLUMN industry'],
+      appliedByUserId: null,
+      approvedByUserId: null,
+      appliedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const idempotencyKey = await idempotencyKeyRepo.create(ctxA, {
+      id: generateId('idempotencyKey'),
+      organizationId: ctxA.orgId,
+      key: 'idem-key-001',
+      method: 'POST',
+      path: '/v1/contacts',
+      requestHash: 'sha256:abc123',
+      responseCode: 201,
+      responseBody: { id: 'contact_test_01' },
+      lockedUntil: null,
+      completedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    // Verify round-trip via service registry
+    const servicesB = createCoreServices(adapter)
+
+    const fetchedCustomField = await servicesB.system.customFieldDefinitions.get(ctxA, customField.id)
+    expect(fetchedCustomField).toMatchObject({
+      id: customField.id,
+      organizationId: ctxA.orgId,
+      entityType: 'contacts',
+      fieldName: 'industry',
+    })
+
+    // auditLogs: before/after are stripped by sanitization
+    const fetchedAuditLog = await servicesB.system.auditLogs.get(ctxA, auditLog.id)
+    expect(fetchedAuditLog).toMatchObject({
+      id: auditLog.id,
+      organizationId: ctxA.orgId,
+      entityType: 'contacts',
+      action: 'created',
+    })
+    expect('before' in (fetchedAuditLog ?? {})).toBe(false)
+    expect('after' in (fetchedAuditLog ?? {})).toBe(false)
+
+    const fetchedSchemaMigration = await servicesB.system.schemaMigrations.get(ctxA, schemaMigration.id)
+    expect(fetchedSchemaMigration).toMatchObject({
+      id: schemaMigration.id,
+      organizationId: ctxA.orgId,
+      description: 'Add industry field',
+      operationType: 'add_column',
+    })
+
+    // idempotencyKeys: requestHash/responseBody are stripped by sanitization
+    const fetchedIdempotencyKey = await servicesB.system.idempotencyKeys.get(ctxA, idempotencyKey.id)
+    expect(fetchedIdempotencyKey).toMatchObject({
+      id: idempotencyKey.id,
+      organizationId: ctxA.orgId,
+      key: 'idem-key-001',
+      method: 'POST',
+      path: '/v1/contacts',
+    })
+    expect('requestHash' in (fetchedIdempotencyKey ?? {})).toBe(false)
+    expect('responseBody' in (fetchedIdempotencyKey ?? {})).toBe(false)
+
+    // Tenant isolation: ctxB cannot see ctxA's records
+    expect(await servicesB.system.customFieldDefinitions.get(ctxB, customField.id)).toBeNull()
+    expect(await servicesB.system.auditLogs.get(ctxB, auditLog.id)).toBeNull()
+    expect(await servicesB.system.schemaMigrations.get(ctxB, schemaMigration.id)).toBeNull()
+    expect(await servicesB.system.idempotencyKeys.get(ctxB, idempotencyKey.id)).toBeNull()
+
+    // list also scoped by org
+    const customFieldsA = await servicesB.system.customFieldDefinitions.list(ctxA, { limit: 10 })
+    const customFieldsB = await servicesB.system.customFieldDefinitions.list(ctxB, { limit: 10 })
+    expect(customFieldsA.data).toHaveLength(1)
+    expect(customFieldsB.data).toHaveLength(0)
   })
 
   it('keeps tenant reads scoped while exposing admin/system records separately', async () => {

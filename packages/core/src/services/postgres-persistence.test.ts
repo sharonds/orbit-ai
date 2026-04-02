@@ -4,11 +4,16 @@ import { describe, expect, it } from 'vitest'
 
 import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
-import { initializePostgresWave2SliceDSchema } from '../adapters/postgres/schema.js'
+import { initializePostgresWave2SliceESchema } from '../adapters/postgres/schema.js'
 import { createPostgresApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createPostgresOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createPostgresOrganizationRepository } from '../entities/organizations/repository.js'
 import { createPostgresUserRepository } from '../entities/users/repository.js'
+import { createInMemoryCustomFieldDefinitionRepository } from '../entities/custom-field-definitions/repository.js'
+import { createInMemoryAuditLogRepository } from '../entities/audit-logs/repository.js'
+import { createInMemorySchemaMigrationRepository } from '../entities/schema-migrations/repository.js'
+import { createInMemoryIdempotencyKeyRepository } from '../entities/idempotency-keys/repository.js'
+import { generateId } from '../ids/generate-id.js'
 import { createCoreServices } from './index.js'
 
 const ctxA = {
@@ -26,7 +31,7 @@ async function createPostgresAdapter() {
   const { Pool } = memory.adapters.createPg()
   const pool = new Pool({ max: 1 })
   const database = createPostgresOrbitDatabase({ pool })
-  await initializePostgresWave2SliceDSchema(database)
+  await initializePostgresWave2SliceESchema(database)
 
   const adapter = createPostgresStorageAdapter({
     database,
@@ -57,6 +62,10 @@ async function createPostgresAdapter() {
         'imports',
         'webhooks',
         'webhook_deliveries',
+        'custom_field_definitions',
+        'audit_logs',
+        'schema_migrations',
+        'idempotency_keys',
       ],
     }),
   })
@@ -472,6 +481,172 @@ describe('postgres persistence bridge', () => {
       code: 'CONFLICT',
       field: 'externalId',
     })
+
+    await pool.end()
+  })
+
+  it('wires Slice E system entries into the Postgres adapter registry', async () => {
+    // pg-mem has limited jsonb array support, so Slice E entities use in-memory repos
+    // while the rest of the registry is backed by the real Postgres adapter. This proves
+    // that createCoreServices resolves the new system entries and applies sanitization.
+    const { adapter, pool } = await createPostgresAdapter()
+    const organizations = createPostgresOrganizationRepository(adapter)
+    const now = new Date('2026-04-02T14:00:00.000Z')
+
+    await organizations.create({
+      id: ctxA.orgId,
+      name: 'Acme',
+      slug: 'acme',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+    await organizations.create({
+      id: ctxB.orgId,
+      name: 'Beta',
+      slug: 'beta',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const customFieldDefinitions = createInMemoryCustomFieldDefinitionRepository()
+    const auditLogs = createInMemoryAuditLogRepository()
+    const schemaMigrations = createInMemorySchemaMigrationRepository()
+    const idempotencyKeys = createInMemoryIdempotencyKeyRepository()
+
+    const customField = await customFieldDefinitions.create(ctxA, {
+      id: generateId('customField'),
+      organizationId: ctxA.orgId,
+      entityType: 'contacts',
+      fieldName: 'tier',
+      fieldType: 'text',
+      label: 'Tier',
+      description: null,
+      isRequired: false,
+      isIndexed: false,
+      isPromoted: false,
+      promotedColumnName: null,
+      defaultValue: null,
+      options: [],
+      validation: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const auditLog = await auditLogs.create(ctxA, {
+      id: generateId('auditLog'),
+      organizationId: ctxA.orgId,
+      actorUserId: null,
+      actorApiKeyId: null,
+      entityType: 'contacts',
+      entityId: 'contact_pg_test_01',
+      action: 'updated',
+      before: { name: 'Old Name' },
+      after: { name: 'New Name' },
+      requestId: null,
+      metadata: {},
+      occurredAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const schemaMigration = await schemaMigrations.create(ctxA, {
+      id: generateId('migration'),
+      organizationId: ctxA.orgId,
+      description: 'Add tier field',
+      entityType: 'contacts',
+      operationType: 'add_column',
+      sqlStatements: ['ALTER TABLE contacts ADD COLUMN tier TEXT'],
+      rollbackStatements: ['ALTER TABLE contacts DROP COLUMN tier'],
+      appliedByUserId: null,
+      approvedByUserId: null,
+      appliedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const idempotencyKey = await idempotencyKeys.create(ctxA, {
+      id: generateId('idempotencyKey'),
+      organizationId: ctxA.orgId,
+      key: 'idem-pg-key-001',
+      method: 'POST',
+      path: '/v1/companies',
+      requestHash: 'sha256:def456',
+      responseCode: 201,
+      responseBody: { id: 'company_pg_test_01' },
+      lockedUntil: null,
+      completedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    // Build registry with Postgres adapter + in-memory overrides for Slice E entities
+    const services = createCoreServices(adapter, {
+      customFieldDefinitions,
+      auditLogs,
+      schemaMigrations,
+      idempotencyKeys,
+    })
+
+    const fetchedCustomField = await services.system.customFieldDefinitions.get(ctxA, customField.id)
+    expect(fetchedCustomField).toMatchObject({
+      id: customField.id,
+      organizationId: ctxA.orgId,
+      entityType: 'contacts',
+      fieldName: 'tier',
+    })
+
+    // auditLogs: before/after are stripped by sanitization
+    const fetchedAuditLog = await services.system.auditLogs.get(ctxA, auditLog.id)
+    expect(fetchedAuditLog).toMatchObject({
+      id: auditLog.id,
+      organizationId: ctxA.orgId,
+      entityType: 'contacts',
+      action: 'updated',
+    })
+    expect('before' in (fetchedAuditLog ?? {})).toBe(false)
+    expect('after' in (fetchedAuditLog ?? {})).toBe(false)
+
+    const fetchedSchemaMigration = await services.system.schemaMigrations.get(ctxA, schemaMigration.id)
+    expect(fetchedSchemaMigration).toMatchObject({
+      id: schemaMigration.id,
+      organizationId: ctxA.orgId,
+      description: 'Add tier field',
+      operationType: 'add_column',
+    })
+
+    // idempotencyKeys: requestHash/responseBody are stripped by sanitization
+    const fetchedIdempotencyKey = await services.system.idempotencyKeys.get(ctxA, idempotencyKey.id)
+    expect(fetchedIdempotencyKey).toMatchObject({
+      id: idempotencyKey.id,
+      organizationId: ctxA.orgId,
+      key: 'idem-pg-key-001',
+      method: 'POST',
+      path: '/v1/companies',
+    })
+    expect('requestHash' in (fetchedIdempotencyKey ?? {})).toBe(false)
+    expect('responseBody' in (fetchedIdempotencyKey ?? {})).toBe(false)
+
+    // Tenant isolation: ctxB cannot see ctxA's records
+    expect(await services.system.customFieldDefinitions.get(ctxB, customField.id)).toBeNull()
+    expect(await services.system.auditLogs.get(ctxB, auditLog.id)).toBeNull()
+    expect(await services.system.schemaMigrations.get(ctxB, schemaMigration.id)).toBeNull()
+    expect(await services.system.idempotencyKeys.get(ctxB, idempotencyKey.id)).toBeNull()
+
+    // list also scoped by org
+    const customFieldsA = await services.system.customFieldDefinitions.list(ctxA, { limit: 10 })
+    const customFieldsB = await services.system.customFieldDefinitions.list(ctxB, { limit: 10 })
+    expect(customFieldsA.data).toHaveLength(1)
+    expect(customFieldsB.data).toHaveLength(0)
+
+    // schemaMigrations is read-only (no apply/approve/rollback)
+    expect(services.system.schemaMigrations).not.toHaveProperty('apply')
+    expect(services.system.schemaMigrations).not.toHaveProperty('rollback')
 
     await pool.end()
   })
