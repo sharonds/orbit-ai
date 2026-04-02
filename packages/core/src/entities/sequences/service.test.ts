@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { generateId } from '../../ids/generate-id.js'
 import { createInMemorySequenceEnrollmentRepository } from '../sequence-enrollments/repository.js'
 import { createInMemorySequenceStepRepository } from '../sequence-steps/repository.js'
+import type { SequenceRepository } from './repository.js'
 import { createInMemorySequenceRepository } from './repository.js'
 import { createSequenceService } from './service.js'
 
@@ -84,6 +85,82 @@ describe('sequence service', () => {
 
     await sequenceService.delete(ctx, sequence.id)
     expect(await sequenceService.get(ctx, sequence.id)).toBeNull()
+  })
+
+  it('rejects updates that rename a sequence to an existing name in the same organization', async () => {
+    const sequenceService = createSequenceService({
+      sequences: createInMemorySequenceRepository(),
+      sequenceSteps: createInMemorySequenceStepRepository(),
+      sequenceEnrollments: createInMemorySequenceEnrollmentRepository(),
+    })
+    const first = await sequenceService.create(ctx, {
+      name: 'Expansion',
+    })
+    await sequenceService.create(ctx, {
+      name: 'Renewal',
+    })
+
+    await expect(
+      sequenceService.update(ctx, first.id, {
+        name: 'Renewal',
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'name',
+    })
+  })
+
+  it('coerces repository unique-index errors to typed sequence name conflicts on create and update', async () => {
+    const base = createInMemorySequenceRepository()
+    const seed = await base.create(ctx, {
+      id: generateId('sequence'),
+      organizationId: ctx.orgId,
+      name: 'Expansion',
+      description: null,
+      triggerEvent: null,
+      status: 'draft',
+      customFields: {},
+      createdAt: new Date('2026-04-02T12:00:00.000Z'),
+      updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+    })
+    const createError = new Error(
+      'duplicate key value violates unique constraint "sequences_org_name_idx" on organization_id and name',
+    )
+    const updateError = new Error(
+      'duplicate key value violates unique constraint "sequences_org_name_idx" on organization_id and name',
+    )
+    const sequences: SequenceRepository = {
+      ...base,
+      async create() {
+        throw createError
+      },
+      async update() {
+        throw updateError
+      },
+    }
+    const sequenceService = createSequenceService({
+      sequences,
+      sequenceSteps: createInMemorySequenceStepRepository(),
+      sequenceEnrollments: createInMemorySequenceEnrollmentRepository(),
+    })
+
+    await expect(
+      sequenceService.create(ctx, {
+        name: 'Race-created sequence',
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'name',
+    })
+
+    await expect(
+      sequenceService.update(ctx, seed.id, {
+        name: 'Race-updated sequence',
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'name',
+    })
   })
 
   it('rejects in-memory repository updates that try to mutate organizationId', async () => {

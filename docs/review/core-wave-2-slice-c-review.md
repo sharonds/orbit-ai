@@ -24,7 +24,7 @@ Findings fixed during the branch pass:
 - Initial Slice C insert validation required `sequenceEnrollments.enrolledAt` and `sequenceEvents.occurredAt` too early, which blocked the intended service-level defaults. The final Zod contracts now keep those fields optional on create so the service layer can stamp stable defaults.
 - Initial Slice C graph validation only ran at event-creation time. Sub-agent review found that later `sequenceStep.sequenceId` and `sequenceEnrollment.sequenceId` / `contactId` updates could silently invalidate already-written history. The final services now block reparenting once history exists.
 - Sub-agent review also found delete behavior was adapter-divergent: SQLite could orphan Slice C children while Postgres would reject the same delete through foreign keys. The final Slice C services now reject parent deletes while dependent graph records or event history exist, and SQLite now enables foreign-key enforcement so the Slice C graph stays aligned with Postgres semantics.
-- Follow-up review found one missing lifecycle rule and two regression gaps. The final Slice C services now reject `status: 'exited'` without `exitedAt`, map duplicate sequence names to typed `CONFLICT` errors, and carry explicit regression coverage for the enrollment-only sequence delete guard plus sequence name uniqueness.
+- Follow-up review found one missing lifecycle rule and two regression gaps. The final Slice C services now reject `status: 'exited'` without `exitedAt`, map duplicate sequence names to typed `CONFLICT` errors, and carry explicit regression coverage for the enrollment-only sequence delete guard, duplicate-name updates, and repository-thrown unique-index coercion on both create and update.
 
 Final open findings:
 
