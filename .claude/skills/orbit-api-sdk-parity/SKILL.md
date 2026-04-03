@@ -35,16 +35,16 @@ Classify each changed file:
 
 ## Step 3: Review against parity rules
 
-### Rule 1: Resource methods map 1:1 to API routes
+### Rule 1: SDK-covered routes map 1:1 to API routes
 
-Every public API route must have a corresponding SDK resource method. Every SDK resource method must call a route that actually exists in the API. Check:
+Every SDK-covered public API route must have a corresponding SDK resource/helper method, and every SDK resource/helper method must call a route that actually exists in the API. Operational endpoints that are intentionally API-only, such as `GET /health` and `GET /v1/status`, are not parity failures by themselves. Check:
 
 - `PUBLIC_ENTITY_CAPABILITIES` in `packages/api/src/routes/entities.ts` lists an entity ↔ a resource class exists in `packages/sdk/src/resources/`
 - Workflow endpoints (deal move, sequence enroll/unenroll, tag attach/detach) have matching SDK methods on the correct resource class
 - Admin routes under `/v1/admin/*` are not exposed through public SDK resources
 - Schema routes (`/v1/objects*`, `/v1/schema/migrations/*`) map to `SchemaResource` methods
 
-If a route exists in the API but has no SDK method (or vice versa), that's a parity gap.
+If an SDK-covered route exists in the API but has no SDK method (or vice versa), that's a parity gap.
 
 ### Rule 2: Identical envelope shapes across transports
 
@@ -75,13 +75,11 @@ The API route layer applies `sanitizePublicRead()` and `sanitizeAdminRead()` bef
 
 - Webhook reads: `secretEncrypted` is stripped in both transports
 - Webhook delivery reads: `payload`, `signature`, `idempotencyKey`, `responseBody` are stripped in both
-- API key admin reads: `keyHash` is stripped in both
-- Audit log admin reads: `before`/`after` snapshots have sensitive fields redacted in both
-- Idempotency key admin reads: `requestHash`, `responseBody` are stripped in both
+- If admin resources are part of the reviewed SDK surface, API key admin reads strip `keyHash`, audit log reads redact sensitive `before`/`after` snapshots, and idempotency-key reads strip `requestHash`/`responseBody`
 
 If the HTTP transport sanitizes but the direct transport returns raw records, that's a critical finding — it repeats the `keyHash` leak from core Wave 1.
 
-### Rule 5: `.response()` and `.firstPage()` preserve server-owned metadata
+### Rule 5: `.response()` and `list().firstPage()` preserve server-owned metadata
 
 These are the public escape hatches for raw envelopes. Check:
 
@@ -112,7 +110,7 @@ Write a concise review note with these sections:
 Which transports were tested? (HTTP only, direct only, or both)
 
 ### Route/resource alignment
-Are all API routes covered by SDK resources and vice versa? List any gaps.
+Are all SDK-covered API routes covered by SDK resources/helpers and vice versa? List any gaps. Note any intentional API-only operational endpoints separately.
 
 ### Envelope parity
 Do HTTP and direct mode produce identical envelope shapes? List any divergences.
@@ -124,7 +122,7 @@ Do both transports surface the same error codes? List any divergences.
 Are secret-bearing reads sanitized identically in both transports? List any gaps.
 
 ### Response helper correctness
-Do `.response()`, `.firstPage()`, and `.autoPaginate()` behave correctly? List any issues.
+Do `.response()`, `list().firstPage()`, and `.autoPaginate()` behave correctly? List any issues.
 
 ### Findings (if any)
 
@@ -143,7 +141,7 @@ Severity definitions:
 
 Explicitly state pass or fail for each check:
 
-1. **Resource ↔ route 1:1 mapping**: Pass/Fail — [brief evidence]
+1. **SDK-covered resource/helper ↔ route mapping**: Pass/Fail — [brief evidence]
 2. **Envelope shape parity**: Pass/Fail — [brief evidence]
 3. **Error code parity**: Pass/Fail — [brief evidence]
 4. **Secret redaction parity**: Pass/Fail — [brief evidence]

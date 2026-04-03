@@ -75,7 +75,7 @@ This is mandatory because pooled Postgres connections can leak session state bet
 Every new tenant-scoped table needs:
 
 1. **App-level filtering**: the repository/service explicitly filters on `organization_id` in every query
-2. **RLS policy**: for Postgres-family adapters, auto-generated RLS policies enforce `organization_id = current_setting('app.current_org_id')::uuid` on SELECT, INSERT, UPDATE, and DELETE
+2. **RLS policy**: for Postgres-family adapters, auto-generated RLS policies enforce `organization_id = orbit.current_org_id()` (or the equivalent generated helper/current-setting text contract used by the active schema layer) on SELECT, INSERT, UPDATE, and DELETE
 
 RLS is necessary but not sufficient — the app layer must also filter, because:
 - Direct mode needs to be auditable and understandable without relying on database magic
@@ -100,7 +100,12 @@ Tenant-scoped reads must never return:
 - Connector access/refresh tokens (server-owned, never in API/CLI/MCP output)
 - Raw provider error strings that might contain tokens
 
-Check that serializers/DTOs use redaction markers (`credentials_redacted`, `cursor_redacted`, `error_redacted`) for secret-bearing objects.
+Check that the changed surface uses the correct redaction contract for that interface:
+
+- **API / SDK**: sanitized DTOs and envelope shapes must omit secret-bearing fields entirely (for example webhook plaintext secrets, webhook delivery payload/signature copies, API key hashes)
+- **MCP / integrations**: redaction markers such as `credentials_redacted`, `cursor_redacted`, and `error_redacted` may be the correct evidence depending on the spec
+
+Do not require integration-style redaction markers on API/SDK read models when the contract instead calls for sanitized DTOs.
 
 ## Step 4: Produce the review note
 
