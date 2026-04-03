@@ -2608,7 +2608,13 @@ Use `orbit-tenant-safety-review` skill. Focus: Wave 1 route tenancy, bootstrap b
 
 - [ ] **Step 5: Dispatch parity review**
 
-Use `orbit-api-sdk-parity` skill. Focus: route naming, envelope metadata, pagination consistency, and HTTP/direct parity on the accepted Wave 1 surface.
+Use `orbit-api-sdk-parity` skill if installed. If unavailable, use this mandatory inline parity checklist:
+- SDK resource methods for Wave 1 entities map 1:1 to API routes
+- HTTP and direct transport produce identical envelope shapes for the same operation
+- HTTP and direct transport surface the same typed error codes
+- Secret-bearing reads (webhooks) are sanitized in both transports
+- `.response()` returns raw server envelope unchanged; `.firstPage()` preserves cursor metadata
+- Route naming, envelope metadata, and pagination are consistent across all Wave 1 routes
 
 - [ ] **Step 6: Write review artifact**
 
@@ -3629,7 +3635,7 @@ Use `orbit-tenant-safety-review` skill. Focus: final tenant isolation, bootstrap
 
 - [ ] **Step 5: Dispatch parity review**
 
-Use `orbit-api-sdk-parity` skill. Use the explicit parity checklist below:
+Use `orbit-api-sdk-parity` skill if installed. If unavailable, use this mandatory inline parity checklist:
 - SDK resource methods map 1:1 to API routes
 - HTTP and direct transport produce identical envelope/error shapes
 - Secret-bearing reads sanitized in both modes
