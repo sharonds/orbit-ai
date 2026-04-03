@@ -40,6 +40,14 @@ None for the baseline tenant-filter/RLS coverage. The remaining `pg-mem` excepti
 
 SQLite remains unchanged. Postgres-specific bootstrap now carries the new schema/search-path/RLS behavior, while SQLite continues to enforce tenant isolation through application-level org filters in repositories.
 
+## Real Postgres Proof
+
+The branch now includes an opt-in live Postgres proof at `packages/core/src/adapters/postgres/live-bootstrap.test.ts`.
+
+- It is intentionally gated by `ORBIT_TEST_POSTGRES_URL` and `ORBIT_TEST_POSTGRES_ALLOW_SCHEMA_RESET=1`
+- It drops and recreates schema `orbit`, so it is only safe against a dedicated test database
+- It verifies the real engine applies the schema, indexes, policies, and search-path behavior that `pg-mem` cannot fully execute
+
 ## Security Review Answers
 
 1. Does every implemented tenant table now receive Postgres-family RLS coverage? **Yes** — 27/27 tables are covered by `generatePostgresRlsSql()`, and bootstrap applies that RLS by default.
