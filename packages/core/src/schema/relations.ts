@@ -2,23 +2,32 @@ import { relations } from 'drizzle-orm'
 import {
   activities,
   apiKeys,
+  auditLogs,
   companies,
   contracts,
   contacts,
+  customFieldDefinitions,
   deals,
+  entityTags,
+  idempotencyKeys,
+  imports,
   notes,
   organizationMemberships,
   organizations,
   payments,
   pipelines,
   products,
+  schemaMigrations,
   sequenceEnrollments,
   sequenceEvents,
   sequences,
   sequenceSteps,
   stages,
+  tags,
   tasks,
   users,
+  webhookDeliveries,
+  webhooks,
 } from './tables.js'
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({
@@ -40,6 +49,15 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   sequenceSteps: many(sequenceSteps),
   sequenceEnrollments: many(sequenceEnrollments),
   sequenceEvents: many(sequenceEvents),
+  tags: many(tags),
+  entityTags: many(entityTags),
+  imports: many(imports),
+  webhooks: many(webhooks),
+  webhookDeliveries: many(webhookDeliveries),
+  customFieldDefinitions: many(customFieldDefinitions),
+  auditLogs: many(auditLogs),
+  schemaMigrations: many(schemaMigrations),
+  idempotencyKeys: many(idempotencyKeys),
 }))
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -341,5 +359,101 @@ export const sequenceEventsRelations = relations(sequenceEvents, ({ one }) => ({
   step: one(sequenceSteps, {
     fields: [sequenceEvents.sequenceStepId],
     references: [sequenceSteps.id],
+  }),
+}))
+
+export const tagsRelations = relations(tags, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [tags.organizationId],
+    references: [organizations.id],
+  }),
+}))
+
+export const entityTagsRelations = relations(entityTags, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [entityTags.organizationId],
+    references: [organizations.id],
+  }),
+  tag: one(tags, {
+    fields: [entityTags.tagId],
+    references: [tags.id],
+  }),
+}))
+
+export const importsRelations = relations(imports, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [imports.organizationId],
+    references: [organizations.id],
+  }),
+  startedBy: one(users, {
+    fields: [imports.startedByUserId],
+    references: [users.id],
+  }),
+}))
+
+export const webhooksRelations = relations(webhooks, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [webhooks.organizationId],
+    references: [organizations.id],
+  }),
+  deliveries: many(webhookDeliveries),
+}))
+
+export const webhookDeliveriesRelations = relations(webhookDeliveries, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [webhookDeliveries.organizationId],
+    references: [organizations.id],
+  }),
+  webhook: one(webhooks, {
+    fields: [webhookDeliveries.webhookId],
+    references: [webhooks.id],
+  }),
+}))
+
+export const customFieldDefinitionsRelations = relations(customFieldDefinitions, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [customFieldDefinitions.organizationId],
+    references: [organizations.id],
+  }),
+}))
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [auditLogs.organizationId],
+    references: [organizations.id],
+  }),
+  actorUser: one(users, {
+    relationName: 'auditLogActorUser',
+    fields: [auditLogs.actorUserId],
+    references: [users.id],
+  }),
+  actorApiKey: one(apiKeys, {
+    relationName: 'auditLogActorApiKey',
+    fields: [auditLogs.actorApiKeyId],
+    references: [apiKeys.id],
+  }),
+}))
+
+export const schemaMigrationsRelations = relations(schemaMigrations, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [schemaMigrations.organizationId],
+    references: [organizations.id],
+  }),
+  appliedBy: one(users, {
+    relationName: 'schemaMigrationAppliedBy',
+    fields: [schemaMigrations.appliedByUserId],
+    references: [users.id],
+  }),
+  approvedBy: one(users, {
+    relationName: 'schemaMigrationApprovedBy',
+    fields: [schemaMigrations.approvedByUserId],
+    references: [users.id],
+  }),
+}))
+
+export const idempotencyKeysRelations = relations(idempotencyKeys, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [idempotencyKeys.organizationId],
+    references: [organizations.id],
   }),
 }))

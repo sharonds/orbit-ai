@@ -31,6 +31,7 @@ interface SqliteRepositoryConfig<TRecord extends { id: string } & Record<string,
   defaultSort: SearchQuery['sort']
   serialize(record: TRecord): Record<string, SqlitePrimitive>
   deserialize(row: Record<string, unknown>): TRecord
+  onCreateError?(error: unknown, record: TRecord): never
 }
 
 function buildInsertStatement(
@@ -111,9 +112,14 @@ export function createTenantSqliteRepository<TRecord extends { id: string } & Re
       }
 
       const row = config.serialize(record)
-      await adapter.withTenantContext(ctx, async (db) => {
-        await db.execute(buildInsertStatement(config.tableName, row, config.columns))
-      })
+      try {
+        await adapter.withTenantContext(ctx, async (db) => {
+          await db.execute(buildInsertStatement(config.tableName, row, config.columns))
+        })
+      } catch (error) {
+        config.onCreateError?.(error, record)
+        throw error
+      }
       return record
     },
     async get(ctx, id) {

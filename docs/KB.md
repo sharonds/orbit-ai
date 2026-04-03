@@ -43,14 +43,14 @@ Completed:
 - `@orbit-ai/core` Wave 2 Slice B
 - `@orbit-ai/core` Wave 2 Slice C
 - `@orbit-ai/core` Wave 2 Slice D
+- `@orbit-ai/core` Wave 2 Slice E
 
 Current focus:
 
 - maintain the repo knowledge base as the live hub
-- merge the accepted Core Wave 2 Slice D branch
-- keep tenant hardening carry-forwards explicit after the Slice D metadata, redaction, and compatibility hardening pass
-- treat the Postgres persistence bridge as the accepted baseline feeding Wave 2
-- keep API/SDK execution blocked until Wave 2 service coverage is further along
+- Core Wave 2 Slice E is complete: `system.customFieldDefinitions`, `system.auditLogs`, `system.schemaMigrations`, `system.idempotencyKeys`, final Wave 2 registry wiring, adapter bootstrap for all four entities, and SQLite/Postgres persistence proofs are all landed on branch `core-wave-2-slice-e`
+- open a separate tenant-hardening follow-up for Postgres RLS DDL, tenant-table org-leading indexes, and shared table-name allowlist assertions
+- keep API/SDK execution blocked until Wave 2 review and merge is complete
 - keep execution docs and skills aligned with implementation progress
 
 Not started yet:
@@ -128,11 +128,10 @@ Immediate next actions:
    - Wave 1 service surface committed on `core-wave-1-services`
    - SQLite persistence bridge committed on `core-wave-1-services`
 3. Next:
-   - accept [core-wave-2-slice-d-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-d-review.md) as the final Slice D review artifact
-   - merge Slice D after the accepted final review rerun
-   - start Slice E on a fresh follow-up branch after Slice D lands
+   - review and merge Slice E (`core-wave-2-slice-e`) covering `system.customFieldDefinitions`, `system.auditLogs`, `system.schemaMigrations`, `system.idempotencyKeys`, and all Wave 2 registry/export wiring
    - open a separate tenant-hardening follow-up for Postgres RLS DDL, tenant-table org-leading indexes, and shared table-name allowlist assertions
-   - keep API/SDK execution blocked until the Wave 2 service surface is materially further along
+   - proceed to API/SDK execution once Wave 2 is fully merged and reviewed
+   - keep API/SDK execution blocked until Wave 2 service surface merge is accepted
 
 ## Open Items
 
@@ -143,7 +142,6 @@ These are still open, but they do not block the KB:
 - public release sequencing across packages
 - contribution and open-source governance docs
 - whether Postgres-family persistence lands before or alongside core Wave 2
-- the exact Slice E metadata scope and acceptance split after Slice D
 
 ## Decision Log
 
@@ -195,6 +193,8 @@ These are still open, but they do not block the KB:
 - 2026-04-02: Recorded the final Slice D review outcome in [core-wave-2-slice-d-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-d-review.md); the remaining carry-forwards stay on the separate tenant-hardening branch rather than the Slice D branch.
 - 2026-04-02: Re-ran the final Slice D code review and security review with independent sub-agent passes; the review artifact was reopened after finding that `imports.rollbackData` still leaks through generic tenant import reads and that the tightened `webhooks.status` enum breaks reads of legacy `inactive|failed` persisted rows.
 - 2026-04-02: Fixed the reopened Slice D findings by sanitizing tenant import DTOs, normalizing legacy webhook statuses on read and search paths, expanding regression coverage, rerunning core validation, and rerunning independent code/security review passes with no blocking findings; [core-wave-2-slice-d-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-d-review.md) is accepted again.
+
+- 2026-04-02: Executed Core Wave 2 Slice E on branch `core-wave-2-slice-e`, covering `system.customFieldDefinitions`, `system.auditLogs`, `system.schemaMigrations`, `system.idempotencyKeys`, final Wave 2 registry wiring, adapter bootstrap for all four entities, and SQLite/Postgres persistence proofs. `auditLogs.before/after`, `schemaMigrations.sqlStatements/rollbackStatements`, and `idempotencyKeys.requestHash/responseBody` are redacted in admin reads. No audit middleware, idempotency middleware, or schema-engine execution was pulled forward.
 
 ## Working Rule
 

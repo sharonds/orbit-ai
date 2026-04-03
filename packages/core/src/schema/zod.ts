@@ -5,11 +5,14 @@ import { assertOrbitId } from '../ids/parse-id.js'
 import {
   activities,
   apiKeys,
+  auditLogs,
   companies,
   contracts,
   contacts,
+  customFieldDefinitions,
   deals,
   entityTags,
+  idempotencyKeys,
   imports,
   notes,
   organizationMemberships,
@@ -17,6 +20,7 @@ import {
   payments,
   pipelines,
   products,
+  schemaMigrations,
   sequenceEnrollments,
   sequenceEvents,
   sequences,
@@ -510,4 +514,64 @@ export const webhookDeliveryInsertSchema = createInsertSchema(webhookDeliveries,
 export const webhookDeliveryUpdateSchema = createUpdateSchema(webhookDeliveries, {
   organizationId: orbitId('organization').optional(),
   webhookId: orbitId('webhook').optional(),
+})
+
+// Custom Field Definitions
+export const customFieldDefinitionSelectSchema = createSelectSchema(customFieldDefinitions, {
+  id: orbitId('customField'),
+  organizationId: orbitId('organization'),
+})
+export const customFieldDefinitionInsertSchema = createInsertSchema(customFieldDefinitions, {
+  organizationId: orbitId('organization'),
+})
+export const customFieldDefinitionUpdateSchema = createUpdateSchema(customFieldDefinitions, {
+  organizationId: orbitId('organization').optional(),
+})
+
+// Audit Logs
+export const auditLogSelectSchema = createSelectSchema(auditLogs, {
+  id: orbitId('auditLog'),
+  organizationId: orbitId('organization'),
+  actorUserId: orbitId('user').optional().nullable(),
+  actorApiKeyId: orbitId('apiKey').optional().nullable(),
+})
+export const auditLogInsertSchema = createInsertSchema(auditLogs, {
+  organizationId: orbitId('organization'),
+  actorUserId: orbitId('user').optional().nullable(),
+  actorApiKeyId: orbitId('apiKey').optional().nullable(),
+})
+export const auditLogUpdateSchema = createUpdateSchema(auditLogs, {
+  organizationId: orbitId('organization').optional(),
+  actorUserId: orbitId('user').optional().nullable(),
+  actorApiKeyId: orbitId('apiKey').optional().nullable(),
+})
+
+// Schema Migrations
+export const schemaMigrationSelectSchema = createSelectSchema(schemaMigrations, {
+  id: orbitId('migration'),
+  organizationId: orbitId('organization'),
+  appliedByUserId: orbitId('user').optional().nullable(),
+  approvedByUserId: orbitId('user').optional().nullable(),
+})
+export const schemaMigrationInsertSchema = createInsertSchema(schemaMigrations, {
+  organizationId: orbitId('organization'),
+  appliedByUserId: orbitId('user').optional().nullable(),
+  approvedByUserId: orbitId('user').optional().nullable(),
+})
+export const schemaMigrationUpdateSchema = createUpdateSchema(schemaMigrations, {
+  organizationId: orbitId('organization').optional(),
+  appliedByUserId: orbitId('user').optional().nullable(),
+  approvedByUserId: orbitId('user').optional().nullable(),
+})
+
+// Idempotency Keys
+export const idempotencyKeySelectSchema = createSelectSchema(idempotencyKeys, {
+  id: orbitId('idempotencyKey'),
+  organizationId: orbitId('organization'),
+})
+export const idempotencyKeyInsertSchema = createInsertSchema(idempotencyKeys, {
+  organizationId: orbitId('organization'),
+})
+export const idempotencyKeyUpdateSchema = createUpdateSchema(idempotencyKeys, {
+  organizationId: orbitId('organization').optional(),
 })
