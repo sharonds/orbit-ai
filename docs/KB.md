@@ -49,8 +49,8 @@ Current focus:
 
 - maintain the repo knowledge base as the live hub
 - Core Wave 2 Slice E is complete: `system.customFieldDefinitions`, `system.auditLogs`, `system.schemaMigrations`, `system.idempotencyKeys`, final Wave 2 registry wiring, adapter bootstrap for all four entities, and SQLite/Postgres persistence proofs are all landed on branch `core-wave-2-slice-e`
-- open a separate tenant-hardening follow-up for Postgres RLS DDL, tenant-table org-leading indexes, and shared table-name allowlist assertions
-- keep API/SDK execution blocked until Wave 2 review and merge is complete
+- tenant-hardening follow-up is now planned in [core-tenant-hardening-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-tenant-hardening-plan.md) for Postgres RLS DDL, tenant-table org-leading indexes, and shared table-name allowlist assertions
+- API/SDK execution is now unblocked by the completed Wave 2 merge; execution order versus tenant hardening is a product decision rather than a missing-core blocker
 - keep execution docs and skills aligned with implementation progress
 
 Not started yet:
@@ -128,10 +128,9 @@ Immediate next actions:
    - Wave 1 service surface committed on `core-wave-1-services`
    - SQLite persistence bridge committed on `core-wave-1-services`
 3. Next:
-   - review and merge Slice E (`core-wave-2-slice-e`) covering `system.customFieldDefinitions`, `system.auditLogs`, `system.schemaMigrations`, `system.idempotencyKeys`, and all Wave 2 registry/export wiring
-   - open a separate tenant-hardening follow-up for Postgres RLS DDL, tenant-table org-leading indexes, and shared table-name allowlist assertions
-   - proceed to API/SDK execution once Wave 2 is fully merged and reviewed
-   - keep API/SDK execution blocked until Wave 2 service surface merge is accepted
+   - execute [core-tenant-hardening-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-tenant-hardening-plan.md) on a fresh `core-tenant-hardening` branch
+   - start API/SDK execution planning now that Wave 2 is merged and reviewed
+   - decide whether tenant hardening or API package execution lands first, while keeping both tracked as active next-package work
 
 ## Open Items
 
@@ -195,6 +194,7 @@ These are still open, but they do not block the KB:
 - 2026-04-02: Fixed the reopened Slice D findings by sanitizing tenant import DTOs, normalizing legacy webhook statuses on read and search paths, expanding regression coverage, rerunning core validation, and rerunning independent code/security review passes with no blocking findings; [core-wave-2-slice-d-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-d-review.md) is accepted again.
 
 - 2026-04-02: Executed Core Wave 2 Slice E on branch `core-wave-2-slice-e`, covering `system.customFieldDefinitions`, `system.auditLogs`, `system.schemaMigrations`, `system.idempotencyKeys`, final Wave 2 registry wiring, adapter bootstrap for all four entities, and SQLite/Postgres persistence proofs. `auditLogs.before/after`, `schemaMigrations.sqlStatements/rollbackStatements`, and `idempotencyKeys.requestHash/responseBody` are redacted in admin reads. No audit middleware, idempotency middleware, or schema-engine execution was pulled forward.
+- 2026-04-03: Created [core-tenant-hardening-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-tenant-hardening-plan.md) to execute the deferred Postgres RLS DDL, org-leading tenant index review, and shared table-name allowlist assertions as a separate follow-up after Wave 2.
 
 ## Working Rule
 
