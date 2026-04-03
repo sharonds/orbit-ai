@@ -28,7 +28,9 @@ export class DirectTransport implements OrbitTransport {
 
   async request<T>(input: TransportRequest): Promise<OrbitEnvelope<T>> {
     try {
-      const result = await this.dispatch(input)
+      const result = await this.options.adapter!.withTenantContext(this.ctx, async () => {
+        return this.dispatch(input)
+      })
       return this.wrapEnvelope(input.path, result) as OrbitEnvelope<T>
     } catch (err: unknown) {
       if (err instanceof OrbitApiError) throw err
@@ -132,9 +134,23 @@ export class DirectTransport implements OrbitTransport {
     const map: Record<string, number> = {
       AUTH_INVALID_API_KEY: 401,
       AUTH_INSUFFICIENT_SCOPE: 403,
+      AUTH_CONTEXT_REQUIRED: 401,
+      RATE_LIMITED: 429,
       VALIDATION_FAILED: 400,
+      INVALID_CURSOR: 400,
       RESOURCE_NOT_FOUND: 404,
+      RELATION_NOT_FOUND: 404,
       CONFLICT: 409,
+      IDEMPOTENCY_CONFLICT: 409,
+      SCHEMA_INVALID_FIELD: 400,
+      SCHEMA_ENTITY_EXISTS: 409,
+      SCHEMA_DESTRUCTIVE_BLOCKED: 403,
+      SCHEMA_INCOMPATIBLE_PROMOTION: 400,
+      MIGRATION_FAILED: 500,
+      ADAPTER_UNAVAILABLE: 503,
+      ADAPTER_TRANSACTION_FAILED: 500,
+      RLS_GENERATION_FAILED: 500,
+      WEBHOOK_DELIVERY_FAILED: 502,
       INTERNAL_ERROR: 500,
     }
     return map[code] ?? 500
