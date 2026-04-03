@@ -10,6 +10,14 @@ import { registerHealthCheck, registerStatusRoute } from './routes/health.js'
 import { registerSearchRoutes } from './routes/search.js'
 import { registerContextRoutes } from './routes/context.js'
 import { registerPublicEntityRoutes } from './routes/entities.js'
+import { registerAdminRoutes } from './routes/admin.js'
+import { registerBootstrapRoutes } from './routes/bootstrap.js'
+import { registerOrganizationRoutes } from './routes/organizations.js'
+import { registerWorkflowRoutes } from './routes/workflows.js'
+import { registerRelationshipRoutes } from './routes/relationships.js'
+import { registerObjectRoutes } from './routes/objects.js'
+import { registerWebhookRoutes } from './routes/webhooks.js'
+import { registerImportRoutes } from './routes/imports.js'
 import './context.js'
 
 export function createApi(options: CreateApiOptions) {
@@ -40,6 +48,34 @@ export function createApi(options: CreateApiOptions) {
   registerStatusRoute(app)
   registerSearchRoutes(app, services)
   registerContextRoutes(app, services)
+
+  // Bootstrap routes (platform:bootstrap scope)
+  registerBootstrapRoutes(app, services)
+
+  // Organization routes (current org)
+  registerOrganizationRoutes(app, services)
+
+  // Admin routes (admin:* scope)
+  registerAdminRoutes(app, services)
+
+  // Dedicated webhook routes (before generic entities to avoid conflicts)
+  registerWebhookRoutes(app, services)
+
+  // Dedicated import routes
+  registerImportRoutes(app, services)
+
+  // Workflow routes (deal moves, sequence enrollment, tag attach/detach, activity log)
+  // Register BEFORE generic entities so /v1/deals/pipeline, /v1/deals/stats
+  // are matched before /v1/deals/:id
+  registerWorkflowRoutes(app, services)
+
+  // Relationship routes (contact timeline, company contacts, etc.)
+  registerRelationshipRoutes(app, services)
+
+  // Schema / object routes
+  registerObjectRoutes(app, services)
+
+  // Generic public entity CRUD (Wave 1 + Wave 2)
   registerPublicEntityRoutes(app, services)
 
   return app

@@ -9,12 +9,32 @@ const PUBLIC_ENTITY_CAPABILITIES = {
   pipelines: { read: true, write: true, batch: false },
   stages: { read: true, write: true, batch: false },
   users: { read: true, write: true, batch: false },
+  // Wave 2 entities
+  activities: { read: true, write: true, batch: true },
+  tasks: { read: true, write: true, batch: true },
+  notes: { read: true, write: true, batch: true },
+  products: { read: true, write: true, batch: true },
+  payments: { read: true, write: true, batch: true },
+  contracts: { read: true, write: true, batch: true },
+  sequences: { read: true, write: true, batch: true },
+  sequence_steps: { read: true, write: true, batch: false },
+  sequence_enrollments: { read: true, write: true, batch: false },
+  sequence_events: { read: true, write: false, batch: false },
+  tags: { read: true, write: true, batch: true },
+  imports: { read: true, write: true, batch: false },
 } as const
 
 type PublicEntityName = keyof typeof PUBLIC_ENTITY_CAPABILITIES
 
+const ENTITY_SERVICE_MAP: Record<string, string> = {
+  sequence_steps: 'sequenceSteps',
+  sequence_enrollments: 'sequenceEnrollments',
+  sequence_events: 'sequenceEvents',
+}
+
 function resolveService(services: CoreServices, entity: PublicEntityName) {
-  return services[entity as keyof CoreServices] as any
+  const serviceKey = ENTITY_SERVICE_MAP[entity] ?? entity
+  return services[serviceKey as keyof CoreServices] as any
 }
 
 export function registerPublicEntityRoutes(app: Hono, services: CoreServices) {
