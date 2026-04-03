@@ -74,6 +74,36 @@ describe('generatePostgresRlsSql', () => {
     expect(tablesInRls).toEqual(expectedTables)
   })
 
+  it('emits the correct total number of statements', () => {
+    // 1 helper function + 27 tables × 9 statements each (1 enable + 4 × (drop + create))
+    expect(statements).toHaveLength(1 + IMPLEMENTED_TENANT_TABLES.length * 9)
+  })
+
+  it('uses correct RLS clause types per operation', () => {
+    for (const table of IMPLEMENTED_TENANT_TABLES) {
+      const selectPolicy = statements.find((s) => s.startsWith(`create policy ${table}_select`))
+      const insertPolicy = statements.find((s) => s.startsWith(`create policy ${table}_insert`))
+      const updatePolicy = statements.find((s) => s.startsWith(`create policy ${table}_update`))
+      const deletePolicy = statements.find((s) => s.startsWith(`create policy ${table}_delete`))
+
+      // select: USING only, no WITH CHECK
+      expect(selectPolicy, `${table}_select`).toContain('using (')
+      expect(selectPolicy, `${table}_select`).not.toContain('with check')
+
+      // insert: WITH CHECK only, no USING
+      expect(insertPolicy, `${table}_insert`).toContain('with check (')
+      expect(insertPolicy, `${table}_insert`).not.toContain('using (')
+
+      // update: both USING and WITH CHECK
+      expect(updatePolicy, `${table}_update`).toContain('using (')
+      expect(updatePolicy, `${table}_update`).toContain('with check (')
+
+      // delete: USING only, no WITH CHECK
+      expect(deletePolicy, `${table}_delete`).toContain('using (')
+      expect(deletePolicy, `${table}_delete`).not.toContain('with check')
+    }
+  })
+
   it('respects custom schema name', () => {
     const custom = generatePostgresRlsSql('my_schema')
     expect(custom[0]).toContain('my_schema.current_org_id()')
