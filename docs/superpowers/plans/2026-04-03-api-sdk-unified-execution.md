@@ -2455,7 +2455,15 @@ export class DirectTransport implements OrbitTransport {
     const entity = segments[1]
     const action = segments[2]
 
-    // Resolve service
+    // Special-case routes that don't follow the /v1/<entity>/<action> pattern
+    if (method === 'POST' && entity === 'search') {
+      return this.services.search.search(this.ctx, body as any)
+    }
+    if (method === 'GET' && entity === 'context' && action) {
+      return this.services.contactContext.getContactContext(this.ctx, { contactId: action })
+    }
+
+    // Resolve service for standard entity routes
     const service = (this.services as any)[entity]
     if (!service) throw new Error(`Unknown entity: ${entity}`)
 
@@ -3790,6 +3798,41 @@ Add these tests to `packages/api/src/__tests__/sanitization.test.ts`:
 - Audit log containing a webhook `before` state returns sanitized webhook (no `secretEncrypted`)
 - `POST /v1/webhooks` returns `secret` field on 201; `GET /v1/webhooks/:id` does NOT
 - Direct transport webhook list does NOT contain `secretEncrypted`
+
+### A.9 Core Prerequisites (Blockers — from Codex review)
+
+The following core methods do not yet exist and MUST be added to `@orbit-ai/core` before the API tasks that call them. These can be implemented as a pre-execution core extension slice on the `api-sdk-execution` branch before Task 10.
+
+**BLOCKER 1: Bootstrap create services**
+
+`AdminEntityService` only exposes `list` and `get`. The bootstrap routes (`POST /v1/bootstrap/organizations`, `POST /v1/bootstrap/api-keys`) need a `create` method. Options:
+1. Add a `BootstrapService` interface to core with `create()` for organizations and API keys
+2. Extend `AdminEntityService` with optional `create?()` 
+3. Expose the underlying entity `create` through a dedicated bootstrap service export
+
+This must be resolved before Task 10 (bootstrap routes).
+
+**BLOCKER 2: Schema engine surface**
+
+Core's `OrbitSchemaEngine` currently only exposes `preview()`. The API plan routes to `listObjects()`, `describeObject()`, `addField()`, `updateField()`, `deleteField()`, `apply()`, `rollback()`. These must exist in core before Task 10 (schema/objects routes).
+
+Options:
+1. Implement the full schema engine surface in a core extension slice before API execution
+2. Stub the routes with `501 Not Implemented` and defer to a later core milestone
+3. Route only to `preview()` for now and defer the rest
+
+**BLOCKER 3: Batch service interface**
+
+The spec says all public entities support `POST /v1/<entity>/batch`. Core's `EntityService` declares a `batch()` method in `BatchCapableEntityService` but no entity actually implements it. Options:
+1. Implement batch in core for all entities before API execution
+2. Disable batch routes and update the spec to reflect actual capability
+3. Implement batch as a generic wrapper that calls create/update/delete in sequence
+
+### A.10 Type Alignment (from Codex review)
+
+**userId on ApiKeyAuthLookup:** The user added `userId` to the auth context wiring, but core's `ApiKeyAuthLookup` type does not include `userId`. Either extend the core type or remove `userId` from the plan's auth middleware context.
+
+**RuntimeApiAdapter structural typing:** `Omit<StorageAdapter, 'migrate' | 'runWithMigrationAuthority'>` is structurally assignable from a full `StorageAdapter`. For stronger enforcement, consider a branded type or a factory function that strips the methods at runtime.
 
 ---
 
