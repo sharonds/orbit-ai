@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
 
-import type { OrbitDatabase } from '../interface.js'
+import type { MigrationDatabase, OrbitDatabase } from '../interface.js'
 import { generatePostgresRlsSql } from '../../schema-engine/rls.js'
 
 const POSTGRES_WAVE_1_SCHEMA_STATEMENTS = [
@@ -513,7 +513,7 @@ export async function initializePostgresWave2SliceDSchema(db: OrbitDatabase): Pr
  * Should only be called from migration-authority paths (same privilege level as
  * the initializePostgresXxxSchema functions).
  */
-export async function applyPostgresRlsDdl(db: OrbitDatabase): Promise<void> {
+export async function applyPostgresRlsDdl(db: MigrationDatabase): Promise<void> {
   for (const statement of generatePostgresRlsSql()) {
     await db.execute(sql.raw(statement))
   }
@@ -544,7 +544,7 @@ const ORG_LEADING_INDEX_STATEMENTS = [
  *
  * Should only be called from migration-authority paths.
  */
-export async function applyPostgresOrgLeadingIndexes(db: OrbitDatabase): Promise<void> {
+export async function applyPostgresOrgLeadingIndexes(db: MigrationDatabase): Promise<void> {
   for (const statement of ORG_LEADING_INDEX_STATEMENTS) {
     await db.execute(sql.raw(statement))
   }
