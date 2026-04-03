@@ -9,6 +9,7 @@ import { orbitErrorHandler } from './middleware/error-handler.js'
 import { registerHealthCheck, registerStatusRoute } from './routes/health.js'
 import { registerSearchRoutes } from './routes/search.js'
 import { registerContextRoutes } from './routes/context.js'
+import { registerPublicEntityRoutes } from './routes/entities.js'
 import './context.js'
 
 export function createApi(options: CreateApiOptions) {
@@ -39,6 +40,7 @@ export function createApi(options: CreateApiOptions) {
   registerStatusRoute(app)
   registerSearchRoutes(app, services)
   registerContextRoutes(app, services)
+  registerPublicEntityRoutes(app, services)
 
   return app
 }

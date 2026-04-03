@@ -8,6 +8,7 @@ import { versionMiddleware } from '../middleware/version.js'
 import { registerHealthCheck, registerStatusRoute } from '../routes/health.js'
 import { registerSearchRoutes } from '../routes/search.js'
 import { registerContextRoutes } from '../routes/context.js'
+import { registerPublicEntityRoutes } from '../routes/entities.js'
 
 // --- Stub adapter for full-stack integration tests ---
 
@@ -252,5 +253,172 @@ describe('GET /v1/context/:contactId', () => {
     }
     expect(body.error.code).toBe('RESOURCE_NOT_FOUND')
     expect(body.error.message).toMatch(/contact not found/i)
+  })
+})
+
+// =============================================================================
+// Public entity routes (Wave 1)
+// =============================================================================
+
+function mockEntityService() {
+  return {
+    list: vi.fn(async () => ({ data: [], nextCursor: null, hasMore: false })),
+    get: vi.fn(async () => ({ id: 'test_01' })),
+    create: vi.fn(async (_ctx: any, input: any) => ({ id: 'test_01', ...input })),
+    update: vi.fn(async (_ctx: any, _id: string, input: any) => ({ id: 'test_01', ...input })),
+    delete: vi.fn(async () => {}),
+    search: vi.fn(async () => ({ data: [], nextCursor: null, hasMore: false })),
+  }
+}
+
+function mockEntityCoreServices(): CoreServices {
+  return {
+    contacts: mockEntityService(),
+    companies: mockEntityService(),
+    deals: mockEntityService(),
+    pipelines: mockEntityService(),
+    stages: mockEntityService(),
+    users: mockEntityService(),
+    search: { search: vi.fn(async () => ({ data: [], hasMore: false, nextCursor: null })) },
+    contactContext: { getContactContext: vi.fn(async () => null) },
+  } as unknown as CoreServices
+}
+
+const WAVE1_ENTITIES = ['contacts', 'companies', 'deals', 'pipelines', 'stages', 'users'] as const
+
+describe('Public entity routes — Wave 1', () => {
+  for (const entity of WAVE1_ENTITIES) {
+    describe(`GET /v1/${entity}`, () => {
+      it('returns envelope with data array', async () => {
+        const services = mockEntityCoreServices()
+        const app = createRouteTestApp()
+        registerPublicEntityRoutes(app, services)
+
+        const res = await app.request(`/v1/${entity}`)
+        expect(res.status).toBe(200)
+        const body = (await res.json()) as {
+          data: unknown[]
+          meta: { has_more: boolean; next_cursor: string | null; request_id: string }
+        }
+        expect(Array.isArray(body.data)).toBe(true)
+        expect(body.meta.has_more).toBe(false)
+        expect(body.meta.request_id).toMatch(/^req_/)
+      })
+    })
+
+    describe(`POST /v1/${entity}/search`, () => {
+      it('returns envelope with data array', async () => {
+        const services = mockEntityCoreServices()
+        const app = createRouteTestApp()
+        registerPublicEntityRoutes(app, services)
+
+        const res = await app.request(`/v1/${entity}/search`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ query: 'test' }),
+        })
+        expect(res.status).toBe(200)
+        const body = (await res.json()) as {
+          data: unknown[]
+          meta: { has_more: boolean }
+        }
+        expect(Array.isArray(body.data)).toBe(true)
+        expect(body.meta.has_more).toBe(false)
+      })
+    })
+
+    describe(`GET /v1/${entity}/:id`, () => {
+      it('returns envelope with single record', async () => {
+        const services = mockEntityCoreServices()
+        const app = createRouteTestApp()
+        registerPublicEntityRoutes(app, services)
+
+        const res = await app.request(`/v1/${entity}/test_01`)
+        expect(res.status).toBe(200)
+        const body = (await res.json()) as { data: { id: string } }
+        expect(body.data.id).toBe('test_01')
+      })
+
+      it('returns 404 when not found', async () => {
+        const services = mockEntityCoreServices()
+        const svc = services[entity as keyof CoreServices] as any
+        svc.get.mockResolvedValueOnce(null)
+        const app = createRouteTestApp()
+        registerPublicEntityRoutes(app, services)
+
+        const res = await app.request(`/v1/${entity}/missing_01`)
+        expect(res.status).toBe(404)
+        const body = (await res.json()) as { error: { code: string } }
+        expect(body.error.code).toBe('RESOURCE_NOT_FOUND')
+      })
+    })
+
+    describe(`POST /v1/${entity}`, () => {
+      it('creates and returns 201', async () => {
+        const services = mockEntityCoreServices()
+        const app = createRouteTestApp()
+        registerPublicEntityRoutes(app, services)
+
+        const res = await app.request(`/v1/${entity}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: 'Test' }),
+        })
+        expect(res.status).toBe(201)
+        const body = (await res.json()) as { data: { id: string } }
+        expect(body.data.id).toBe('test_01')
+      })
+    })
+
+    describe(`PATCH /v1/${entity}/:id`, () => {
+      it('updates and returns 200', async () => {
+        const services = mockEntityCoreServices()
+        const app = createRouteTestApp()
+        registerPublicEntityRoutes(app, services)
+
+        const res = await app.request(`/v1/${entity}/test_01`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: 'Updated' }),
+        })
+        expect(res.status).toBe(200)
+        const body = (await res.json()) as { data: { id: string } }
+        expect(body.data.id).toBe('test_01')
+      })
+    })
+
+    describe(`DELETE /v1/${entity}/:id`, () => {
+      it('deletes and returns deleted confirmation', async () => {
+        const services = mockEntityCoreServices()
+        const app = createRouteTestApp()
+        registerPublicEntityRoutes(app, services)
+
+        const res = await app.request(`/v1/${entity}/test_01`, { method: 'DELETE' })
+        expect(res.status).toBe(200)
+        const body = (await res.json()) as { data: { id: string; deleted: boolean } }
+        expect(body.data.id).toBe('test_01')
+        expect(body.data.deleted).toBe(true)
+      })
+    })
+  }
+})
+
+describe('Non-public entity routes return 404', () => {
+  it('GET /v1/organizations returns 404', async () => {
+    const services = mockEntityCoreServices()
+    const app = createRouteTestApp()
+    registerPublicEntityRoutes(app, services)
+
+    const res = await app.request('/v1/organizations')
+    expect(res.status).toBe(404)
+  })
+
+  it('GET /v1/audit_logs returns 404', async () => {
+    const services = mockEntityCoreServices()
+    const app = createRouteTestApp()
+    registerPublicEntityRoutes(app, services)
+
+    const res = await app.request('/v1/audit_logs')
+    expect(res.status).toBe(404)
   })
 })
