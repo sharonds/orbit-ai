@@ -1,7 +1,16 @@
 import type { SQL } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
-import { initializePostgresWave1Schema, applyPostgresRlsDdl, applyPostgresOrgLeadingIndexes } from './schema.js'
+import {
+  IMPLEMENTED_TENANT_TABLES,
+  BOOTSTRAP_TABLES,
+} from '../../repositories/tenant-scope.js'
+import {
+  initializePostgresWave1Schema,
+  initializePostgresWave2SliceESchema,
+  applyPostgresRlsDdl,
+  applyPostgresOrgLeadingIndexes,
+} from './schema.js'
 
 function render(statement: SQL) {
   return statement.toQuery({
@@ -30,6 +39,42 @@ describe('initializePostgresWave1Schema', () => {
     expect(statements[1]).toContain('create table if not exists users')
     expect(statements[6]).toContain('create table if not exists api_keys')
     expect(statements.at(-1)).toContain('create index if not exists deals_company_idx')
+  })
+})
+
+describe('bootstrap DDL drift detection', () => {
+  it('bootstrap DDL covers every tenant table in the shared inventory', async () => {
+    const statements: string[] = []
+    const db = {
+      async execute(statement: SQL) {
+        statements.push(render(statement).sql)
+      },
+    }
+
+    await initializePostgresWave2SliceESchema(db as never)
+
+    // Extract table names from CREATE TABLE statements
+    const tablesInBootstrap = new Set<string>()
+    for (const stmt of statements) {
+      const match = stmt.match(/create table if not exists (\w+)/)
+      if (match) tablesInBootstrap.add(match[1])
+    }
+
+    // Every tenant table must have a CREATE TABLE in the bootstrap DDL
+    for (const table of IMPLEMENTED_TENANT_TABLES) {
+      expect(tablesInBootstrap.has(table), `tenant table "${table}" missing from bootstrap DDL`).toBe(true)
+    }
+
+    // Every bootstrap table must also be present
+    for (const table of BOOTSTRAP_TABLES) {
+      expect(tablesInBootstrap.has(table), `bootstrap table "${table}" missing from bootstrap DDL`).toBe(true)
+    }
+
+    // No unexpected tables in the DDL beyond the known inventory
+    const allKnownTables = new Set<string>([...IMPLEMENTED_TENANT_TABLES, ...BOOTSTRAP_TABLES])
+    for (const table of tablesInBootstrap) {
+      expect(allKnownTables.has(table), `unexpected table "${table}" in bootstrap DDL not in tenant-scope inventory`).toBe(true)
+    }
   })
 })
 
