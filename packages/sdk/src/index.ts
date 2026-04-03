@@ -6,6 +6,7 @@ export { AutoPager } from './pagination.js'
 export { SearchResource } from './search.js'
 export type { SearchInput } from './search.js'
 
+// Wave 1 resources
 export { BaseResource } from './resources/base-resource.js'
 export { ContactResource } from './resources/contacts.js'
 export { CompanyResource } from './resources/companies.js'
@@ -20,3 +21,19 @@ export type { DealRecord, CreateDealInput, UpdateDealInput } from './resources/d
 export type { PipelineRecord, CreatePipelineInput, UpdatePipelineInput } from './resources/pipelines.js'
 export type { StageRecord, CreateStageInput, UpdateStageInput } from './resources/stages.js'
 export type { UserRecord, CreateUserInput, UpdateUserInput } from './resources/users.js'
+
+// Wave 2 resources
+export { ActivityResource } from './resources/activities.js'
+export { TaskResource } from './resources/tasks.js'
+export { NoteResource } from './resources/notes.js'
+export { ProductResource } from './resources/products.js'
+export { PaymentResource } from './resources/payments.js'
+export { ContractResource } from './resources/contracts.js'
+export { SequenceResource } from './resources/sequences.js'
+export { SequenceStepResource } from './resources/sequence-steps.js'
+export { SequenceEnrollmentResource } from './resources/sequence-enrollments.js'
+export { SequenceEventResource } from './resources/sequence-events.js'
+export { TagResource } from './resources/tags.js'
+export { SchemaResource } from './resources/schema.js'
+export { WebhookResource } from './resources/webhooks.js'
+export { ImportResource } from './resources/imports.js'
