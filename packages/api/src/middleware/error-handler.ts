@@ -36,6 +36,7 @@ export const orbitErrorHandler: ErrorHandler = (err, c) => {
           message: err.message,
           field: err.field,
           request_id: c.get('requestId'),
+          doc_url: `https://orbit-ai.dev/docs/errors#${err.code.toLowerCase()}`,
           hint: err.hint,
           recovery: err.recovery,
           retryable: err.retryable ?? false,
