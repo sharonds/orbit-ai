@@ -2,6 +2,7 @@ import { newDb } from 'pg-mem'
 import { sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
+import { asMigrationDatabase } from '../adapters/interface.js'
 import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
 import { initializePostgresWave2SliceESchema } from '../adapters/postgres/schema.js'
@@ -33,7 +34,11 @@ async function createPostgresAdapter() {
   const { Pool } = memory.adapters.createPg()
   const pool = new Pool({ max: 1 })
   const database = createPostgresOrbitDatabase({ pool })
-  await initializePostgresWave2SliceESchema(database)
+  await initializePostgresWave2SliceESchema(asMigrationDatabase(database), {
+    // pg-mem does not implement RLS DDL, so persistence proofs exercise the
+    // real bootstrap path with only the unsupported Postgres-specific step off.
+    includeRls: false,
+  })
 
   const adapter = createPostgresStorageAdapter({
     database,

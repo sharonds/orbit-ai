@@ -6,6 +6,7 @@ import {
   BOOTSTRAP_TABLES,
 } from '../../repositories/tenant-scope.js'
 import {
+  POSTGRES_SCHEMA_NAME,
   initializePostgresWave1Schema,
   initializePostgresWave2SliceESchema,
   applyPostgresRlsDdl,
@@ -23,21 +24,31 @@ function render(statement: SQL) {
   })
 }
 
+function createRecordingDb(statements: string[]) {
+  return {
+    async transaction<T>(fn: (tx: { execute(statement: SQL): Promise<void> }) => Promise<T>) {
+      return fn({
+        async execute(statement: SQL) {
+          statements.push(render(statement).sql)
+        },
+      })
+    },
+  }
+}
+
 describe('initializePostgresWave1Schema', () => {
   it('emits the expected wave 1 bootstrap statements', async () => {
     const statements: string[] = []
-    const db = {
-      async execute(statement: SQL) {
-        statements.push(render(statement).sql)
-      },
-    }
+    const db = createRecordingDb(statements)
 
     await initializePostgresWave1Schema(db as never)
 
-    expect(statements).toHaveLength(26)
-    expect(statements[0]).toContain('create table if not exists organizations')
-    expect(statements[1]).toContain('create table if not exists users')
-    expect(statements[6]).toContain('create table if not exists api_keys')
+    expect(statements).toHaveLength(28)
+    expect(statements[0]).toContain(`create schema if not exists ${POSTGRES_SCHEMA_NAME}`)
+    expect(statements[1]).toContain(`set local search_path to ${POSTGRES_SCHEMA_NAME}, pg_temp`)
+    expect(statements[2]).toContain('create table if not exists organizations')
+    expect(statements[3]).toContain('create table if not exists users')
+    expect(statements[8]).toContain('create table if not exists api_keys')
     expect(statements.at(-1)).toContain('create index if not exists deals_company_idx')
   })
 })
@@ -45,11 +56,7 @@ describe('initializePostgresWave1Schema', () => {
 describe('bootstrap DDL drift detection', () => {
   it('bootstrap DDL covers every tenant table in the shared inventory', async () => {
     const statements: string[] = []
-    const db = {
-      async execute(statement: SQL) {
-        statements.push(render(statement).sql)
-      },
-    }
+    const db = createRecordingDb(statements)
 
     await initializePostgresWave2SliceESchema(db as never)
 
@@ -76,6 +83,31 @@ describe('bootstrap DDL drift detection', () => {
       expect(allKnownTables.has(table), `unexpected table "${table}" in bootstrap DDL not in tenant-scope inventory`).toBe(true)
     }
   })
+
+  it('slice E bootstrap includes schema setup, org indexes, and RLS by default', async () => {
+    const statements: string[] = []
+    const db = createRecordingDb(statements)
+
+    await initializePostgresWave2SliceESchema(db as never)
+
+    expect(statements[0]).toContain(`create schema if not exists ${POSTGRES_SCHEMA_NAME}`)
+    expect(statements[1]).toContain(`set local search_path to ${POSTGRES_SCHEMA_NAME}, pg_temp`)
+    expect(statements.some((statement) => statement.includes('create index if not exists schema_migrations_org_idx'))).toBe(true)
+    expect(statements.some((statement) => statement.includes(`create or replace function ${POSTGRES_SCHEMA_NAME}.current_org_id()`))).toBe(true)
+    expect(statements.some((statement) => statement.includes(`alter table ${POSTGRES_SCHEMA_NAME}.users enable row level security`))).toBe(true)
+  })
+
+  it('slice E bootstrap can skip RLS for test environments that do not support it', async () => {
+    const statements: string[] = []
+    const db = createRecordingDb(statements)
+
+    await initializePostgresWave2SliceESchema(db as never, { includeRls: false })
+
+    expect(statements.some((statement) => statement.includes('create schema if not exists orbit'))).toBe(true)
+    expect(statements.some((statement) => statement.includes('schema_migrations_org_idx'))).toBe(true)
+    expect(statements.some((statement) => statement.includes('create policy'))).toBe(false)
+    expect(statements.some((statement) => statement.includes('row level security'))).toBe(false)
+  })
 })
 
 describe('applyPostgresRlsDdl', () => {
@@ -95,6 +127,7 @@ describe('applyPostgresRlsDdl', () => {
     // Helper function
     expect(statements[0]).toContain('create or replace function')
     expect(statements[0]).toContain('current_org_id')
+    expect(statements[0]).toContain(`${POSTGRES_SCHEMA_NAME}.current_org_id()`)
 
     // First tenant table (users): enable RLS + 4 ops × (drop + create) = 9 statements
     expect(statements[1]).toContain('alter table')

@@ -7,6 +7,7 @@ import { withTenantContext } from './tenant-context.js'
 describe('PostgresOrbitDatabase', () => {
   it('keeps tenant context transaction-local across pooled reuse', async () => {
     const state = { currentOrgId: null as string | null }
+    const searchPathStatements: string[] = []
     const queries: Array<{ text: string; values: unknown[] }> = []
     const client = {
       async query<T extends Record<string, unknown> = Record<string, unknown>>(text: string, values: unknown[] = []) {
@@ -23,6 +24,11 @@ describe('PostgresOrbitDatabase', () => {
           return { rows: [], rowCount: 0 } as const
         }
 
+        if (text.includes("set_config('search_path'")) {
+          searchPathStatements.push(text)
+          return { rows: [{ set_config: 'orbit, pg_temp' }], rowCount: 1 } as const
+        }
+
         if (text.includes("set_config('app.current_org_id'")) {
           state.currentOrgId = String(values[0] ?? null)
           return { rows: [{ set_config: state.currentOrgId }], rowCount: 1 } as const
@@ -32,14 +38,18 @@ describe('PostgresOrbitDatabase', () => {
           return { rows: [{ current_org_id: state.currentOrgId }], rowCount: 1 } as const
         }
 
+        if (text === 'select 1 as value') {
+          return { rows: [{ value: 1 }], rowCount: 1 } as const
+        }
+
         return { rows: [], rowCount: 0 } as const
       },
       release: vi.fn(),
     }
     const pool = {
       connect: vi.fn(async () => client),
-      query: async <T extends Record<string, unknown>>(_text: string, _values?: unknown[]) => {
-        return client.query<T>(_text, _values)
+      query: async <T extends Record<string, unknown>>(text: string, values?: unknown[]) => {
+        return client.query<T>(text, values)
       },
     }
     const db = createPostgresOrbitDatabase({ pool })
@@ -51,7 +61,9 @@ describe('PostgresOrbitDatabase', () => {
       return rows[0]?.current_org_id ?? null
     })
 
-    const outside = await db.query<{ current_org_id: string | null }>(
+    const outside = await db.query<{ value: number }>(sql`select 1 as value`)
+
+    const currentOrgOutside = await db.query<{ current_org_id: string | null }>(
       sql`select current_setting('app.current_org_id', true) as current_org_id`,
     )
 
@@ -63,11 +75,51 @@ describe('PostgresOrbitDatabase', () => {
     })
 
     expect(first).toBe('org_01ABCDEF0123456789ABCDEF01')
-    expect(outside[0]?.current_org_id ?? null).toBeNull()
+    expect(outside[0]?.value).toBe(1)
+    expect(currentOrgOutside[0]?.current_org_id ?? null).toBeNull()
     expect(second).toBe('org_01ABCDEF0123456789ABCDEF02')
-    expect(pool.connect).toHaveBeenCalledTimes(2)
-    expect(client.release).toHaveBeenCalledTimes(2)
+    expect(pool.connect).toHaveBeenCalledTimes(3)
+    expect(client.release).toHaveBeenCalledTimes(3)
+    expect(searchPathStatements).toHaveLength(3)
     expect(queries.some((entry) => entry.text === 'begin')).toBe(true)
     expect(queries.some((entry) => entry.text === 'commit')).toBe(true)
+  })
+
+  it('pins search_path for standalone execute calls', async () => {
+    const queries: Array<{ text: string; values: unknown[] }> = []
+    const client = {
+      async query<T extends Record<string, unknown> = Record<string, unknown>>(text: string, values: unknown[] = []) {
+        queries.push({ text, values })
+
+        if (text === 'begin' || text === 'commit' || text === 'rollback') {
+          return { rows: [], rowCount: 0 } as const
+        }
+
+        if (text.includes("set_config('search_path'")) {
+          return { rows: [{ set_config: 'orbit, pg_temp' }], rowCount: 1 } as const
+        }
+
+        return { rows: [], rowCount: 0 } as const
+      },
+      release: vi.fn(),
+    }
+    const pool = {
+      connect: vi.fn(async () => client),
+      query: async <T extends Record<string, unknown>>(text: string, values?: unknown[]) => {
+        return client.query<T>(text, values)
+      },
+    }
+    const db = createPostgresOrbitDatabase({ pool })
+
+    await db.execute(sql`select 42`)
+
+    expect(pool.connect).toHaveBeenCalledTimes(1)
+    expect(client.release).toHaveBeenCalledTimes(1)
+    expect(queries.map((entry) => entry.text)).toEqual([
+      'begin',
+      "select set_config('search_path', $1, true)",
+      'select 42',
+      'commit',
+    ])
   })
 })

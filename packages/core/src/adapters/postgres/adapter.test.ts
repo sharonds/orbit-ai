@@ -6,7 +6,7 @@ import type { OrbitDatabase } from '../interface.js'
 import { asMigrationDatabase } from '../interface.js'
 import { createPostgresStorageAdapter } from './adapter.js'
 import { createPostgresOrbitDatabase } from './database.js'
-import { initializePostgresWave1Schema, applyPostgresRlsDdl } from './schema.js'
+import { initializePostgresWave1Schema, initializePostgresWave2SliceESchema } from './schema.js'
 
 function render(statement: SQL) {
   return statement.toQuery({
@@ -30,7 +30,7 @@ async function createAdapter() {
   const pool = new Pool({ max: 1 })
   const database = createPostgresOrbitDatabase({ pool })
 
-  await initializePostgresWave1Schema(database)
+  await initializePostgresWave1Schema(asMigrationDatabase(database))
 
   const adapter = createPostgresStorageAdapter({
     database,
@@ -183,7 +183,7 @@ describe('PostgresStorageAdapter', () => {
     expect(adapter.authorityModel.requestPathMayUseElevatedCredentials).toBe(false)
   })
 
-  it('applyPostgresRlsDdl is structurally separate from runtime request paths', async () => {
+  it('slice E bootstrap hardening executes on migration authority only', async () => {
     const migrationStatements: string[] = []
     const runtimeStatements: string[] = []
 
@@ -215,20 +215,28 @@ describe('PostgresStorageAdapter', () => {
       },
     } satisfies OrbitDatabase
 
-    // applyPostgresRlsDdl accepts a raw OrbitDatabase — it is designed to be
-    // called from migration-authority paths, not from the runtime adapter.
-    await applyPostgresRlsDdl(migrationDb)
+    const adapter = createPostgresStorageAdapter({
+      database: runtimeDb,
+      migrationDatabase: asMigrationDatabase(migrationDb),
+    })
+
+    await adapter.runWithMigrationAuthority(async (db) => {
+      await initializePostgresWave2SliceESchema(db)
+      return null
+    })
 
     // Runtime adapter should not have received any RLS DDL statements
     expect(runtimeStatements).toHaveLength(0)
 
-    // Migration database should have received the RLS statements
+    // Migration database should have received the bootstrap + hardening DDL
     expect(migrationStatements.length).toBeGreaterThan(0)
+    expect(migrationStatements.some((s) => s.includes('create schema if not exists orbit'))).toBe(true)
     expect(migrationStatements.some((s) => s.includes('row level security'))).toBe(true)
     expect(migrationStatements.some((s) => s.includes('create policy'))).toBe(true)
+    expect(migrationStatements.some((s) => s.includes('schema_migrations_org_idx'))).toBe(true)
   })
 
-  it('authority model remains unchanged after bootstrap including RLS DDL generation', async () => {
+  it('authority model remains unchanged after slice E bootstrap hardening', async () => {
     const runtimeDb = {
       async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
         return fn(this)
@@ -260,10 +268,9 @@ describe('PostgresStorageAdapter', () => {
     // Snapshot authority model before bootstrap
     const authorityBefore = { ...adapter.authorityModel }
 
-    // Simulate bootstrap: schema + RLS DDL on migration database
+    // Simulate the full Slice E bootstrap on the migration database.
     await adapter.runWithMigrationAuthority(async (db) => {
-      await initializePostgresWave1Schema(db)
-      await applyPostgresRlsDdl(db)
+      await initializePostgresWave2SliceESchema(db)
       return null
     })
 
