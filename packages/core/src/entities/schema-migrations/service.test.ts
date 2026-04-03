@@ -48,6 +48,8 @@ describe('schemaMigration admin service', () => {
     const result = await service.list(ctx, { limit: 10 })
     expect(result.data).toHaveLength(1)
     expect(result.data[0]!.id).toBe(record.id)
+    expect('sqlStatements' in result.data[0]!).toBe(false)
+    expect('rollbackStatements' in result.data[0]!).toBe(false)
   })
 
   it('gets a single schema migration by id', async () => {
@@ -62,6 +64,8 @@ describe('schemaMigration admin service', () => {
     expect(found).not.toBeNull()
     expect(found!.id).toBe(record.id)
     expect(found!.description).toBe(record.description)
+    expect('sqlStatements' in found!).toBe(false)
+    expect('rollbackStatements' in found!).toBe(false)
   })
 
   it('tenant isolation: org B cannot see org A schema migrations', async () => {
@@ -78,7 +82,7 @@ describe('schemaMigration admin service', () => {
     expect(resultB.data).toHaveLength(0)
   })
 
-  it('persists and round-trips JSON array fields (sqlStatements, rollbackStatements)', async () => {
+  it('stores migration SQL arrays while sanitizing them from admin reads', async () => {
     const users = createUsersForOrg()
     const repository = createInMemorySchemaMigrationRepository([], { users })
     const service = createSchemaMigrationAdminService(repository)
@@ -95,10 +99,15 @@ describe('schemaMigration admin service', () => {
     const record = makeRecord({ sqlStatements, rollbackStatements })
     await repository.create(ctx, record)
 
+    const stored = await repository.get(ctx, record.id)
+    expect(stored).not.toBeNull()
+    expect(stored!.sqlStatements).toEqual(sqlStatements)
+    expect(stored!.rollbackStatements).toEqual(rollbackStatements)
+
     const found = await service.get(ctx, record.id)
     expect(found).not.toBeNull()
-    expect(found!.sqlStatements).toEqual(sqlStatements)
-    expect(found!.rollbackStatements).toEqual(rollbackStatements)
+    expect('sqlStatements' in found!).toBe(false)
+    expect('rollbackStatements' in found!).toBe(false)
   })
 
   it('validates same-tenant appliedByUserId reference (cross-tenant → RELATION_NOT_FOUND)', async () => {

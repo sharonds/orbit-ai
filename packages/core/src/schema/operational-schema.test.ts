@@ -4,14 +4,18 @@ import { getTableConfig } from 'drizzle-orm/pg-core'
 
 import {
   activities,
+  auditLogs,
   companies,
   contacts,
   contracts,
+  customFieldDefinitions,
   deals,
+  idempotencyKeys,
   notes,
   payments,
   pipelines,
   products,
+  schemaMigrations,
   sequenceEnrollments,
   sequenceEvents,
   sequences,
@@ -21,14 +25,18 @@ import {
 } from './tables.js'
 import {
   activitiesRelations,
+  auditLogsRelations,
   companiesRelations,
   contractsRelations,
   contactsRelations,
+  customFieldDefinitionsRelations,
   dealsRelations,
+  idempotencyKeysRelations,
   notesRelations,
   paymentsRelations,
   pipelinesRelations,
   productsRelations,
+  schemaMigrationsRelations,
   sequenceEnrollmentsRelations,
   sequenceEventsRelations,
   sequencesRelations,
@@ -55,6 +63,10 @@ describe('operational schema slice 2', () => {
       sequenceSteps,
       sequenceEnrollments,
       sequenceEvents,
+      customFieldDefinitions,
+      auditLogs,
+      schemaMigrations,
+      idempotencyKeys,
     ]) {
       const columns = getTableColumns(table)
       expect(Object.keys(columns)).toContain('organizationId')
@@ -63,18 +75,22 @@ describe('operational schema slice 2', () => {
 
   it('keeps the expected relation graph compiled for the operational and engagement tables', () => {
     expect(activitiesRelations.table).toBe(activities)
+    expect(auditLogsRelations.table).toBe(auditLogs)
     expect(companiesRelations.table).toBe(companies)
     expect(contractsRelations.table).toBe(contracts)
     expect(contactsRelations.table).toBe(contacts)
+    expect(customFieldDefinitionsRelations.table).toBe(customFieldDefinitions)
     expect(pipelinesRelations.table).toBe(pipelines)
     expect(paymentsRelations.table).toBe(payments)
     expect(productsRelations.table).toBe(products)
+    expect(schemaMigrationsRelations.table).toBe(schemaMigrations)
     expect(sequenceEnrollmentsRelations.table).toBe(sequenceEnrollments)
     expect(sequenceEventsRelations.table).toBe(sequenceEvents)
     expect(sequencesRelations.table).toBe(sequences)
     expect(sequenceStepsRelations.table).toBe(sequenceSteps)
     expect(stagesRelations.table).toBe(stages)
     expect(dealsRelations.table).toBe(deals)
+    expect(idempotencyKeysRelations.table).toBe(idempotencyKeys)
     expect(tasksRelations.table).toBe(tasks)
     expect(notesRelations.table).toBe(notes)
 
@@ -93,9 +109,17 @@ describe('operational schema slice 2', () => {
     expect(getTableConfig(sequenceSteps).foreignKeys).toHaveLength(2)
     expect(getTableConfig(sequenceEnrollments).foreignKeys).toHaveLength(3)
     expect(getTableConfig(sequenceEvents).foreignKeys).toHaveLength(3)
+    expect(getTableConfig(customFieldDefinitions).foreignKeys).toHaveLength(1)
+    expect(getTableConfig(auditLogs).foreignKeys).toHaveLength(3)
+    expect(getTableConfig(schemaMigrations).foreignKeys).toHaveLength(3)
+    expect(getTableConfig(idempotencyKeys).foreignKeys).toHaveLength(1)
   })
 
   it('defines the expected operational and engagement indexes', () => {
+    const customFieldConfig = getTableConfig(customFieldDefinitions)
+    const auditLogConfig = getTableConfig(auditLogs)
+    const schemaMigrationConfig = getTableConfig(schemaMigrations)
+    const idempotencyKeyConfig = getTableConfig(idempotencyKeys)
     const pipelineConfig = getTableConfig(pipelines)
     const stageConfig = getTableConfig(stages)
     const dealConfig = getTableConfig(deals)
@@ -123,5 +147,9 @@ describe('operational schema slice 2', () => {
     expect(sequenceStepConfig.indexes.length).toBeGreaterThanOrEqual(1)
     expect(sequenceEnrollmentConfig.indexes.length).toBeGreaterThanOrEqual(1)
     expect(sequenceEventConfig.indexes.length).toBeGreaterThanOrEqual(1)
+    expect(customFieldConfig.indexes.length).toBeGreaterThanOrEqual(1)
+    expect(auditLogConfig.indexes.length).toBeGreaterThanOrEqual(2)
+    expect(schemaMigrationConfig.indexes.length).toBeGreaterThanOrEqual(1)
+    expect(idempotencyKeyConfig.indexes.length).toBeGreaterThanOrEqual(1)
   })
 })

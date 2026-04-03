@@ -578,6 +578,8 @@ describe('sqlite persistence bridge', () => {
       description: 'Add industry field',
       operationType: 'add_column',
     })
+    expect('sqlStatements' in (fetchedSchemaMigration ?? {})).toBe(false)
+    expect('rollbackStatements' in (fetchedSchemaMigration ?? {})).toBe(false)
 
     // idempotencyKeys: requestHash/responseBody are stripped by sanitization
     const fetchedIdempotencyKey = await servicesB.system.idempotencyKeys.get(ctxA, idempotencyKey.id)
@@ -602,6 +604,112 @@ describe('sqlite persistence bridge', () => {
     const customFieldsB = await servicesB.system.customFieldDefinitions.list(ctxB, { limit: 10 })
     expect(customFieldsA.data).toHaveLength(1)
     expect(customFieldsB.data).toHaveLength(0)
+  })
+
+  it('preserves Slice E nullable JSON and uniqueness on the sqlite adapter path', async () => {
+    const adapter = await createSqliteAdapter()
+    const organizations = createSqliteOrganizationRepository(adapter)
+    const { createSqliteCustomFieldDefinitionRepository } = await import('../entities/custom-field-definitions/repository.js')
+    const { createSqliteIdempotencyKeyRepository } = await import('../entities/idempotency-keys/repository.js')
+    const { generateId } = await import('../ids/generate-id.js')
+    const now = new Date('2026-04-02T16:00:00.000Z')
+
+    await organizations.create({
+      id: ctxA.orgId,
+      name: 'Acme',
+      slug: 'acme',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const customFieldDefinitions = createSqliteCustomFieldDefinitionRepository(adapter)
+    const idempotencyKeys = createSqliteIdempotencyKeyRepository(adapter)
+
+    await customFieldDefinitions.create(ctxA, {
+      id: generateId('customField'),
+      organizationId: ctxA.orgId,
+      entityType: 'contacts',
+      fieldName: 'tier',
+      fieldType: 'text',
+      label: 'Tier',
+      description: null,
+      isRequired: false,
+      isIndexed: false,
+      isPromoted: false,
+      promotedColumnName: null,
+      defaultValue: null,
+      options: [],
+      validation: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await expect(
+      customFieldDefinitions.create(ctxA, {
+        id: generateId('customField'),
+        organizationId: ctxA.orgId,
+        entityType: 'contacts',
+        fieldName: 'tier',
+        fieldType: 'text',
+        label: 'Tier Duplicate',
+        description: null,
+        isRequired: false,
+        isIndexed: false,
+        isPromoted: false,
+        promotedColumnName: null,
+        defaultValue: null,
+        options: [],
+        validation: {},
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'fieldName',
+    })
+
+    const idempotencyKey = await idempotencyKeys.create(ctxA, {
+      id: generateId('idempotencyKey'),
+      organizationId: ctxA.orgId,
+      key: 'idem-sqlite-null',
+      method: 'POST',
+      path: '/v1/customers',
+      requestHash: 'sha256:sqlite-null',
+      responseCode: null,
+      responseBody: null,
+      lockedUntil: null,
+      completedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    expect(await idempotencyKeys.get(ctxA, idempotencyKey.id)).toMatchObject({
+      id: idempotencyKey.id,
+      responseBody: null,
+    })
+
+    await expect(
+      idempotencyKeys.create(ctxA, {
+        id: generateId('idempotencyKey'),
+        organizationId: ctxA.orgId,
+        key: 'idem-sqlite-null',
+        method: 'POST',
+        path: '/v1/customers',
+        requestHash: 'sha256:sqlite-null-dup',
+        responseCode: 201,
+        responseBody: { ok: true },
+        lockedUntil: null,
+        completedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'key',
+    })
   })
 
   it('keeps tenant reads scoped while exposing admin/system records separately', async () => {

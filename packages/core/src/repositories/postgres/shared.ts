@@ -31,6 +31,7 @@ interface PostgresRepositoryConfig<TRecord extends { id: string } & Record<strin
   defaultSort: SearchQuery['sort']
   serialize(record: TRecord): Record<string, PostgresPrimitive>
   deserialize(row: Record<string, unknown>): TRecord
+  onCreateError?(error: unknown, record: TRecord): never
 }
 
 function buildInsertStatement(
@@ -113,9 +114,14 @@ export function createTenantPostgresRepository<
       }
 
       const row = config.serialize(record)
-      await adapter.withTenantContext(ctx, async (db) => {
-        await db.execute(buildInsertStatement(config.tableName, row, config.columns))
-      })
+      try {
+        await adapter.withTenantContext(ctx, async (db) => {
+          await db.execute(buildInsertStatement(config.tableName, row, config.columns))
+        })
+      } catch (error) {
+        config.onCreateError?.(error, record)
+        throw error
+      }
       return record
     },
     async get(ctx, id) {

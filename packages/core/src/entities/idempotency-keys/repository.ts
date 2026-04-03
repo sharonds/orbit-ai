@@ -29,6 +29,40 @@ const DEFAULT_SORT: Array<{ field: string; direction: 'asc' | 'desc' }> = [
   { field: 'created_at', direction: 'desc' },
 ]
 
+function coerceIdempotencyKeyConflict(
+  error: unknown,
+  record: Pick<IdempotencyKeyRecord, 'key' | 'method' | 'path'>,
+): never {
+  const message = error instanceof Error ? error.message : ''
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : null
+
+  if (
+    error instanceof Error &&
+    (
+      code === '23505' ||
+      message.includes('idempotency_unique_idx') ||
+      (
+        message.toLowerCase().includes('unique constraint failed') &&
+        message.includes('idempotency_keys.organization_id') &&
+        message.includes('idempotency_keys.key') &&
+        message.includes('idempotency_keys.method') &&
+        message.includes('idempotency_keys.path')
+      )
+    )
+  ) {
+    throw createOrbitError({
+      code: 'CONFLICT',
+      message: `Idempotency key ${record.key} with method ${record.method} and path ${record.path} already exists in this organization`,
+      field: 'key',
+    })
+  }
+
+  throw error
+}
+
 export function createInMemoryIdempotencyKeyRepository(
   seed: IdempotencyKeyRecord[] = [],
 ): IdempotencyKeyRepository {
@@ -58,6 +92,7 @@ export function createInMemoryIdempotencyKeyRepository(
         throw createOrbitError({
           code: 'CONFLICT',
           message: `Idempotency key ${record.key} with method ${record.method} and path ${record.path} already exists in this organization`,
+          field: 'key',
         })
       }
 
@@ -109,7 +144,9 @@ export function createSqliteIdempotencyKeyRepository(adapter: StorageAdapter): I
         path: record.path,
         request_hash: record.requestHash,
         response_code: record.responseCode ?? null,
-        response_body: toSqliteJson(record.responseBody),
+        response_body: record.responseBody !== undefined && record.responseBody !== null
+          ? toSqliteJson(record.responseBody)
+          : null,
         locked_until: record.lockedUntil ? toSqliteDate(record.lockedUntil) : null,
         completed_at: record.completedAt ? toSqliteDate(record.completedAt) : null,
         created_at: toSqliteDate(record.createdAt),
@@ -131,6 +168,9 @@ export function createSqliteIdempotencyKeyRepository(adapter: StorageAdapter): I
         createdAt: fromSqliteDate(row.created_at),
         updatedAt: fromSqliteDate(row.updated_at),
       })
+    },
+    onCreateError(error, record) {
+      coerceIdempotencyKeyConflict(error, record)
     },
   })
 
@@ -198,6 +238,9 @@ export function createPostgresIdempotencyKeyRepository(adapter: StorageAdapter):
         createdAt: fromPostgresDate(row.created_at),
         updatedAt: fromPostgresDate(row.updated_at),
       })
+    },
+    onCreateError(error, record) {
+      coerceIdempotencyKeyConflict(error, record)
     },
   })
 

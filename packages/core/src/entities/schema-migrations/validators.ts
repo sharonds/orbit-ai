@@ -5,6 +5,18 @@ import { schemaMigrationSelectSchema, schemaMigrationInsertSchema } from '../../
 export const schemaMigrationRecordSchema = schemaMigrationSelectSchema
 export type SchemaMigrationRecord = z.infer<typeof schemaMigrationRecordSchema>
 
+export const sanitizedSchemaMigrationRecordSchema = schemaMigrationRecordSchema.omit({
+  sqlStatements: true,
+  rollbackStatements: true,
+})
+export type SanitizedSchemaMigrationRecord = z.infer<typeof sanitizedSchemaMigrationRecordSchema>
+
+export function sanitizeSchemaMigrationRecord(
+  record: SchemaMigrationRecord,
+): SanitizedSchemaMigrationRecord {
+  return sanitizedSchemaMigrationRecordSchema.parse(record)
+}
+
 export const schemaMigrationCreateInputSchema = schemaMigrationInsertSchema.omit({
   id: true,
   organizationId: true,

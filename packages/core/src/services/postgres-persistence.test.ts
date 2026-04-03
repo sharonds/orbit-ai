@@ -6,13 +6,13 @@ import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
 import { initializePostgresWave2SliceESchema } from '../adapters/postgres/schema.js'
 import { createPostgresApiKeyRepository } from '../entities/api-keys/repository.js'
+import { createPostgresAuditLogRepository } from '../entities/audit-logs/repository.js'
+import { createPostgresCustomFieldDefinitionRepository } from '../entities/custom-field-definitions/repository.js'
+import { createPostgresIdempotencyKeyRepository } from '../entities/idempotency-keys/repository.js'
 import { createPostgresOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createPostgresOrganizationRepository } from '../entities/organizations/repository.js'
+import { createPostgresSchemaMigrationRepository } from '../entities/schema-migrations/repository.js'
 import { createPostgresUserRepository } from '../entities/users/repository.js'
-import { createInMemoryCustomFieldDefinitionRepository } from '../entities/custom-field-definitions/repository.js'
-import { createInMemoryAuditLogRepository } from '../entities/audit-logs/repository.js'
-import { createInMemorySchemaMigrationRepository } from '../entities/schema-migrations/repository.js'
-import { createInMemoryIdempotencyKeyRepository } from '../entities/idempotency-keys/repository.js'
 import { generateId } from '../ids/generate-id.js'
 import { createCoreServices } from './index.js'
 
@@ -485,10 +485,7 @@ describe('postgres persistence bridge', () => {
     await pool.end()
   })
 
-  it('wires Slice E system entries into the Postgres adapter registry', async () => {
-    // pg-mem has limited jsonb array support, so Slice E entities use in-memory repos
-    // while the rest of the registry is backed by the real Postgres adapter. This proves
-    // that createCoreServices resolves the new system entries and applies sanitization.
+  it('persists Slice E system entries through the real Postgres adapter registry', async () => {
     const { adapter, pool } = await createPostgresAdapter()
     const organizations = createPostgresOrganizationRepository(adapter)
     const now = new Date('2026-04-02T14:00:00.000Z')
@@ -514,10 +511,10 @@ describe('postgres persistence bridge', () => {
       updatedAt: now,
     })
 
-    const customFieldDefinitions = createInMemoryCustomFieldDefinitionRepository()
-    const auditLogs = createInMemoryAuditLogRepository()
-    const schemaMigrations = createInMemorySchemaMigrationRepository()
-    const idempotencyKeys = createInMemoryIdempotencyKeyRepository()
+    const customFieldDefinitions = createPostgresCustomFieldDefinitionRepository(adapter)
+    const auditLogs = createPostgresAuditLogRepository(adapter)
+    const schemaMigrations = createPostgresSchemaMigrationRepository(adapter)
+    const idempotencyKeys = createPostgresIdempotencyKeyRepository(adapter)
 
     const customField = await customFieldDefinitions.create(ctxA, {
       id: generateId('customField'),
@@ -585,13 +582,12 @@ describe('postgres persistence bridge', () => {
       updatedAt: now,
     })
 
-    // Build registry with Postgres adapter + in-memory overrides for Slice E entities
-    const services = createCoreServices(adapter, {
-      customFieldDefinitions,
-      auditLogs,
-      schemaMigrations,
-      idempotencyKeys,
+    expect(await idempotencyKeys.get(ctxA, idempotencyKey.id)).toMatchObject({
+      id: idempotencyKey.id,
+      responseBody: { id: 'company_pg_test_01' },
     })
+
+    const services = createCoreServices(adapter)
 
     const fetchedCustomField = await services.system.customFieldDefinitions.get(ctxA, customField.id)
     expect(fetchedCustomField).toMatchObject({
@@ -619,6 +615,8 @@ describe('postgres persistence bridge', () => {
       description: 'Add tier field',
       operationType: 'add_column',
     })
+    expect('sqlStatements' in (fetchedSchemaMigration ?? {})).toBe(false)
+    expect('rollbackStatements' in (fetchedSchemaMigration ?? {})).toBe(false)
 
     // idempotencyKeys: requestHash/responseBody are stripped by sanitization
     const fetchedIdempotencyKey = await services.system.idempotencyKeys.get(ctxA, idempotencyKey.id)
@@ -647,6 +645,111 @@ describe('postgres persistence bridge', () => {
     // schemaMigrations is read-only (no apply/approve/rollback)
     expect(services.system.schemaMigrations).not.toHaveProperty('apply')
     expect(services.system.schemaMigrations).not.toHaveProperty('rollback')
+
+    await pool.end()
+  })
+
+  it('preserves Slice E nullable JSON and uniqueness on the postgres adapter path', async () => {
+    const { adapter, pool } = await createPostgresAdapter()
+    const organizations = createPostgresOrganizationRepository(adapter)
+    const now = new Date('2026-04-02T16:00:00.000Z')
+
+    await organizations.create({
+      id: ctxA.orgId,
+      name: 'Acme',
+      slug: 'acme',
+      plan: 'community',
+      isActive: true,
+      settings: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    const customFieldDefinitions = createPostgresCustomFieldDefinitionRepository(adapter)
+    const idempotencyKeys = createPostgresIdempotencyKeyRepository(adapter)
+
+    await customFieldDefinitions.create(ctxA, {
+      id: generateId('customField'),
+      organizationId: ctxA.orgId,
+      entityType: 'contacts',
+      fieldName: 'tier',
+      fieldType: 'text',
+      label: 'Tier',
+      description: null,
+      isRequired: false,
+      isIndexed: false,
+      isPromoted: false,
+      promotedColumnName: null,
+      defaultValue: null,
+      options: [],
+      validation: {},
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await expect(
+      customFieldDefinitions.create(ctxA, {
+        id: generateId('customField'),
+        organizationId: ctxA.orgId,
+        entityType: 'contacts',
+        fieldName: 'tier',
+        fieldType: 'text',
+        label: 'Tier Duplicate',
+        description: null,
+        isRequired: false,
+        isIndexed: false,
+        isPromoted: false,
+        promotedColumnName: null,
+        defaultValue: null,
+        options: [],
+        validation: {},
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'fieldName',
+    })
+
+    const idempotencyKey = await idempotencyKeys.create(ctxA, {
+      id: generateId('idempotencyKey'),
+      organizationId: ctxA.orgId,
+      key: 'idem-pg-null',
+      method: 'POST',
+      path: '/v1/customers',
+      requestHash: 'sha256:pg-null',
+      responseCode: null,
+      responseBody: null,
+      lockedUntil: null,
+      completedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    expect(await idempotencyKeys.get(ctxA, idempotencyKey.id)).toMatchObject({
+      id: idempotencyKey.id,
+      responseBody: null,
+    })
+
+    await expect(
+      idempotencyKeys.create(ctxA, {
+        id: generateId('idempotencyKey'),
+        organizationId: ctxA.orgId,
+        key: 'idem-pg-null',
+        method: 'POST',
+        path: '/v1/customers',
+        requestHash: 'sha256:pg-null-dup',
+        responseCode: 201,
+        responseBody: { ok: true },
+        lockedUntil: null,
+        completedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'key',
+    })
 
     await pool.end()
   })

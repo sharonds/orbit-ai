@@ -23,6 +23,39 @@ const SEARCHABLE_FIELDS = ['entity_type', 'field_name', 'label']
 const FILTERABLE_FIELDS = ['id', 'organization_id', 'entity_type', 'field_name', 'field_type', 'is_required', 'is_indexed', 'is_promoted']
 const DEFAULT_SORT = [{ field: 'created_at', direction: 'desc' as const }]
 
+function coerceCustomFieldDefinitionConflict(
+  error: unknown,
+  record: Pick<CustomFieldDefinitionRecord, 'entityType' | 'fieldName'>,
+): never {
+  const message = error instanceof Error ? error.message : ''
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : null
+
+  if (
+    error instanceof Error &&
+    (
+      code === '23505' ||
+      message.includes('custom_fields_unique_idx') ||
+      (
+        message.toLowerCase().includes('unique constraint failed') &&
+        message.includes('custom_field_definitions.organization_id') &&
+        message.includes('custom_field_definitions.entity_type') &&
+        message.includes('custom_field_definitions.field_name')
+      )
+    )
+  ) {
+    throw createOrbitError({
+      code: 'CONFLICT',
+      message: `Custom field '${record.fieldName}' already exists for entity type '${record.entityType}' in this organization`,
+      field: 'fieldName',
+    })
+  }
+
+  throw error
+}
+
 export function createInMemoryCustomFieldDefinitionRepository(
   seed: CustomFieldDefinitionRecord[] = [],
 ): CustomFieldDefinitionRepository {
@@ -144,6 +177,9 @@ export function createSqliteCustomFieldDefinitionRepository(
         updatedAt: fromSqliteDate(row.updated_at),
       })
     },
+    onCreateError(error, record) {
+      coerceCustomFieldDefinitionConflict(error, record)
+    },
   })
 
   return {
@@ -202,9 +238,9 @@ export function createPostgresCustomFieldDefinitionRepository(
         is_indexed: record.isIndexed,
         is_promoted: record.isPromoted,
         promoted_column_name: record.promotedColumnName ?? null,
-        default_value: record.defaultValue !== undefined ? record.defaultValue : null,
-        options: record.options,
-        validation: record.validation,
+        default_value: record.defaultValue !== undefined ? JSON.stringify(record.defaultValue) : null,
+        options: JSON.stringify(record.options),
+        validation: JSON.stringify(record.validation),
         created_at: record.createdAt,
         updated_at: record.updatedAt,
       }
@@ -228,6 +264,9 @@ export function createPostgresCustomFieldDefinitionRepository(
         createdAt: fromPostgresDate(row.created_at),
         updatedAt: fromPostgresDate(row.updated_at),
       })
+    },
+    onCreateError(error, record) {
+      coerceCustomFieldDefinitionConflict(error, record)
     },
   })
 
