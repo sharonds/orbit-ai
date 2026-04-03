@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from 'hono'
-import type { StorageAdapter } from '@orbit-ai/core'
 import { OrbitError } from '@orbit-ai/core'
+import type { RuntimeApiAdapter } from '../config.js'
 import '../context.js'
 
 /**
@@ -10,7 +10,7 @@ import '../context.js'
  * Bypasses `/v1/bootstrap/` paths (org creation before auth exists).
  */
 export function tenantContextMiddleware(
-  adapter: StorageAdapter,
+  adapter: RuntimeApiAdapter,
 ): MiddlewareHandler {
   return async (c, next) => {
     const path = c.req.path

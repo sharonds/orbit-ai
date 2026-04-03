@@ -1,13 +1,13 @@
 import type { MiddlewareHandler } from 'hono'
-import type { StorageAdapter } from '@orbit-ai/core'
 import { OrbitError } from '@orbit-ai/core'
+import type { RuntimeApiAdapter } from '../config.js'
 import '../context.js'
 
 /**
  * Auth middleware: extracts Bearer token, hashes it, looks up the API key,
  * and sets the `orbit` context variable.
  */
-export function authMiddleware(adapter: StorageAdapter): MiddlewareHandler {
+export function authMiddleware(adapter: RuntimeApiAdapter): MiddlewareHandler {
   return async (c, next) => {
     const authorization = c.req.header('authorization')
     if (!authorization?.startsWith('Bearer ')) {

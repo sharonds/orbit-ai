@@ -3,3 +3,18 @@ export type { CreateApiOptions } from './config.js'
 export type { OrbitApiVariables } from './context.js'
 export { requestIdMiddleware } from './middleware/request-id.js'
 export { versionMiddleware } from './middleware/version.js'
+export { orbitErrorHandler } from './middleware/error-handler.js'
+export {
+  toEnvelope,
+  toError,
+  toWebhookRead,
+  toWebhookDeliveryRead,
+  sanitizePublicRead,
+  sanitizePublicPage,
+  toApiKeyRead,
+  toIdempotencyKeyRead,
+  toAuditLogRead,
+  sanitizeAdminRead,
+  sanitizeAdminPage,
+} from './responses.js'
+export type { WebhookRead, WebhookDeliveryRead } from './responses.js'
