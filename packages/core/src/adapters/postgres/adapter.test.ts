@@ -6,7 +6,7 @@ import type { OrbitDatabase } from '../interface.js'
 import { asMigrationDatabase } from '../interface.js'
 import { createPostgresStorageAdapter } from './adapter.js'
 import { createPostgresOrbitDatabase } from './database.js'
-import { initializePostgresWave1Schema } from './schema.js'
+import { initializePostgresWave1Schema, applyPostgresRlsDdl } from './schema.js'
 
 function render(statement: SQL) {
   return statement.toQuery({
@@ -180,6 +180,95 @@ describe('PostgresStorageAdapter', () => {
 
     expect(runtimeExecute).toHaveBeenCalledTimes(1)
     expect(migrationExecute).toHaveBeenCalledTimes(1)
+    expect(adapter.authorityModel.requestPathMayUseElevatedCredentials).toBe(false)
+  })
+
+  it('applyPostgresRlsDdl is structurally separate from runtime request paths', async () => {
+    const migrationStatements: string[] = []
+    const runtimeStatements: string[] = []
+
+    const runtimeDb = {
+      async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+        return fn(this)
+      },
+      async execute(statement: SQL) {
+        const query = render(statement)
+        runtimeStatements.push(query.sql)
+        return undefined
+      },
+      async query() {
+        return []
+      },
+    } satisfies OrbitDatabase
+
+    const migrationDb = {
+      async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+        return fn(this)
+      },
+      async execute(statement: SQL) {
+        const query = render(statement)
+        migrationStatements.push(query.sql)
+        return undefined
+      },
+      async query() {
+        return []
+      },
+    } satisfies OrbitDatabase
+
+    // applyPostgresRlsDdl accepts a raw OrbitDatabase — it is designed to be
+    // called from migration-authority paths, not from the runtime adapter.
+    await applyPostgresRlsDdl(migrationDb)
+
+    // Runtime adapter should not have received any RLS DDL statements
+    expect(runtimeStatements).toHaveLength(0)
+
+    // Migration database should have received the RLS statements
+    expect(migrationStatements.length).toBeGreaterThan(0)
+    expect(migrationStatements.some((s) => s.includes('row level security'))).toBe(true)
+    expect(migrationStatements.some((s) => s.includes('create policy'))).toBe(true)
+  })
+
+  it('authority model remains unchanged after bootstrap including RLS DDL generation', async () => {
+    const runtimeDb = {
+      async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+        return fn(this)
+      },
+      async execute() {
+        return undefined
+      },
+      async query() {
+        return []
+      },
+    } satisfies OrbitDatabase
+    const migrationDb = {
+      async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+        return fn(this)
+      },
+      async execute() {
+        return undefined
+      },
+      async query() {
+        return []
+      },
+    } satisfies OrbitDatabase
+
+    const adapter = createPostgresStorageAdapter({
+      database: runtimeDb,
+      migrationDatabase: asMigrationDatabase(migrationDb),
+    })
+
+    // Snapshot authority model before bootstrap
+    const authorityBefore = { ...adapter.authorityModel }
+
+    // Simulate bootstrap: schema + RLS DDL on migration database
+    await adapter.runWithMigrationAuthority(async (db) => {
+      await initializePostgresWave1Schema(db)
+      await applyPostgresRlsDdl(db)
+      return null
+    })
+
+    // Authority model must be identical after bootstrap
+    expect(adapter.authorityModel).toEqual(authorityBefore)
     expect(adapter.authorityModel.requestPathMayUseElevatedCredentials).toBe(false)
   })
 })
