@@ -49,14 +49,14 @@ export function idempotencyMiddleware(): MiddlewareHandler {
     const routeKey = `${c.req.method}:${c.req.path}:${key}`
     const existing = store.get(routeKey)
 
-    // Parse current body for hash comparison
-    let currentBody: unknown = null
+    // Read raw body text for hash comparison (avoids consuming the JSON stream)
+    let bodyText = ''
     try {
-      currentBody = await c.req.json()
+      bodyText = await c.req.text()
     } catch {
-      // no body or not JSON — that's fine
+      // no body — that's fine
     }
-    const currentHash = hashBody(currentBody)
+    const currentHash = hashBody(bodyText)
 
     if (existing) {
       if (currentHash !== existing.requestHash) {

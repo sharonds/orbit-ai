@@ -2,6 +2,36 @@ import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
 import { toEnvelope, toError, toWebhookRead, toWebhookDeliveryRead } from '../responses.js'
 
+/** Deny-list of hostnames and IP patterns that must not be used as webhook targets. */
+const SSRF_DENY_PATTERNS = [
+  /^localhost$/i,
+  /^127\.\d+\.\d+\.\d+$/,
+  /^10\.\d+\.\d+\.\d+$/,
+  /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
+  /^192\.168\.\d+\.\d+$/,
+  /^169\.254\.\d+\.\d+$/,
+  /^\[?::1\]?$/,
+  /^0\.0\.0\.0$/,
+  /^metadata\.google\.internal$/i,
+]
+
+function validateWebhookUrl(url: string): string | null {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return 'Invalid URL'
+  }
+  if (parsed.protocol !== 'https:') {
+    return 'Webhook URL must use HTTPS'
+  }
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '')
+  if (SSRF_DENY_PATTERNS.some((p) => p.test(hostname))) {
+    return 'Webhook URL must not point to private or loopback addresses'
+  }
+  return null
+}
+
 export function registerWebhookRoutes(app: Hono, services: CoreServices) {
   // GET /v1/webhooks — list
   app.get('/v1/webhooks', async (c) => {
@@ -17,11 +47,12 @@ export function registerWebhookRoutes(app: Hono, services: CoreServices) {
   app.post('/v1/webhooks', async (c) => {
     const body = await c.req.json()
 
-    // Validate HTTPS-only URL
-    if (typeof body.url !== 'string' || !body.url.startsWith('https://')) {
-      return c.json(toError(c, 'VALIDATION_FAILED', 'Webhook URL must use HTTPS', {
+    // Validate webhook URL (HTTPS-only + SSRF protection)
+    const urlError = typeof body.url === 'string' ? validateWebhookUrl(body.url) : 'URL is required'
+    if (urlError) {
+      return c.json(toError(c, 'VALIDATION_FAILED', urlError, {
         field: 'url',
-        hint: 'Only HTTPS URLs are accepted for webhook endpoints.',
+        hint: 'Only HTTPS URLs pointing to public addresses are accepted.',
       }), 400)
     }
 
@@ -52,12 +83,13 @@ export function registerWebhookRoutes(app: Hono, services: CoreServices) {
   app.patch('/v1/webhooks/:id', async (c) => {
     const body = await c.req.json()
 
-    // Validate HTTPS-only URL if provided
+    // Validate webhook URL if provided (HTTPS-only + SSRF protection)
     if (body.url !== undefined) {
-      if (typeof body.url !== 'string' || !body.url.startsWith('https://')) {
-        return c.json(toError(c, 'VALIDATION_FAILED', 'Webhook URL must use HTTPS', {
+      const urlError = typeof body.url === 'string' ? validateWebhookUrl(body.url) : 'URL must be a string'
+      if (urlError) {
+        return c.json(toError(c, 'VALIDATION_FAILED', urlError, {
           field: 'url',
-          hint: 'Only HTTPS URLs are accepted for webhook endpoints.',
+          hint: 'Only HTTPS URLs pointing to public addresses are accepted.',
         }), 400)
       }
     }
