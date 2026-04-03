@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest'
 import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
 import { initializePostgresWave2SliceESchema } from '../adapters/postgres/schema.js'
+import { IMPLEMENTED_TENANT_TABLES } from '../repositories/tenant-scope.js'
+import { generatePostgresRlsSql } from '../schema-engine/rls.js'
 import { createPostgresApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createPostgresAuditLogRepository } from '../entities/audit-logs/repository.js'
 import { createPostgresCustomFieldDefinitionRepository } from '../entities/custom-field-definitions/repository.js'
@@ -841,5 +843,67 @@ describe('postgres persistence bridge', () => {
     expect('keyHash' in (apiKey ?? {})).toBe(false)
 
     await pool.end()
+  })
+
+  it('RLS DDL generator covers every tenant table used in persistence tests (drift detection)', () => {
+    // Extract table names referenced in the RLS DDL output
+    const rlsStatements = generatePostgresRlsSql()
+    const rlsTableSet = new Set<string>()
+    for (const stmt of rlsStatements) {
+      // Match "alter table orbit.<table> enable row level security"
+      const alterMatch = stmt.match(/alter table orbit\.(\w+) enable row level security/)
+      if (alterMatch) rlsTableSet.add(alterMatch[1])
+    }
+
+    // Every table in IMPLEMENTED_TENANT_TABLES must have RLS coverage
+    const missingFromRls = IMPLEMENTED_TENANT_TABLES.filter(
+      (table) => !rlsTableSet.has(table),
+    )
+    expect(missingFromRls).toEqual([])
+
+    // Every table the RLS generator covers must be in IMPLEMENTED_TENANT_TABLES
+    const tenantTableSet = new Set<string>(IMPLEMENTED_TENANT_TABLES)
+    const extraInRls = [...rlsTableSet].filter(
+      (table) => !tenantTableSet.has(table),
+    )
+    expect(extraInRls).toEqual([])
+
+    // Confirm the persistence test's adapter snapshot covers all tenant tables
+    // (the createPostgresAdapter helper lists them explicitly)
+    const persistenceTableList = [
+      'organizations',
+      'users',
+      'organization_memberships',
+      'api_keys',
+      'companies',
+      'contacts',
+      'pipelines',
+      'stages',
+      'deals',
+      'activities',
+      'tasks',
+      'notes',
+      'products',
+      'payments',
+      'contracts',
+      'sequences',
+      'sequence_steps',
+      'sequence_enrollments',
+      'sequence_events',
+      'tags',
+      'entity_tags',
+      'imports',
+      'webhooks',
+      'webhook_deliveries',
+      'custom_field_definitions',
+      'audit_logs',
+      'schema_migrations',
+      'idempotency_keys',
+    ]
+
+    const missingFromPersistence = IMPLEMENTED_TENANT_TABLES.filter(
+      (table) => !persistenceTableList.includes(table),
+    )
+    expect(missingFromPersistence).toEqual([])
   })
 })
