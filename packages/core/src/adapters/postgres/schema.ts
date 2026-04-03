@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 
 import type { OrbitDatabase } from '../interface.js'
+import { generatePostgresRlsSql } from '../../schema-engine/rls.js'
 
 const POSTGRES_WAVE_1_SCHEMA_STATEMENTS = [
   `create table if not exists organizations (
@@ -496,6 +497,24 @@ export async function initializePostgresWave2SliceCSchema(db: OrbitDatabase): Pr
 
 export async function initializePostgresWave2SliceDSchema(db: OrbitDatabase): Promise<void> {
   for (const statement of POSTGRES_WAVE_2_SLICE_D_SCHEMA_STATEMENTS) {
+    await db.execute(sql.raw(statement))
+  }
+}
+
+/**
+ * Applies Row-Level Security DDL (policies + helper function) for all tenant
+ * tables. Must be called AFTER table DDL has been executed (tables must exist
+ * before policies can reference them).
+ *
+ * Idempotent: uses DROP POLICY IF EXISTS before CREATE POLICY, CREATE OR
+ * REPLACE FUNCTION for the helper, and ALTER TABLE ENABLE ROW LEVEL SECURITY
+ * is a no-op when already enabled.
+ *
+ * Should only be called from migration-authority paths (same privilege level as
+ * the initializePostgresXxxSchema functions).
+ */
+export async function applyPostgresRlsDdl(db: OrbitDatabase): Promise<void> {
+  for (const statement of generatePostgresRlsSql()) {
     await db.execute(sql.raw(statement))
   }
 }
