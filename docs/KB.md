@@ -49,8 +49,9 @@ Current focus:
 
 - maintain the repo knowledge base as the live hub
 - Core Wave 2 Slice E is complete: `system.customFieldDefinitions`, `system.auditLogs`, `system.schemaMigrations`, `system.idempotencyKeys`, final Wave 2 registry wiring, adapter bootstrap for all four entities, and SQLite/Postgres persistence proofs are all landed on branch `core-wave-2-slice-e`
-- tenant-hardening follow-up is now planned in [core-tenant-hardening-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-tenant-hardening-plan.md) for Postgres RLS DDL, tenant-table org-leading indexes, and shared table-name allowlist assertions
-- API/SDK execution is now unblocked by the completed Wave 2 merge; execution order versus tenant hardening is a product decision rather than a missing-core blocker
+- Core tenant hardening is complete on branch `core-tenant-hardening`: Slice E bootstrap now runs in a transaction, creates schema `orbit`, sets local `search_path` to `orbit, pg_temp`, applies table DDL, applies baseline org-leading indexes for tenant filters and RLS, and applies RLS by default. The pg-mem persistence proofs use `includeRls: false` because pg-mem does not implement RLS DDL. Drift detection tests still prove the shared tenant inventory and RLS coverage stay aligned.
+- An opt-in live Postgres proof now exists at `packages/core/src/adapters/postgres/live-bootstrap.test.ts`, gated by `ORBIT_TEST_POSTGRES_URL` and `ORBIT_TEST_POSTGRES_ALLOW_SCHEMA_RESET=1` because it resets schema `orbit` on a dedicated test database
+- API/SDK execution is now unblocked by the completed Wave 2 merge and tenant hardening; execution order is a product decision rather than a missing-core blocker
 - keep execution docs and skills aligned with implementation progress
 
 Not started yet:
@@ -112,6 +113,7 @@ Use these files first:
   - [core-wave-2-slice-b-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-b-review.md)
   - [core-wave-2-slice-c-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-c-review.md)
   - [core-wave-2-slice-d-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-2-slice-d-review.md)
+  - [core-tenant-hardening-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-tenant-hardening-review.md)
   - [orbit-skills-plan.md](/Users/sharonsciammas/orbit-ai/docs/skills/orbit-skills-plan.md)
 
 ## What Is Next
@@ -195,6 +197,7 @@ These are still open, but they do not block the KB:
 
 - 2026-04-02: Executed Core Wave 2 Slice E on branch `core-wave-2-slice-e`, covering `system.customFieldDefinitions`, `system.auditLogs`, `system.schemaMigrations`, `system.idempotencyKeys`, final Wave 2 registry wiring, adapter bootstrap for all four entities, and SQLite/Postgres persistence proofs. `auditLogs.before/after`, `schemaMigrations.sqlStatements/rollbackStatements`, and `idempotencyKeys.requestHash/responseBody` are redacted in admin reads. No audit middleware, idempotency middleware, or schema-engine execution was pulled forward.
 - 2026-04-03: Created [core-tenant-hardening-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-tenant-hardening-plan.md) to execute the deferred Postgres RLS DDL, org-leading tenant index review, and shared table-name allowlist assertions as a separate follow-up after Wave 2.
+- 2026-04-03: Executed the core tenant hardening plan on branch `core-tenant-hardening` (Slices A-E): transactional Postgres bootstrap with `orbit` schema creation and `search_path` pinning, table DDL, baseline org-leading indexes for tenant filters/RLS, RLS enabled by default, and drift detection tests. The pg-mem persistence proofs use `includeRls: false` because pg-mem does not implement RLS DDL. Review artifact at [core-tenant-hardening-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-tenant-hardening-review.md).
 
 ## Working Rule
 

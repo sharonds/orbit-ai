@@ -404,7 +404,7 @@ describe('core services registry', () => {
 
   it('can build the registry from a Postgres adapter and Postgres-backed repositories', async () => {
     const { database, adapter } = createPostgresTestAdapter()
-    await initializePostgresWave2SliceDSchema(database)
+    await initializePostgresWave2SliceDSchema(asMigrationDatabase(database))
 
     const organizations = createPostgresOrganizationRepository(adapter)
     const activities = createPostgresActivityRepository(adapter)

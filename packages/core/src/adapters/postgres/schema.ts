@@ -1,6 +1,10 @@
 import { sql } from 'drizzle-orm'
 
-import type { OrbitDatabase } from '../interface.js'
+import type { MigrationDatabase, OrbitDatabase } from '../interface.js'
+import { generatePostgresRlsSql } from '../../schema-engine/rls.js'
+
+export const POSTGRES_SCHEMA_NAME = 'orbit'
+export const POSTGRES_SCHEMA_SEARCH_PATH = `${POSTGRES_SCHEMA_NAME}, pg_temp`
 
 const POSTGRES_WAVE_1_SCHEMA_STATEMENTS = [
   `create table if not exists organizations (
@@ -464,38 +468,129 @@ const POSTGRES_WAVE_2_SLICE_E_SCHEMA_STATEMENTS = [
   `create unique index if not exists idempotency_unique_idx on idempotency_keys (organization_id, key, method, path)`,
 ] as const
 
-export async function initializePostgresWave2SliceESchema(db: OrbitDatabase): Promise<void> {
-  for (const statement of POSTGRES_WAVE_2_SLICE_E_SCHEMA_STATEMENTS) {
+function buildCreateSchemaStatement() {
+  return `create schema if not exists ${POSTGRES_SCHEMA_NAME}`
+}
+
+function buildSetLocalSearchPathStatement() {
+  return `set local search_path to ${POSTGRES_SCHEMA_SEARCH_PATH}`
+}
+
+async function executeBootstrapStatements(
+  db: MigrationDatabase,
+  statements: readonly string[],
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql.raw(buildCreateSchemaStatement()))
+    await tx.execute(sql.raw(buildSetLocalSearchPathStatement()))
+
+    for (const statement of statements) {
+      await tx.execute(sql.raw(statement))
+    }
+  })
+}
+
+export interface PostgresBootstrapOptions {
+  includeOrgLeadingIndexes?: boolean
+  includeRls?: boolean
+}
+
+export async function initializePostgresWave2SliceESchema(
+  db: MigrationDatabase,
+  options: PostgresBootstrapOptions = {},
+): Promise<void> {
+  const includeOrgLeadingIndexes = options.includeOrgLeadingIndexes ?? true
+  const includeRls = options.includeRls ?? true
+
+  await db.transaction(async (tx) => {
+    await tx.execute(sql.raw(buildCreateSchemaStatement()))
+    await tx.execute(sql.raw(buildSetLocalSearchPathStatement()))
+
+    for (const statement of POSTGRES_WAVE_2_SLICE_E_SCHEMA_STATEMENTS) {
+      await tx.execute(sql.raw(statement))
+    }
+
+    if (includeOrgLeadingIndexes) {
+      for (const statement of ORG_LEADING_INDEX_STATEMENTS) {
+        await tx.execute(sql.raw(statement))
+      }
+    }
+
+    if (includeRls) {
+      for (const statement of generatePostgresRlsSql(POSTGRES_SCHEMA_NAME)) {
+        await tx.execute(sql.raw(statement))
+      }
+    }
+  })
+}
+
+export async function initializePostgresWave1Schema(db: MigrationDatabase): Promise<void> {
+  await executeBootstrapStatements(db, POSTGRES_WAVE_1_SCHEMA_STATEMENTS)
+}
+
+export async function initializePostgresWave2SliceASchema(db: MigrationDatabase): Promise<void> {
+  await executeBootstrapStatements(db, POSTGRES_WAVE_2_SLICE_A_SCHEMA_STATEMENTS)
+}
+
+export async function initializePostgresWave2SliceBSchema(db: MigrationDatabase): Promise<void> {
+  await executeBootstrapStatements(db, POSTGRES_WAVE_2_SLICE_B_SCHEMA_STATEMENTS)
+}
+
+export async function initializePostgresWave2SliceCSchema(db: MigrationDatabase): Promise<void> {
+  await executeBootstrapStatements(db, POSTGRES_WAVE_2_SLICE_C_SCHEMA_STATEMENTS)
+}
+
+export async function initializePostgresWave2SliceDSchema(db: MigrationDatabase): Promise<void> {
+  await executeBootstrapStatements(db, POSTGRES_WAVE_2_SLICE_D_SCHEMA_STATEMENTS)
+}
+
+/**
+ * Applies Row-Level Security DDL (policies + helper function) for all tenant
+ * tables. Must be called AFTER table DDL has been executed (tables must exist
+ * before policies can reference them).
+ *
+ * Idempotent: uses DROP POLICY IF EXISTS before CREATE POLICY, CREATE OR
+ * REPLACE FUNCTION for the helper, and ALTER TABLE ENABLE ROW LEVEL SECURITY
+ * is a no-op when already enabled.
+ *
+ * Should only be called from migration-authority paths (same privilege level as
+ * the initializePostgresXxxSchema functions).
+ */
+export async function applyPostgresRlsDdl(db: MigrationDatabase): Promise<void> {
+  for (const statement of generatePostgresRlsSql(POSTGRES_SCHEMA_NAME)) {
     await db.execute(sql.raw(statement))
   }
 }
 
-export async function initializePostgresWave1Schema(db: OrbitDatabase): Promise<void> {
-  for (const statement of POSTGRES_WAVE_1_SCHEMA_STATEMENTS) {
-    await db.execute(sql.raw(statement))
-  }
-}
+const ORG_LEADING_INDEX_STATEMENTS = [
+  'create index if not exists api_keys_org_idx on api_keys (organization_id)',
+  'create index if not exists stages_org_idx on stages (organization_id)',
+  'create index if not exists deals_org_idx on deals (organization_id)',
+  'create index if not exists activities_org_idx on activities (organization_id)',
+  'create index if not exists tasks_org_idx on tasks (organization_id)',
+  'create index if not exists notes_org_idx on notes (organization_id)',
+  'create index if not exists products_org_idx on products (organization_id)',
+  'create index if not exists contracts_org_idx on contracts (organization_id)',
+  'create index if not exists sequence_steps_org_idx on sequence_steps (organization_id)',
+  'create index if not exists sequence_enrollments_org_idx on sequence_enrollments (organization_id)',
+  'create index if not exists sequence_events_org_idx on sequence_events (organization_id)',
+  'create index if not exists imports_org_idx on imports (organization_id)',
+  'create index if not exists webhooks_org_idx on webhooks (organization_id)',
+  'create index if not exists webhook_deliveries_org_idx on webhook_deliveries (organization_id)',
+  'create index if not exists schema_migrations_org_idx on schema_migrations (organization_id)',
+] as const
 
-export async function initializePostgresWave2SliceASchema(db: OrbitDatabase): Promise<void> {
-  for (const statement of POSTGRES_WAVE_2_SLICE_A_SCHEMA_STATEMENTS) {
-    await db.execute(sql.raw(statement))
-  }
-}
-
-export async function initializePostgresWave2SliceBSchema(db: OrbitDatabase): Promise<void> {
-  for (const statement of POSTGRES_WAVE_2_SLICE_B_SCHEMA_STATEMENTS) {
-    await db.execute(sql.raw(statement))
-  }
-}
-
-export async function initializePostgresWave2SliceCSchema(db: OrbitDatabase): Promise<void> {
-  for (const statement of POSTGRES_WAVE_2_SLICE_C_SCHEMA_STATEMENTS) {
-    await db.execute(sql.raw(statement))
-  }
-}
-
-export async function initializePostgresWave2SliceDSchema(db: OrbitDatabase): Promise<void> {
-  for (const statement of POSTGRES_WAVE_2_SLICE_D_SCHEMA_STATEMENTS) {
+/**
+ * Creates org-leading indexes on tenant tables that lack them.
+ * These indexes provide a baseline org-leading access path for tenant filters
+ * and RLS evaluation on tables that previously had no organization_id-leading
+ * coverage at all. They are not a substitute for future query-shape-specific
+ * composite tuning.
+ *
+ * Should only be called from migration-authority paths.
+ */
+export async function applyPostgresOrgLeadingIndexes(db: MigrationDatabase): Promise<void> {
+  for (const statement of ORG_LEADING_INDEX_STATEMENTS) {
     await db.execute(sql.raw(statement))
   }
 }

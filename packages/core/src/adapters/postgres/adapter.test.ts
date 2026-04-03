@@ -6,7 +6,7 @@ import type { OrbitDatabase } from '../interface.js'
 import { asMigrationDatabase } from '../interface.js'
 import { createPostgresStorageAdapter } from './adapter.js'
 import { createPostgresOrbitDatabase } from './database.js'
-import { initializePostgresWave1Schema } from './schema.js'
+import { initializePostgresWave1Schema, initializePostgresWave2SliceESchema } from './schema.js'
 
 function render(statement: SQL) {
   return statement.toQuery({
@@ -30,7 +30,7 @@ async function createAdapter() {
   const pool = new Pool({ max: 1 })
   const database = createPostgresOrbitDatabase({ pool })
 
-  await initializePostgresWave1Schema(database)
+  await initializePostgresWave1Schema(asMigrationDatabase(database))
 
   const adapter = createPostgresStorageAdapter({
     database,
@@ -180,6 +180,102 @@ describe('PostgresStorageAdapter', () => {
 
     expect(runtimeExecute).toHaveBeenCalledTimes(1)
     expect(migrationExecute).toHaveBeenCalledTimes(1)
+    expect(adapter.authorityModel.requestPathMayUseElevatedCredentials).toBe(false)
+  })
+
+  it('slice E bootstrap hardening executes on migration authority only', async () => {
+    const migrationStatements: string[] = []
+    const runtimeStatements: string[] = []
+
+    const runtimeDb = {
+      async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+        return fn(this)
+      },
+      async execute(statement: SQL) {
+        const query = render(statement)
+        runtimeStatements.push(query.sql)
+        return undefined
+      },
+      async query() {
+        return []
+      },
+    } satisfies OrbitDatabase
+
+    const migrationDb = {
+      async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+        return fn(this)
+      },
+      async execute(statement: SQL) {
+        const query = render(statement)
+        migrationStatements.push(query.sql)
+        return undefined
+      },
+      async query() {
+        return []
+      },
+    } satisfies OrbitDatabase
+
+    const adapter = createPostgresStorageAdapter({
+      database: runtimeDb,
+      migrationDatabase: asMigrationDatabase(migrationDb),
+    })
+
+    await adapter.runWithMigrationAuthority(async (db) => {
+      await initializePostgresWave2SliceESchema(db)
+      return null
+    })
+
+    // Runtime adapter should not have received any RLS DDL statements
+    expect(runtimeStatements).toHaveLength(0)
+
+    // Migration database should have received the bootstrap + hardening DDL
+    expect(migrationStatements.length).toBeGreaterThan(0)
+    expect(migrationStatements.some((s) => s.includes('create schema if not exists orbit'))).toBe(true)
+    expect(migrationStatements.some((s) => s.includes('row level security'))).toBe(true)
+    expect(migrationStatements.some((s) => s.includes('create policy'))).toBe(true)
+    expect(migrationStatements.some((s) => s.includes('schema_migrations_org_idx'))).toBe(true)
+  })
+
+  it('authority model remains unchanged after slice E bootstrap hardening', async () => {
+    const runtimeDb = {
+      async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+        return fn(this)
+      },
+      async execute() {
+        return undefined
+      },
+      async query() {
+        return []
+      },
+    } satisfies OrbitDatabase
+    const migrationDb = {
+      async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+        return fn(this)
+      },
+      async execute() {
+        return undefined
+      },
+      async query() {
+        return []
+      },
+    } satisfies OrbitDatabase
+
+    const adapter = createPostgresStorageAdapter({
+      database: runtimeDb,
+      migrationDatabase: asMigrationDatabase(migrationDb),
+    })
+
+    // Snapshot authority model before bootstrap
+    const authorityBefore = { ...adapter.authorityModel }
+
+    // Simulate the full Slice E bootstrap on the migration database.
+    await adapter.runWithMigrationAuthority(async (db) => {
+      await initializePostgresWave2SliceESchema(db)
+      return null
+    })
+
+    // Authority model must be identical after bootstrap
+    expect(adapter.authorityModel).toEqual(authorityBefore)
     expect(adapter.authorityModel.requestPathMayUseElevatedCredentials).toBe(false)
   })
 })
