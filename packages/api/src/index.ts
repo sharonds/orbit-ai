@@ -4,6 +4,11 @@ export type { OrbitApiVariables } from './context.js'
 export { requestIdMiddleware } from './middleware/request-id.js'
 export { versionMiddleware } from './middleware/version.js'
 export { orbitErrorHandler } from './middleware/error-handler.js'
+export { idempotencyMiddleware } from './middleware/idempotency.js'
+export { rateLimitMiddleware } from './middleware/rate-limit.js'
+export type { RateLimitOptions } from './middleware/rate-limit.js'
+export { generateOpenApiSpec } from './openapi/index.js'
+export type { OpenApiInfo } from './openapi/index.js'
 export {
   toEnvelope,
   toError,
