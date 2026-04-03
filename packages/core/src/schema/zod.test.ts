@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { dealInsertSchema, stageInsertSchema } from './zod.js'
+import {
+  auditLogInsertSchema,
+  customFieldDefinitionInsertSchema,
+  dealInsertSchema,
+  idempotencyKeyInsertSchema,
+  schemaMigrationInsertSchema,
+  stageInsertSchema,
+} from './zod.js'
 
 describe('slice 2 zod schemas', () => {
   it('rejects stages that are both won and lost', () => {
@@ -42,5 +49,93 @@ describe('slice 2 zod schemas', () => {
     })
 
     expect(parsed.currency).toBe('USD')
+  })
+
+  it('parses slice E custom field definitions with nullable JSON metadata', () => {
+    const parsed = customFieldDefinitionInsertSchema.parse({
+      id: 'field_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      organizationId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      entityType: 'contacts',
+      fieldName: 'tier',
+      fieldType: 'text',
+      label: 'Tier',
+      description: null,
+      isRequired: false,
+      isIndexed: true,
+      isPromoted: false,
+      promotedColumnName: null,
+      defaultValue: null,
+      options: ['enterprise', 'growth'],
+      validation: { maxLength: 32 },
+    })
+
+    expect(parsed.defaultValue).toBeNull()
+    expect(parsed.options).toEqual(['enterprise', 'growth'])
+    expect(parsed.validation).toEqual({ maxLength: 32 })
+  })
+
+  it('parses slice E audit logs with nullable actor references and occurredAt', () => {
+    const occurredAt = new Date('2026-04-02T12:30:00.000Z')
+    const parsed = auditLogInsertSchema.parse({
+      id: 'audit_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      organizationId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      actorUserId: null,
+      actorApiKeyId: null,
+      entityType: 'contacts',
+      entityId: 'contact_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      action: 'updated',
+      before: { name: 'Old Name' },
+      after: { name: 'New Name' },
+      requestId: null,
+      metadata: { source: 'api' },
+      occurredAt,
+    })
+
+    expect(parsed.actorUserId).toBeNull()
+    expect(parsed.actorApiKeyId).toBeNull()
+    expect(parsed.before).toEqual({ name: 'Old Name' })
+    expect(parsed.after).toEqual({ name: 'New Name' })
+    expect(parsed.occurredAt).toEqual(occurredAt)
+  })
+
+  it('parses slice E schema migrations with nullable entity references and SQL arrays', () => {
+    const appliedAt = new Date('2026-04-02T13:00:00.000Z')
+    const parsed = schemaMigrationInsertSchema.parse({
+      id: 'migration_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      organizationId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      description: 'Add tier field',
+      entityType: null,
+      operationType: 'add_column',
+      sqlStatements: ['alter table contacts add column tier text'],
+      rollbackStatements: ['alter table contacts drop column tier'],
+      appliedByUserId: null,
+      approvedByUserId: null,
+      appliedAt,
+    })
+
+    expect(parsed.entityType).toBeNull()
+    expect(parsed.sqlStatements).toEqual(['alter table contacts add column tier text'])
+    expect(parsed.rollbackStatements).toEqual(['alter table contacts drop column tier'])
+    expect(parsed.appliedAt).toEqual(appliedAt)
+  })
+
+  it('parses slice E idempotency keys with nullable responseBody and lifecycle dates', () => {
+    const completedAt = new Date('2026-04-02T14:00:00.000Z')
+    const parsed = idempotencyKeyInsertSchema.parse({
+      id: 'idem_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      organizationId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      key: 'idem_123',
+      method: 'POST',
+      path: '/v1/contacts',
+      requestHash: 'sha256:test',
+      responseCode: 201,
+      responseBody: null,
+      lockedUntil: null,
+      completedAt,
+    })
+
+    expect(parsed.responseBody).toBeNull()
+    expect(parsed.lockedUntil).toBeNull()
+    expect(parsed.completedAt).toEqual(completedAt)
   })
 })

@@ -145,6 +145,30 @@ import {
   type WebhookRepository,
 } from '../entities/webhooks/repository.js'
 import { createWebhookService } from '../entities/webhooks/service.js'
+import {
+  createPostgresCustomFieldDefinitionRepository,
+  createSqliteCustomFieldDefinitionRepository,
+  type CustomFieldDefinitionRepository,
+} from '../entities/custom-field-definitions/repository.js'
+import { createCustomFieldDefinitionAdminService } from '../entities/custom-field-definitions/service.js'
+import {
+  createPostgresAuditLogRepository,
+  createSqliteAuditLogRepository,
+  type AuditLogRepository,
+} from '../entities/audit-logs/repository.js'
+import { createAuditLogAdminService } from '../entities/audit-logs/service.js'
+import {
+  createPostgresSchemaMigrationRepository,
+  createSqliteSchemaMigrationRepository,
+  type SchemaMigrationRepository,
+} from '../entities/schema-migrations/repository.js'
+import { createSchemaMigrationAdminService } from '../entities/schema-migrations/service.js'
+import {
+  createPostgresIdempotencyKeyRepository,
+  createSqliteIdempotencyKeyRepository,
+  type IdempotencyKeyRepository,
+} from '../entities/idempotency-keys/repository.js'
+import { createIdempotencyKeyAdminService } from '../entities/idempotency-keys/service.js'
 import { OrbitSchemaEngine } from '../schema-engine/engine.js'
 import { createOrbitError } from '../types/errors.js'
 import { createContactContextService } from './contact-context.js'
@@ -175,6 +199,10 @@ interface CoreRepositoryOverrides {
   imports?: ImportRepository
   webhooks?: WebhookRepository
   webhookDeliveries?: WebhookDeliveryRepository
+  customFieldDefinitions?: CustomFieldDefinitionRepository
+  auditLogs?: AuditLogRepository
+  schemaMigrations?: SchemaMigrationRepository
+  idempotencyKeys?: IdempotencyKeyRepository
 }
 
 function resolveOptionalCoreRepository<T>({
@@ -317,6 +345,10 @@ export function createCoreServices(
   let importsRepository: ImportRepository | null = null
   let webhooksRepository: WebhookRepository | null = null
   let webhookDeliveriesRepository: WebhookDeliveryRepository | null = null
+  let customFieldDefinitionsRepository: CustomFieldDefinitionRepository | null = null
+  let auditLogsRepository: AuditLogRepository | null = null
+  let schemaMigrationsRepository: SchemaMigrationRepository | null = null
+  let idempotencyKeysRepository: IdempotencyKeyRepository | null = null
   let optionalActivitiesRepository: ActivityRepository | undefined
   let optionalTasksRepository: TaskRepository | undefined
   let optionalProductsRepository: ProductRepository | undefined
@@ -566,6 +598,54 @@ export function createCoreServices(
     })
 
     return webhookDeliveriesRepository
+  }
+
+  function getCustomFieldDefinitionsRepository(): CustomFieldDefinitionRepository {
+    if (customFieldDefinitionsRepository) return customFieldDefinitionsRepository
+    customFieldDefinitionsRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.customFieldDefinitions,
+      sqliteFactory: () => createSqliteCustomFieldDefinitionRepository(adapter),
+      postgresFactory: () => createPostgresCustomFieldDefinitionRepository(adapter),
+      name: 'custom field definitions repository',
+    })
+    return customFieldDefinitionsRepository
+  }
+
+  function getAuditLogsRepository(): AuditLogRepository {
+    if (auditLogsRepository) return auditLogsRepository
+    auditLogsRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.auditLogs,
+      sqliteFactory: () => createSqliteAuditLogRepository(adapter),
+      postgresFactory: () => createPostgresAuditLogRepository(adapter),
+      name: 'audit logs repository',
+    })
+    return auditLogsRepository
+  }
+
+  function getSchemaMigrationsRepository(): SchemaMigrationRepository {
+    if (schemaMigrationsRepository) return schemaMigrationsRepository
+    schemaMigrationsRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.schemaMigrations,
+      sqliteFactory: () => createSqliteSchemaMigrationRepository(adapter),
+      postgresFactory: () => createPostgresSchemaMigrationRepository(adapter),
+      name: 'schema migrations repository',
+    })
+    return schemaMigrationsRepository
+  }
+
+  function getIdempotencyKeysRepository(): IdempotencyKeyRepository {
+    if (idempotencyKeysRepository) return idempotencyKeysRepository
+    idempotencyKeysRepository = resolveCoreRepository({
+      adapter,
+      override: overrides.idempotencyKeys,
+      sqliteFactory: () => createSqliteIdempotencyKeyRepository(adapter),
+      postgresFactory: () => createPostgresIdempotencyKeyRepository(adapter),
+      name: 'idempotency keys repository',
+    })
+    return idempotencyKeysRepository
   }
 
   function getOptionalActivitiesRepository(): ActivityRepository | undefined {
@@ -844,6 +924,18 @@ export function createCoreServices(
       apiKeys: createApiKeyAdminService(apiKeys),
       entityTags: createEntityTagAdminService(getEntityTagsRepository()),
       webhookDeliveries: createWebhookDeliveryAdminService(getWebhookDeliveriesRepository()),
+      get customFieldDefinitions() {
+        return createCustomFieldDefinitionAdminService(getCustomFieldDefinitionsRepository())
+      },
+      get auditLogs() {
+        return createAuditLogAdminService(getAuditLogsRepository())
+      },
+      get schemaMigrations() {
+        return createSchemaMigrationAdminService(getSchemaMigrationsRepository())
+      },
+      get idempotencyKeys() {
+        return createIdempotencyKeyAdminService(getIdempotencyKeysRepository())
+      },
     },
   }
 }

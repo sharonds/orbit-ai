@@ -465,3 +465,90 @@ export const webhookDeliveries = orbit.table(
     index('webhook_deliveries_next_attempt_idx').on(table.nextAttemptAt),
   ],
 )
+
+export const customFieldDefinitions = orbit.table(
+  'custom_field_definitions',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    entityType: text('entity_type').notNull(),
+    fieldName: text('field_name').notNull(),
+    fieldType: text('field_type').notNull(),
+    label: text('label').notNull(),
+    description: text('description'),
+    isRequired: boolean('is_required').notNull().default(false),
+    isIndexed: boolean('is_indexed').notNull().default(false),
+    isPromoted: boolean('is_promoted').notNull().default(false),
+    promotedColumnName: text('promoted_column_name'),
+    defaultValue: jsonb('default_value').$type<unknown>(),
+    options: jsonb('options').$type<string[]>().notNull().default([]),
+    validation: jsonb('validation').$type<Record<string, unknown>>().notNull().default({}),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('custom_fields_unique_idx').on(table.organizationId, table.entityType, table.fieldName),
+  ],
+)
+
+export const auditLogs = orbit.table(
+  'audit_logs',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    actorUserId: text('actor_user_id').references(() => users.id),
+    actorApiKeyId: text('actor_api_key_id').references(() => apiKeys.id),
+    entityType: text('entity_type').notNull(),
+    entityId: text('entity_id').notNull(),
+    action: text('action').notNull(),
+    before: jsonb('before').$type<Record<string, unknown>>(),
+    after: jsonb('after').$type<Record<string, unknown>>(),
+    requestId: text('request_id'),
+    metadata: metadata(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index('audit_logs_entity_idx').on(table.organizationId, table.entityType, table.entityId),
+    index('audit_logs_occurred_at_idx').on(table.occurredAt),
+  ],
+)
+
+export const schemaMigrations = orbit.table(
+  'schema_migrations',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    description: text('description').notNull(),
+    entityType: text('entity_type'),
+    operationType: text('operation_type').notNull(),
+    sqlStatements: jsonb('sql_statements').$type<string[]>().notNull().default([]),
+    rollbackStatements: jsonb('rollback_statements').$type<string[]>().notNull().default([]),
+    appliedByUserId: text('applied_by_user_id').references(() => users.id),
+    approvedByUserId: text('approved_by_user_id').references(() => users.id),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index('schema_migrations_applied_at_idx').on(table.appliedAt),
+  ],
+)
+
+export const idempotencyKeys = orbit.table(
+  'idempotency_keys',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').notNull().references(() => organizations.id),
+    key: text('key').notNull(),
+    method: text('method').notNull(),
+    path: text('path').notNull(),
+    requestHash: text('request_hash').notNull(),
+    responseCode: integer('response_code'),
+    responseBody: jsonb('response_body').$type<unknown>(),
+    lockedUntil: timestamp('locked_until', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('idempotency_unique_idx').on(table.organizationId, table.key, table.method, table.path),
+  ],
+)
