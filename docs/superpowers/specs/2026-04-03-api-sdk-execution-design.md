@@ -7,6 +7,7 @@ Supersedes: [api-implementation-plan.md](/docs/execution/api-implementation-plan
 Depends on:
 - [IMPLEMENTATION-PLAN.md](/docs/IMPLEMENTATION-PLAN.md)
 - [core-implementation-plan.md](/docs/execution/core-implementation-plan.md)
+- [core-tenant-hardening-plan.md](/docs/execution/core-tenant-hardening-plan.md)
 - [api-implementation-plan.md](/docs/execution/api-implementation-plan.md)
 - [sdk-implementation-plan.md](/docs/execution/sdk-implementation-plan.md)
 - [02-api.md](/docs/specs/02-api.md)
@@ -49,7 +50,7 @@ The core package went through 16 PRs and multiple remediation cycles. The recurr
 
 ## 4. Execution Sequence
 
-10 execution steps organized into 3 waves with 3 formal review gates.
+7 execution steps organized into 3 waves with 3 formal review gates.
 
 ### Step 1. API Package Bootstrap And App Skeleton
 
@@ -62,7 +63,7 @@ Sub-agents: 1
 - Agent A: `packages/api/package.json`, `tsconfig.json`, `vitest.config.ts`, `src/index.ts`, `src/create-api.ts`, `src/app.ts`, `src/config.ts`, platform entrypoints (`node.ts`, `vercel.ts`, `cloudflare.ts`)
 
 Test-first contract:
-- `createApi()` accepts only a runtime-scoped `StorageAdapter` plus version/config
+- `createApi()` accepts only a runtime-scoped adapter facade plus version/config; compile-time tests reject elevated/migrator credentials on the request path
 - Package builds and typechecks against `@orbit-ai/core`
 - Platform entrypoints resolve to the same factory
 - Package exports are narrow and match the frozen structure in [02-api.md](/docs/specs/02-api.md)
@@ -86,7 +87,7 @@ Sub-agents: 2
 Test-first contract:
 - Auth resolves keys only through `adapter.lookupApiKeyForAuth()` — never raw queries
 - Revoked and expired keys are rejected
-- Request context carries `orgId`, `apiKeyId`, `scopes`, `requestId`
+- Request context carries `orgId`, `apiKeyId`, `scopes`, `requestId`, and optional `userId`
 - Bootstrap routes bypass tenant context; public and admin routes do not
 - All responses flow through the shared success/error envelope
 - Error envelope matches the spec shape from [02-api.md](/docs/specs/02-api.md) section 3.3
@@ -110,7 +111,7 @@ Gate question: "Is the auth/envelope contract stable enough to anchor SDK work a
 
 Remediation protocol: fix on same branch; re-run only the specific failing reviewer; escape valve at >3 blocking findings.
 
-### Step 4. API Wave 1 Public Routes + SDK Bootstrap (Parallel)
+### Step 3. API Wave 1 Public Routes + SDK Bootstrap (Parallel)
 
 Packages: `@orbit-ai/api` + `@orbit-ai/sdk`
 Depends on: Wave Gate 1 passed
@@ -119,7 +120,7 @@ Sub-agents: 3
 
 - Agent A (API routes): `src/routes/health.ts`, `src/routes/entities.ts` for Wave 1 entities (contacts, companies, deals, pipelines, stages, users), `src/routes/search.ts`, contact-context route
 - Agent B (SDK bootstrap): `packages/sdk/package.json`, `tsconfig.json`, `vitest.config.ts`, `src/index.ts`, `src/client.ts`, `src/config.ts`, `src/errors.ts`, `src/retries.ts`, `src/pagination.ts`, `src/transport/index.ts`
-- Agent C (test-first for Step 5): writes SDK transport parity tests into `packages/sdk/src/__tests__/`
+- Agent C (test-first for Step 4): writes SDK transport parity tests into `packages/sdk/src/__tests__/`
 
 Test-first contract (API routes):
 - Each public entity route returns correct envelope shape
@@ -136,10 +137,10 @@ Test-first contract (SDK bootstrap):
 
 Post-step verification: both packages build, typecheck, and test green.
 
-### Step 5. SDK HTTP Transport + Direct Transport
+### Step 4. SDK HTTP Transport + Direct Transport
 
 Package: `@orbit-ai/sdk`
-Depends on: Wave Gate 1 passed (runs in parallel with Step 4 completion)
+Depends on: Wave Gate 1 passed (runs in parallel with Step 3 completion)
 
 Sub-agents: 2
 
@@ -158,38 +159,40 @@ Test-first contract:
 
 Threat model focus: T1 (tenant-context parity in direct mode), T2 (authority boundaries in direct mode)
 
-Post-step verification: SDK builds, typechecks, tests green. Parity tests from Step 4 Agent C pass.
+Post-step verification: SDK builds, typechecks, tests green. Parity tests from Step 3 Agent C pass.
 
-### WAVE GATE 2 (after Steps 4-5)
+### WAVE GATE 2 (after Steps 3-4)
 
 Purpose: confirm API Wave 1 contract and SDK transport are stable enough to anchor resource breadth.
 
 Review sub-agents:
 - Independent code review sub-agent (both packages)
 - Independent security review sub-agent (route-level scope enforcement, SDK transport authority boundaries, HTTP/direct parity)
+- Independent tenant safety review (using `orbit-tenant-safety-review` skill)
+- Independent API/SDK parity review (using `orbit-api-sdk-parity` skill)
 - Contract review (route naming, envelope metadata, pagination consistency)
 
 Gate question: "Is the Wave 1 contract stable enough to anchor SDK resource breadth and API Wave 2?"
 
 Remediation protocol: same as Wave Gate 1.
 
-### Step 7. API Wave 2 Routes + SDK Wave 1 Resources (Parallel)
+### Step 5. API Wave 2 Routes + SDK Wave 1 Resources (Parallel)
 
 Packages: `@orbit-ai/api` + `@orbit-ai/sdk`
 Depends on: Wave Gate 2 passed
 
 Sub-agents: 3
 
-- Agent A (API Wave 2 routes): remaining public entity routes (activities, tasks, notes, products, payments, contracts, sequences, sequence_steps, sequence_enrollments, sequence_events, tags, webhooks, imports), relationship and workflow endpoints, bootstrap routes, `GET/PATCH /v1/organizations/current`, `/v1/admin/*` routes, `/v1/objects*` and `/v1/schema/migrations/*` routes
+- Agent A (API Wave 2 routes): remaining public entity routes (activities, tasks, notes, products, payments, contracts, sequences, sequence_steps, sequence_enrollments, sequence_events, tags, webhooks, imports), explicit workflow endpoints (`POST /v1/activities/log`, `GET /v1/deals/pipeline`, `GET /v1/deals/stats`, `POST /v1/deals/:id/move`, `POST /v1/sequences/:id/enroll`, `POST /v1/sequence_enrollments/:id/unenroll`, `POST /v1/tags/:id/attach`, `POST /v1/tags/:id/detach`), bootstrap routes, `GET/PATCH /v1/organizations/current`, `/v1/admin/*` routes, `/v1/objects*` and `/v1/schema/migrations/*` routes, and explicit webhook routes (`GET /v1/webhooks`, `POST /v1/webhooks`, `GET /v1/webhooks/:id`, `PATCH /v1/webhooks/:id`, `DELETE /v1/webhooks/:id`, `GET /v1/webhooks/:id/deliveries`, `POST /v1/webhooks/:id/redeliver`)
 - Agent B (SDK Wave 1 resources): `src/resources/base-resource.ts`, Wave 1 resource files (contacts, companies, deals, pipelines, stages, users), `src/search.ts`, contact context helper, list pagination helpers, deal workflow helpers
-- Agent C (test-first for Step 8): writes idempotency/rate-limit/OpenAPI invariant tests into `packages/api/src/__tests__/` and SDK Wave 2 parity tests into `packages/sdk/src/__tests__/`
+- Agent C (test-first for Step 6): writes idempotency/rate-limit/OpenAPI invariant tests into `packages/api/src/__tests__/` and SDK Wave 2 parity tests into `packages/sdk/src/__tests__/`
 
 Test-first contract (API Wave 2):
 - Remaining entity routes satisfy same envelope/scope/pagination invariants as Wave 1
 - Admin/system entities stay under `/v1/admin/*`
 - Bootstrap routes remain outside tenant context
 - Schema routes do not leak migration authority into generic entity request paths
-- Webhook and webhook-delivery reads are sanitized across public and admin surfaces
+- Webhook and webhook-delivery reads are sanitized across public and admin surfaces, including `GET /v1/webhooks/:id/deliveries` and `/v1/admin/webhook_deliveries`
 - Route surface matches the matrix frozen in [02-api.md](/docs/specs/02-api.md)
 
 Test-first contract (SDK Wave 1 resources):
@@ -203,14 +206,14 @@ Threat model focus: T1, T2, T3 (secret leakage in webhook/import reads), T4 (out
 
 Post-step verification: both packages build, typecheck, test green.
 
-### Step 8. API Contract Hardening + SDK Wave 2 Resources (Parallel)
+### Step 6. API Contract Hardening + SDK Wave 2 Resources (Parallel)
 
 Packages: `@orbit-ai/api` + `@orbit-ai/sdk`
-Depends on: Step 7
+Depends on: Step 5
 
 Sub-agents: 3
 
-- Agent A (API hardening): `src/middleware/rate-limit.ts`, `src/middleware/idempotency.ts`, route schemas, OpenAPI registry, generated `openapi.json` and `openapi.yaml`
+- Agent A (API hardening): `src/middleware/rate-limit.ts`, `src/middleware/idempotency.ts`, `src/openapi/registry.ts`, `src/openapi/schemas.ts`, generated `openapi.json` and `openapi.yaml`
 - Agent B (SDK Wave 2 resources): remaining resource files (activities, tasks, notes, products, payments, contracts, sequences, sequenceSteps, sequenceEnrollments, sequenceEvents, tags, schema, webhooks, imports), remaining workflow helpers (deal move, enroll/unenroll, object/schema helpers, webhook/import helpers)
 - Agent C (SDK parity harness): parity test matrix across HTTP and direct modes for the full resource surface
 
@@ -219,8 +222,10 @@ Test-first contract (API hardening):
 - Same key + same route + same body replays stored response
 - Same key + different body returns `409 IDEMPOTENCY_CONFLICT`
 - Rate limiting emits documented headers and `Retry-After`
-- OpenAPI generated from route schemas matches real routes
+- `src/openapi/registry.ts` and `src/openapi/schemas.ts` are the source of truth for OpenAPI; `openapi.json` and `openapi.yaml` are derived artifacts only
+- OpenAPI generated from the authoritative route-schema registry matches real routes
 - Final check: API request paths still do not reach migration authority
+- Hosted deployments use the shared rate-limit storage/service boundary; in-memory fallback is only acceptable for the explicitly supported self-hosted/single-node mode
 
 Test-first contract (SDK Wave 2):
 - Resource coverage matches [03-sdk.md](/docs/specs/03-sdk.md)
@@ -232,10 +237,10 @@ Threat model focus: T1-T6 full coverage
 
 Post-step verification: both packages build, typecheck, test green.
 
-### Step 9. SDK Final Parity And Security Gates
+### Step 7. SDK Final Parity And Security Gates
 
 Package: `@orbit-ai/sdk`
-Depends on: Step 8
+Depends on: Step 6
 
 Sub-agents: 1
 
@@ -250,13 +255,14 @@ Test-first contract:
 
 Post-step verification: SDK builds, typechecks, tests green. Full parity matrix passes.
 
-### WAVE GATE 3 (after Step 9)
+### WAVE GATE 3 (after Step 7)
 
 Purpose: final acceptance of both packages as the stable base for CLI and MCP.
 
 Review sub-agents:
 - Independent code review sub-agent (both packages)
 - Independent security review sub-agent (both packages, full T1-T6)
+- Independent tenant safety review (using `orbit-tenant-safety-review` skill)
 - Parity review using `orbit-api-sdk-parity` skill
 - Contract review (generated OpenAPI matches real routes, SDK matches API)
 
@@ -276,10 +282,10 @@ Remediation protocol: same as other gates.
 
 ### Total Agent Dispatches
 
-- ~15 implementation sub-agents across Steps 1-9
-- ~3 test-first sub-agents (Steps 4, 7 pre-write tests for the next step)
-- ~9 review sub-agents across 3 wave gates (3 reviewers x 3 gates)
-- ~27 total sub-agent dispatches
+- ~15 implementation sub-agents across Steps 1-7
+- ~2 test-first sub-agents (Steps 3 and 5 pre-write tests for the next step)
+- ~13 review sub-agents across 3 wave gates
+- ~30 total sub-agent dispatches
 
 ## 6. Verification Layers
 
@@ -316,23 +322,20 @@ This eliminates the core execution pattern of: review -> remediation plan -> rem
 
 ## 7. Skills Required
 
-### Existing skills:
+### Required skills:
 - `orbit-tenant-safety-review` — Wave Gates 1, 2, 3
-- `orbit-schema-change` — available if any step touches schema
-- `orbit-core-slice-review` — not used (core-specific)
-
-### New skill needed:
 - `orbit-api-sdk-parity` — Wave Gates 2 and 3. Validates:
   - SDK resource methods map 1:1 to API routes
   - HTTP and direct transport produce identical envelope/error shapes
   - Secret-bearing reads sanitized in both modes
   - `.response()` and `list().firstPage()` preserve server-owned metadata
+- `orbit-schema-change` — available if any step touches schema
 
 ### Superpowers skills per step:
 - `superpowers:test-driven-development` — every step
 - `superpowers:verification-before-completion` — every step
-- `superpowers:dispatching-parallel-agents` — Steps 4, 5, 7, 8
-- `superpowers:subagent-driven-development` — Steps 4, 7, 8
+- `superpowers:dispatching-parallel-agents` — Steps 3, 4, 5, 6
+- `superpowers:subagent-driven-development` — Steps 3, 4, 5, 6
 - `superpowers:requesting-code-review` — Wave Gates 1, 2, 3
 
 ## 8. Branch Exit Criteria

@@ -1,8 +1,8 @@
 # Orbit AI KB
 
-Date: 2026-04-02
+Date: 2026-04-03
 Status: Active working hub
-Current baseline commit: `b9a3dcd`
+Current baseline commit: `a12f4e4`
 
 ## What Orbit Is
 
@@ -44,6 +44,7 @@ Completed:
 - `@orbit-ai/core` Wave 2 Slice C
 - `@orbit-ai/core` Wave 2 Slice D
 - `@orbit-ai/core` Wave 2 Slice E
+- `@orbit-ai/core` tenant hardening follow-up
 
 Current focus:
 
@@ -52,6 +53,9 @@ Current focus:
 - Core tenant hardening is complete on branch `core-tenant-hardening`: Slice E bootstrap now runs in a transaction, creates schema `orbit`, sets local `search_path` to `orbit, pg_temp`, applies table DDL, applies baseline org-leading indexes for tenant filters and RLS, and applies RLS by default. The pg-mem persistence proofs use `includeRls: false` because pg-mem does not implement RLS DDL. Drift detection tests still prove the shared tenant inventory and RLS coverage stay aligned.
 - An opt-in live Postgres proof now exists at `packages/core/src/adapters/postgres/live-bootstrap.test.ts`, gated by `ORBIT_TEST_POSTGRES_URL` and `ORBIT_TEST_POSTGRES_ALLOW_SCHEMA_RESET=1` because it resets schema `orbit` on a dedicated test database
 - API/SDK execution is now unblocked by the completed Wave 2 merge and tenant hardening; execution order is a product decision rather than a missing-core blocker
+- tenant hardening is now treated as merged into the core baseline; the landed follow-up remains documented in [core-tenant-hardening-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-tenant-hardening-plan.md) and the worker-facing execution record in [2026-04-03-core-tenant-hardening.md](/Users/sharonsciammas/orbit-ai/docs/superpowers/plans/2026-04-03-core-tenant-hardening.md)
+- the next primary package-level track is API execution planning in [api-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/api-implementation-plan.md)
+- SDK execution planning now follows immediately in [sdk-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/sdk-implementation-plan.md), using the API plan as the transport-parity anchor
 - keep execution docs and skills aligned with implementation progress
 
 Not started yet:
@@ -103,6 +107,9 @@ Use these files first:
   - [core-persistence-bridge-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-persistence-bridge-plan.md)
   - [core-postgres-persistence-bridge-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-postgres-persistence-bridge-plan.md)
   - [core-wave-2-services-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-wave-2-services-plan.md)
+  - [core-tenant-hardening-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-tenant-hardening-plan.md)
+  - [api-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/api-implementation-plan.md)
+  - [sdk-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/sdk-implementation-plan.md)
   - [core-wave-1-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-review.md)
   - [core-wave-1-full-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-full-review.md)
   - [core-wave-1-remediation-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-remediation-review.md)
@@ -129,10 +136,14 @@ Immediate next actions:
    - slice 2 on `core-slice-2-execution`
    - Wave 1 service surface committed on `core-wave-1-services`
    - SQLite persistence bridge committed on `core-wave-1-services`
-3. Next:
-   - execute [core-tenant-hardening-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-tenant-hardening-plan.md) on a fresh `core-tenant-hardening` branch
-   - start API/SDK execution planning now that Wave 2 is merged and reviewed
-   - decide whether tenant hardening or API package execution lands first, while keeping both tracked as active next-package work
+3. Package planning baseline now completed:
+   - tenant hardening is treated as merged into the accepted core baseline
+   - [api-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/api-implementation-plan.md) defines the next transport-contract execution track
+   - [sdk-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/sdk-implementation-plan.md) defines the immediate follow-on SDK track anchored to API parity
+4. Next:
+   - execute [api-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/api-implementation-plan.md) on a fresh API branch with package bootstrap, auth, tenant-context, and envelope/error boundaries first
+   - execute [sdk-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/sdk-implementation-plan.md) immediately after the API contract baseline is accepted, keeping route/envelope/error behavior API-owned
+   - keep the repo-local review gates explicit during execution: `orbit-tenant-safety-review`, `orbit-schema-change`, `orbit-core-slice-review`, plus independent code/security sub-agent review passes
 
 ## Open Items
 
@@ -142,7 +153,7 @@ These are still open, but they do not block the KB:
 - raw Postgres support milestone after the first adapter wave
 - public release sequencing across packages
 - contribution and open-source governance docs
-- whether Postgres-family persistence lands before or alongside core Wave 2
+- CLI/MCP primary-track sequencing after API and SDK package baselines are underway
 
 ## Decision Log
 
@@ -198,6 +209,8 @@ These are still open, but they do not block the KB:
 - 2026-04-02: Executed Core Wave 2 Slice E on branch `core-wave-2-slice-e`, covering `system.customFieldDefinitions`, `system.auditLogs`, `system.schemaMigrations`, `system.idempotencyKeys`, final Wave 2 registry wiring, adapter bootstrap for all four entities, and SQLite/Postgres persistence proofs. `auditLogs.before/after`, `schemaMigrations.sqlStatements/rollbackStatements`, and `idempotencyKeys.requestHash/responseBody` are redacted in admin reads. No audit middleware, idempotency middleware, or schema-engine execution was pulled forward.
 - 2026-04-03: Created [core-tenant-hardening-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-tenant-hardening-plan.md) to execute the deferred Postgres RLS DDL, org-leading tenant index review, and shared table-name allowlist assertions as a separate follow-up after Wave 2.
 - 2026-04-03: Executed the core tenant hardening plan on branch `core-tenant-hardening` (Slices A-E): transactional Postgres bootstrap with `orbit` schema creation and `search_path` pinning, table DDL, baseline org-leading indexes for tenant filters/RLS, RLS enabled by default, and drift detection tests. The pg-mem persistence proofs use `includeRls: false` because pg-mem does not implement RLS DDL. Review artifact at [core-tenant-hardening-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-tenant-hardening-review.md).
+- 2026-04-03: Reviewed and revised the worker-facing tenant-hardening implementation plan in [2026-04-03-core-tenant-hardening.md](/Users/sharonsciammas/orbit-ai/docs/superpowers/plans/2026-04-03-core-tenant-hardening.md) so it now matches the accepted execution baseline: idempotent RLS policy DDL, migration-authority-only bootstrap integration, explicit mid-sequence and final tenant-safety review gates, targeted SQLite validation, and fresh independent code/security review passes. The plan is now execution-ready.
+- 2026-04-03: Marked the tenant-hardening follow-up as merged into the accepted core baseline in the KB, and created [api-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/api-implementation-plan.md) plus [sdk-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/sdk-implementation-plan.md) so API is the next package-level track and SDK follows with API as the transport-parity anchor.
 
 ## Working Rule
 

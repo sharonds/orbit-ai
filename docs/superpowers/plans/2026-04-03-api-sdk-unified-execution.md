@@ -4,7 +4,7 @@
 
 **Goal:** Deliver `@orbit-ai/api` and `@orbit-ai/sdk` as the accepted HTTP and client contracts for Orbit AI, using test-first enforcement, safe parallel overlap, and wave-gate reviews.
 
-**Architecture:** A unified execution branch (`api-sdk-execution`) implements both packages in 10 interleaved steps across 3 waves. Each step writes security/contract tests before implementation. SDK bootstrap and transport start after API auth/envelope is review-accepted (Wave Gate 1). SDK resources wait for matching API waves. Three formal review gates replace per-slice remediation cycles.
+**Architecture:** A unified execution branch (`api-sdk-execution`) implements both packages in 10 interleaved tasks across 3 waves. Each task writes security/contract tests before implementation. SDK bootstrap and transport start after API auth/envelope is review-accepted (Wave Gate 1). SDK resources wait for matching API waves. Three formal review gates replace per-slice remediation cycles. Task numbering in this plan is execution-oriented; design-step numbers remain cross-reference IDs only.
 
 **Tech Stack:** TypeScript (strict), Hono (API), Vitest, Zod, `@orbit-ai/core` (services, adapters, types)
 
@@ -12,6 +12,7 @@
 
 **Depends on:**
 - [2026-04-03-api-sdk-execution-design.md](/docs/superpowers/specs/2026-04-03-api-sdk-execution-design.md) (approved design)
+- [core-tenant-hardening-plan.md](/docs/execution/core-tenant-hardening-plan.md) (tenant/security prerequisite)
 - [02-api.md](/docs/specs/02-api.md) (API contract reference)
 - [03-sdk.md](/docs/specs/03-sdk.md) (SDK contract reference)
 - [security-architecture.md](/docs/security/security-architecture.md)
@@ -59,7 +60,8 @@ packages/api/
 │   │   └── imports.ts              — import routes
 │   ├── openapi/
 │   │   ├── registry.ts             — route schema registration (Step 8)
-│   │   └── generator.ts            — OpenAPI JSON/YAML generation (Step 8)
+│   │   ├── schemas.ts              — shared request/response schema definitions
+│   │   └── generator.ts            — OpenAPI JSON/YAML emission from registry (Step 8)
 │   ├── __tests__/
 │   │   ├── create-api.test.ts
 │   │   ├── middleware.test.ts
@@ -163,9 +165,9 @@ git checkout -b api-sdk-execution main
 // packages/api/src/__tests__/create-api.test.ts
 import { describe, it, expect } from 'vitest'
 import { createApi } from '../create-api.js'
-import type { StorageAdapter } from '@orbit-ai/core'
+import type { RuntimeApiAdapter } from '../config.js'
 
-function stubAdapter(): StorageAdapter {
+function stubAdapter(): RuntimeApiAdapter {
   return {
     name: 'sqlite',
     dialect: 'sqlite',
@@ -177,8 +179,6 @@ function stubAdapter(): StorageAdapter {
     users: {} as any,
     connect: async () => {},
     disconnect: async () => {},
-    migrate: async () => {},
-    runWithMigrationAuthority: async () => { throw new Error('migration authority not allowed') },
     lookupApiKeyForAuth: async () => null,
     transaction: async (fn) => fn({} as any),
     execute: async () => ({}),
@@ -295,9 +295,11 @@ export default defineConfig({
 // packages/api/src/config.ts
 import type { StorageAdapter } from '@orbit-ai/core'
 
+export type RuntimeApiAdapter = Omit<StorageAdapter, 'migrate' | 'runWithMigrationAuthority'>
+
 export interface CreateApiOptions {
-  /** Runtime-scoped adapter only. Must not have migration or bypass-RLS credentials. */
-  adapter: StorageAdapter
+  /** Runtime-scoped adapter facade only. Must not expose migration authority. */
+  adapter: RuntimeApiAdapter
   /** Calendar-date API version, e.g. '2026-04-01' */
   version: string
 }
@@ -466,7 +468,7 @@ import type { OrbitAuthContext } from '@orbit-ai/core'
 export interface OrbitApiVariables {
   requestId: string
   orbitVersion: string
-  orbit: OrbitAuthContext
+  orbit: OrbitAuthContext & { userId?: string }
 }
 
 declare module 'hono' {
@@ -573,6 +575,7 @@ function mockAdapter(lookup: ApiKeyAuthLookup | null): StorageAdapter {
 const validKey: ApiKeyAuthLookup = {
   id: 'key_01TEST',
   organizationId: 'org_01TEST',
+  userId: 'user_01TEST',
   scopes: ['contacts:read', 'contacts:write'],
   revokedAt: null,
   expiresAt: null,
@@ -642,15 +645,16 @@ describe('authMiddleware', () => {
     app.use('*', authMiddleware(adapter))
     app.get('/test', (c) => {
       const ctx = c.get('orbit')
-      return c.json({ apiKeyId: ctx.apiKeyId, scopes: ctx.scopes })
+      return c.json({ apiKeyId: ctx.apiKeyId, scopes: ctx.scopes, userId: ctx.userId })
     })
 
     const res = await app.request('/test', {
       headers: { authorization: 'Bearer orbit_live_testkey' },
     })
-    const body = await res.json() as { apiKeyId: string; scopes: string[] }
+    const body = await res.json() as { apiKeyId: string; scopes: string[]; userId?: string }
     expect(body.apiKeyId).toBe('key_01TEST')
     expect(body.scopes).toEqual(['contacts:read', 'contacts:write'])
+    expect(body.userId).toBe('user_01TEST')
   })
 
   it('never calls runWithMigrationAuthority', async () => {
@@ -726,6 +730,7 @@ Expected: FAIL — auth.ts and tenant-context.ts do not exist.
 // packages/api/src/middleware/auth.ts
 import type { MiddlewareHandler } from 'hono'
 import type { StorageAdapter } from '@orbit-ai/core'
+import { OrbitError } from '@orbit-ai/core'
 import '../context.js'
 
 async function hashApiKey(raw: string): Promise<string> {
@@ -740,17 +745,7 @@ export function authMiddleware(adapter: StorageAdapter): MiddlewareHandler {
   return async (c, next) => {
     const auth = c.req.header('authorization')
     if (!auth?.startsWith('Bearer ')) {
-      return c.json(
-        {
-          error: {
-            code: 'AUTH_INVALID_API_KEY',
-            message: 'Missing bearer token',
-            request_id: c.get('requestId'),
-            retryable: false,
-          },
-        },
-        401,
-      )
+      throw new OrbitError({ code: 'AUTH_INVALID_API_KEY', message: 'Missing bearer token', retryable: false })
     }
 
     const raw = auth.slice('Bearer '.length)
@@ -758,17 +753,11 @@ export function authMiddleware(adapter: StorageAdapter): MiddlewareHandler {
     const key = await adapter.lookupApiKeyForAuth(keyHash)
 
     if (!key || key.revokedAt || (key.expiresAt && key.expiresAt < new Date())) {
-      return c.json(
-        {
-          error: {
-            code: 'AUTH_INVALID_API_KEY',
-            message: 'API key is invalid, revoked, or expired',
-            request_id: c.get('requestId'),
-            retryable: false,
-          },
-        },
-        401,
-      )
+      throw new OrbitError({
+        code: 'AUTH_INVALID_API_KEY',
+        message: 'API key is invalid, revoked, or expired',
+        retryable: false,
+      })
     }
 
     c.set('orbit', {
@@ -776,6 +765,7 @@ export function authMiddleware(adapter: StorageAdapter): MiddlewareHandler {
       apiKeyId: key.id,
       scopes: key.scopes,
       requestId: c.get('requestId'),
+      userId: key.userId ?? undefined,
     })
     await next()
   }
@@ -788,6 +778,7 @@ export function authMiddleware(adapter: StorageAdapter): MiddlewareHandler {
 // packages/api/src/middleware/tenant-context.ts
 import type { MiddlewareHandler } from 'hono'
 import type { StorageAdapter } from '@orbit-ai/core'
+import { OrbitError } from '@orbit-ai/core'
 import '../context.js'
 
 const BOOTSTRAP_PATH_PREFIX = '/v1/bootstrap/'
@@ -808,17 +799,11 @@ export function tenantContextMiddleware(adapter: StorageAdapter): MiddlewareHand
     // This prevents silent pass-through without tenant isolation.
     const ctx = c.get('orbit')
     if (!ctx?.orgId) {
-      return c.json(
-        {
-          error: {
-            code: 'AUTH_CONTEXT_REQUIRED',
-            message: 'Tenant context is required for this path',
-            request_id: c.get('requestId'),
-            retryable: false,
-          },
-        },
-        401,
-      )
+      throw new OrbitError({
+        code: 'AUTH_CONTEXT_REQUIRED',
+        message: 'Tenant context is required for this path',
+        retryable: false,
+      })
     }
 
     await adapter.withTenantContext(ctx, async () => {
@@ -833,23 +818,18 @@ export function tenantContextMiddleware(adapter: StorageAdapter): MiddlewareHand
 ```typescript
 // packages/api/src/scopes.ts
 import type { MiddlewareHandler } from 'hono'
+import { OrbitError } from '@orbit-ai/core'
 import '../context.js'
 
 export function requireScope(scope: string): MiddlewareHandler {
   return async (c, next) => {
     const ctx = c.get('orbit')
     if (!ctx?.scopes) {
-      return c.json(
-        {
-          error: {
-            code: 'AUTH_INSUFFICIENT_SCOPE',
-            message: `Required scope: ${scope}`,
-            request_id: c.get('requestId'),
-            retryable: false,
-          },
-        },
-        403,
-      )
+      throw new OrbitError({
+        code: 'AUTH_INSUFFICIENT_SCOPE',
+        message: `Required scope: ${scope}`,
+        retryable: false,
+      })
     }
 
     const [resource, action] = scope.split(':')
@@ -861,23 +841,19 @@ export function requireScope(scope: string): MiddlewareHandler {
       (scope.startsWith('admin:') && ctx.scopes.includes('admin:*'))
 
     if (!hasScope) {
-      return c.json(
-        {
-          error: {
-            code: 'AUTH_INSUFFICIENT_SCOPE',
-            message: `Required scope: ${scope}`,
-            request_id: c.get('requestId'),
-            retryable: false,
-          },
-        },
-        403,
-      )
+      throw new OrbitError({
+        code: 'AUTH_INSUFFICIENT_SCOPE',
+        message: `Required scope: ${scope}`,
+        retryable: false,
+      })
     }
 
     await next()
   }
 }
 ```
+
+All auth, tenant-context, and scope failures must throw `OrbitError` and flow through `errorHandlerMiddleware`; they must not emit ad hoc `c.json({ error: ... })` payloads.
 
 - [ ] **Step 6: Run tests**
 
@@ -1394,11 +1370,15 @@ Focus: auth lookup path uses only `lookupApiKeyForAuth()`, tenant-context bypass
 
 Use `orbit-tenant-safety-review` skill. Focus: tenant-context middleware correctly wraps non-bootstrap paths, auth context flows `orgId` from the adapter lookup.
 
-- [ ] **Step 5: Apply remediation if needed**
+- [ ] **Step 5: Write review artifact**
+
+Create `docs/review/2026-04-03-api-sdk-wave-gate-1.md` with findings, severity, reviewer identity, decision, and remediation status.
+
+- [ ] **Step 6: Apply remediation if needed**
 
 Fix any blocking findings on the same branch. Re-run only the specific reviewer that found the issue.
 
-- [ ] **Step 6: Commit gate acceptance**
+- [ ] **Step 7: Commit gate acceptance**
 
 ```bash
 git commit --allow-empty -m "review: wave gate 1 accepted — auth/envelope contract stable"
@@ -1426,10 +1406,9 @@ import { createCoreServices } from '@orbit-ai/core'
 
 // Minimal mock adapter for route testing
 function routeTestAdapter(): StorageAdapter {
-  // ... same stubAdapter pattern as Task 1, with lookupApiKeyForAuth returning a valid key
-  // This will need to be a real-enough adapter to back createCoreServices
-  // Use the SQLite adapter from core if available, or in-memory stubs
-  return {} as any // placeholder — actual implementation depends on core adapter availability
+  // Use the shared core SQLite test adapter fixture or an equivalent in-memory adapter.
+  // It must support createCoreServices and return a valid auth lookup for the test org.
+  return {} as any
 }
 
 describe('health routes', () => {
@@ -1806,6 +1785,7 @@ git commit -m "feat(api): step 4b — generic public entity routes for Wave 1"
 // packages/sdk/src/__tests__/client.test.ts
 import { describe, it, expect } from 'vitest'
 import { OrbitClient } from '../client.js'
+import { OrbitClient as PublicOrbitClient } from '../index.js'
 
 describe('OrbitClient', () => {
   it('instantiates in API mode with apiKey and baseUrl', () => {
@@ -1817,6 +1797,7 @@ describe('OrbitClient', () => {
     expect(client.contacts).toBeDefined()
     expect(client.companies).toBeDefined()
     expect(client.deals).toBeDefined()
+    expect(PublicOrbitClient).toBeDefined()
   })
 
   it('instantiates in direct mode with adapter and context', () => {
@@ -1829,6 +1810,17 @@ describe('OrbitClient', () => {
 
   it('throws if neither apiKey nor adapter is provided', () => {
     expect(() => new OrbitClient({})).toThrow()
+  })
+
+  it('throws if both apiKey and adapter are provided', () => {
+    expect(
+      () =>
+        new OrbitClient({
+          apiKey: 'orbit_live_test',
+          adapter: {} as any,
+          context: { orgId: 'org_01TEST' },
+        }),
+    ).toThrow('exactly one mode')
   })
 })
 ```
@@ -1967,8 +1959,8 @@ export interface OrbitClientOptions {
   baseUrl?: string
   /** Storage adapter for direct mode */
   adapter?: StorageAdapter
-  /** Trusted context for direct mode. Scopes default to ['*'] if omitted. */
-  context?: { userId?: string; orgId: string; scopes?: string[] }
+  /** Trusted context for direct mode. Require orgId; userId is optional. */
+  context?: { userId?: string; orgId: string }
   /** API version header (default: 2026-04-01) */
   version?: string
   /** Request timeout in ms */
@@ -2052,6 +2044,9 @@ export interface OrbitTransport {
 }
 
 export function createTransport(options: OrbitClientOptions): OrbitTransport {
+  if (options.apiKey && options.adapter) {
+    throw new Error('OrbitClient must use exactly one mode: API key or adapter + context')
+  }
   if (options.apiKey) {
     // HTTP transport — implemented in Step 5
     throw new Error('HTTP transport not yet implemented')
@@ -2405,9 +2400,8 @@ export class DirectTransport implements OrbitTransport {
     this.ctx = {
       orgId: options.context.orgId,
       userId: options.context.userId,
-      // Direct mode is operator-trusted context. Scopes default to ['*'] (full access).
-      // If the caller provides explicit scopes, those are used instead.
-      scopes: options.context.scopes ?? ['*'],
+      // Internal trusted scope set. This is not part of OrbitClientOptions.context.
+      scopes: ['*'],
     }
   }
 
@@ -2600,11 +2594,19 @@ pnpm --filter @orbit-ai/api test && pnpm --filter @orbit-ai/api typecheck && pnp
 
 Focus: route-level scope enforcement, SDK transport authority boundaries, HTTP/direct parity.
 
-- [ ] **Step 4: Dispatch contract review**
+- [ ] **Step 4: Dispatch tenant safety review**
 
-Focus: route naming, envelope metadata, pagination consistency.
+Use `orbit-tenant-safety-review` skill. Focus: Wave 1 route tenancy, bootstrap bypass, public/admin separation, and direct-mode tenant-context parity.
 
-- [ ] **Step 5: Apply remediation and commit gate**
+- [ ] **Step 5: Dispatch parity review**
+
+Use `orbit-api-sdk-parity` skill. Focus: route naming, envelope metadata, pagination consistency, and HTTP/direct parity on the accepted Wave 1 surface.
+
+- [ ] **Step 6: Write review artifact**
+
+Create `docs/review/2026-04-03-api-sdk-wave-gate-2.md` with findings, severity, reviewer identity, decision, and remediation status.
+
+- [ ] **Step 7: Apply remediation and commit gate**
 
 ```bash
 git commit --allow-empty -m "review: wave gate 2 accepted — API Wave 1 + SDK transport stable"
@@ -2686,6 +2688,17 @@ describe('ContactResource', () => {
     const pager = contacts.list()
     expect(pager.firstPage).toBeTypeOf('function')
     expect(pager.autoPaginate).toBeTypeOf('function')
+  })
+
+  it('batch() calls /v1/contacts/batch', async () => {
+    const transport = mockTransport()
+    const contacts = new ContactResource(transport)
+    await contacts.batch({ operations: [{ action: 'create', data: { name: 'Jane' } }] })
+    expect(transport.request).toHaveBeenCalledWith({
+      method: 'POST',
+      path: '/v1/contacts/batch',
+      body: { operations: [{ action: 'create', data: { name: 'Jane' } }] },
+    })
   })
 
   it('.context() calls /v1/context/:id', async () => {
@@ -2775,6 +2788,15 @@ export class BaseResource<TRecord, TCreate, TUpdate> {
     return response.data
   }
 
+  async batch(body: Record<string, unknown>): Promise<unknown> {
+    const response = await this.transport.request<unknown>({
+      method: 'POST',
+      path: `${this.basePath}/batch`,
+      body,
+    })
+    return response.data
+  }
+
   response() {
     return {
       create: (input: TCreate) =>
@@ -2791,6 +2813,8 @@ export class BaseResource<TRecord, TCreate, TUpdate> {
         this.transport.rawRequest<{ id: string; deleted: true }>({ method: 'DELETE', path: `${this.basePath}/${id}` }),
       search: (body: Record<string, unknown>) =>
         this.transport.rawRequest<TRecord[]>({ method: 'POST', path: `${this.basePath}/search`, body }),
+      batch: (body: Record<string, unknown>) =>
+        this.transport.rawRequest<unknown>({ method: 'POST', path: `${this.basePath}/batch`, body }),
     }
   }
 }
@@ -3155,6 +3179,16 @@ describe('admin routes', () => {
   })
 })
 
+describe('webhook routes', () => {
+  it('GET /v1/webhooks/:id/deliveries is registered', async () => {
+    // ... test that webhook deliveries are exposed on the dedicated route
+  })
+
+  it('POST /v1/webhooks/:id/redeliver is registered', async () => {
+    // ... test that redelivery is exposed on the dedicated route
+  })
+})
+
 describe('bootstrap routes', () => {
   it('POST /v1/bootstrap/organizations bypasses tenant context', async () => {
     // ... test that withTenantContext is NOT called
@@ -3162,6 +3196,12 @@ describe('bootstrap routes', () => {
 
   it('bootstrap routes require platform:bootstrap scope', async () => {
     // ... test scope enforcement
+  })
+})
+
+describe('organization routes', () => {
+  it('GET and PATCH /v1/organizations/current stay outside the generic entity registry', async () => {
+    // ... test the dedicated current-organization route
   })
 })
 ```
@@ -3192,7 +3232,6 @@ const PUBLIC_ENTITY_CAPABILITIES = {
   sequence_enrollments: { read: true, write: true, batch: false },
   sequence_events: { read: true, write: false, batch: false },
   tags: { read: true, write: true, batch: true },
-  webhooks: { read: true, write: true, batch: false },
   imports: { read: true, write: true, batch: false },
 } as const
 ```
@@ -3283,10 +3322,13 @@ Each route file follows the same pattern as the spec in [02-api.md](/docs/specs/
 
 Key workflow routes (in `packages/api/src/routes/workflows.ts`):
 - `POST /v1/deals/:id/move` — calls `services.deals.move?.(ctx, id, body)` or equivalent
+- `GET /v1/deals/pipeline` — calls `services.deals.pipeline(ctx, query)`
+- `GET /v1/deals/stats` — calls `services.deals.stats(ctx, query)`
 - `POST /v1/sequences/:id/enroll` — calls `services.sequences.enroll?.(ctx, id, body)`
 - `POST /v1/sequence_enrollments/:id/unenroll` — calls `services.sequenceEnrollments.unenroll?.(ctx, id)`
 - `POST /v1/tags/:id/attach` — calls `services.tags.attach?.(ctx, id, body)`
 - `POST /v1/tags/:id/detach` — calls `services.tags.detach?.(ctx, id, body)`
+- `POST /v1/activities/log` — calls `services.activities.log?.(ctx, body)`
 
 Key relationship routes (in `packages/api/src/routes/relationships.ts`):
 - `GET /v1/contacts/:id/timeline`
@@ -3298,13 +3340,28 @@ Key relationship routes (in `packages/api/src/routes/relationships.ts`):
 - `GET /v1/companies/:id/deals`
 - `GET /v1/deals/:id/timeline`
 
+Key organization routes (in `packages/api/src/routes/organizations.ts`):
+- `GET /v1/organizations/current`
+- `PATCH /v1/organizations/current`
+
 Key schema routes (in `packages/api/src/routes/objects.ts`):
 - `GET /v1/objects` — calls `services.schema.listObjects(ctx)`
 - `GET /v1/objects/:type` — calls `services.schema.describeObject(ctx, type)`
 - `POST /v1/objects/:type/fields` — calls `services.schema.addField(ctx, type, body)`
+- `PATCH /v1/objects/:type/fields/:fieldName` — calls `services.schema.updateField(ctx, type, fieldName, body)`
+- `DELETE /v1/objects/:type/fields/:fieldName` — calls `services.schema.deleteField(ctx, type, fieldName)`
 - `POST /v1/schema/migrations/preview` — calls `services.schema.preview(ctx, body)`
 - `POST /v1/schema/migrations/apply` — requires `schema:apply` scope
 - `POST /v1/schema/migrations/:id/rollback` — requires `schema:apply` scope
+
+Key webhook routes (in `packages/api/src/routes/webhooks.ts`):
+- `GET /v1/webhooks`
+- `POST /v1/webhooks`
+- `GET /v1/webhooks/:id`
+- `PATCH /v1/webhooks/:id`
+- `DELETE /v1/webhooks/:id`
+- `GET /v1/webhooks/:id/deliveries`
+- `POST /v1/webhooks/:id/redeliver`
 
 - [ ] **Step 6: Wire all routes into create-api.ts**
 
@@ -3316,6 +3373,8 @@ import { registerOrganizationRoutes } from './routes/organizations.js'
 import { registerWorkflowRoutes } from './routes/workflows.js'
 import { registerRelationshipRoutes } from './routes/relationships.js'
 import { registerObjectRoutes } from './routes/objects.js'
+import { registerWebhookRoutes } from './routes/webhooks.js'
+import { registerImportRoutes } from './routes/imports.js'
 
 registerBootstrapRoutes(app, services)
 registerPublicEntityRoutes(app, services)
@@ -3324,6 +3383,8 @@ registerOrganizationRoutes(app, services)
 registerWorkflowRoutes(app, services)
 registerRelationshipRoutes(app, services)
 registerObjectRoutes(app, services)
+registerWebhookRoutes(app, services)
+registerImportRoutes(app, services)
 ```
 
 - [ ] **Step 7: Run tests and verify**
@@ -3359,13 +3420,14 @@ git commit -m "feat(api): step 7a — Wave 2 routes, admin, bootstrap, workflows
 - Create: `packages/sdk/src/resources/webhooks.ts`
 - Create: `packages/sdk/src/resources/imports.ts`
 - Create: `packages/sdk/src/__tests__/resources-wave2.test.ts`
+- Create: `packages/sdk/src/__tests__/resources-wave2-parity.test.ts`
 - Modify: `packages/sdk/src/client.ts`
 
-All Wave 2 resources follow the same `BaseResource` pattern. Resources with workflow methods (sequences, tags, schema) add custom methods following the same pattern as `DealResource.move()`.
+All Wave 2 resources follow the same `BaseResource` pattern. Resources with workflow methods (sequences, tags, schema) add custom methods following the same pattern as `DealResource.move()`. Batch-capable resources also expose `.batch()` and `.response().batch()` through `BaseResource`. Webhook resources expose both deliveries and redelivery helpers.
 
 - [ ] **Step 1: Write failing tests for Wave 2 resources**
 
-Test that each resource exists, calls the correct API path, returns records (not envelopes), and `.response()` returns raw envelopes.
+Test that each resource exists, calls the correct API path, returns records (not envelopes), and `.response()` returns raw envelopes. Add explicit parity coverage for `batch`, `deals.pipeline`, `deals.stats`, `sequences.enroll`, `sequence_enrollments.unenroll`, `tags.attach/detach`, `webhooks.deliveries/redeliver`, and `schema` helpers.
 
 - [ ] **Step 2: Implement all Wave 2 resource files**
 
@@ -3373,8 +3435,8 @@ Each follows the `BaseResource` pattern. Key additions:
 - `SequenceResource` adds `.enroll(id, body)` and `.unenroll(enrollmentId)`
 - `TagResource` adds `.attach(id, body)` and `.detach(id, body)`
 - `SchemaResource` is standalone (not BaseResource) with `.listObjects()`, `.describeObject()`, `.addField()`, `.updateField()`, `.previewMigration()`
-- `WebhookResource` adds `.deliveries(id)` and `.redeliver(id)`
-- `ImportResource` adds workflow methods as needed
+- `WebhookResource` adds `.deliveries(id)` as `AutoPager<WebhookDeliveryRead>` and `.redeliver(id)` and must preserve delivery-read sanitization
+- `ImportResource` follows the spec-frozen route surface only; no extra helper methods are invented here
 
 - [ ] **Step 3: Update client.ts to wire all resources**
 
@@ -3389,7 +3451,7 @@ pnpm --filter @orbit-ai/sdk test && pnpm --filter @orbit-ai/sdk typecheck && pnp
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/sdk/src/resources/ packages/sdk/src/client.ts packages/sdk/src/__tests__/resources-wave2.test.ts
+git add packages/sdk/src/resources/ packages/sdk/src/client.ts packages/sdk/src/__tests__/resources-wave2.test.ts packages/sdk/src/__tests__/resources-wave2-parity.test.ts
 git commit -m "feat(sdk): step 8b — Wave 2 resources (activities through imports, schema, workflows)"
 ```
 
@@ -3401,6 +3463,7 @@ git commit -m "feat(sdk): step 8b — Wave 2 resources (activities through impor
 - Create: `packages/api/src/middleware/idempotency.ts`
 - Create: `packages/api/src/middleware/rate-limit.ts`
 - Create: `packages/api/src/openapi/registry.ts`
+- Create: `packages/api/src/openapi/schemas.ts`
 - Create: `packages/api/src/openapi/generator.ts`
 - Create: `packages/api/src/__tests__/idempotency.test.ts`
 - Create: `packages/api/src/__tests__/rate-limit.test.ts`
@@ -3448,15 +3511,15 @@ describe('rate limit middleware', () => {
 
 - [ ] **Step 3: Implement idempotency middleware**
 
-Uses `services.system.idempotencyKeys` from core for storage.
+Uses `services.system.idempotencyKeys` from core for storage. Accept or generate `Idempotency-Key` on POST, PATCH, and DELETE, persist request hash plus response body, replay same key/same route/same body, and return `409 IDEMPOTENCY_CONFLICT` for same key/different body. GET remains out of scope.
 
 - [ ] **Step 4: Implement rate-limit middleware**
 
-In-memory token bucket or sliding window per API key.
+Use Upstash Redis first for hosted deployments, with in-memory token bucket fallback only for self-hosted single-node mode. Emit `X-RateLimit-*` headers and `Retry-After` on 429.
 
 - [ ] **Step 5: Implement OpenAPI generation**
 
-Use route schema metadata to generate `openapi.json` and `openapi.yaml` under `packages/api/openapi/`.
+Use `src/openapi/registry.ts` as the source of truth, with shared schemas in `src/openapi/schemas.ts`. `src/openapi/generator.ts` emits `packages/api/openapi/openapi.json` and `packages/api/openapi/openapi.yaml` from that registry. Do not maintain a parallel handwritten OpenAPI source.
 
 - [ ] **Step 6: Wire middleware into create-api.ts**
 
@@ -3507,6 +3570,10 @@ describe('SDK parity matrix', () => {
     // ... verify these are NOT reconstructed client-side
   })
 
+  it('workflow and batch helpers preserve raw envelopes in .response()', async () => {
+    // ... verify batch, move, enroll/unenroll, attach/detach, deliveries, and redeliver helper responses
+  })
+
   it('list().firstPage() preserves cursor metadata', async () => {
     // ... verify meta.next_cursor, meta.has_more come from server
   })
@@ -3548,19 +3615,29 @@ pnpm --filter @orbit-ai/api test && pnpm --filter @orbit-ai/api typecheck && pnp
 
 - [ ] **Step 3: Dispatch independent security review sub-agent** (full T1-T6)
 
-- [ ] **Step 4: Dispatch parity review**
+- [ ] **Step 4: Dispatch tenant safety review**
 
-Use `orbit-api-sdk-parity` skill if created, or dispatch with explicit parity checklist:
+Use `orbit-tenant-safety-review` skill. Focus: final tenant isolation, bootstrap/admin boundaries, and direct-mode tenant-context parity.
+
+- [ ] **Step 5: Dispatch parity review**
+
+Use `orbit-api-sdk-parity` skill. Use the explicit parity checklist below:
 - SDK resource methods map 1:1 to API routes
 - HTTP and direct transport produce identical envelope/error shapes
 - Secret-bearing reads sanitized in both modes
 - `.response()` and `list().firstPage()` preserve server-owned metadata
+- Batch helpers, workflow helpers, and schema helpers preserve canonical paths and envelopes
+- Webhook delivery lists/redelivery preserve sanitized DTOs in both transports
 
-- [ ] **Step 5: Dispatch contract review**
+- [ ] **Step 6: Dispatch contract review**
 
 Verify generated OpenAPI matches real routes and SDK matches API.
 
-- [ ] **Step 6: Apply remediation and commit gate**
+- [ ] **Step 7: Write review artifact**
+
+Create `docs/review/2026-04-03-api-sdk-wave-gate-3.md` with findings, severity, reviewer identity, decision, and remediation status.
+
+- [ ] **Step 8: Apply remediation and commit gate**
 
 ```bash
 git commit --allow-empty -m "review: wave gate 3 accepted — API and SDK ready for CLI and MCP"
@@ -3570,7 +3647,7 @@ git commit --allow-empty -m "review: wave gate 3 accepted — API and SDK ready 
 
 ## Step-to-Task Mapping
 
-The design spec uses Step numbers; this plan uses Task numbers. Mapping:
+The design spec uses Step numbers; this plan uses Task numbers. Wave gates are checkpoints, not implementation steps.
 
 | Design Step | Plan Task(s) | Description |
 |---|---|---|
@@ -3623,6 +3700,10 @@ The following routes from [02-api.md](/docs/specs/02-api.md) section 5 must be a
 - `POST /v1/activities/log` — dedicated workflow endpoint in `routes/workflows.ts`
 - `GET /v1/deals/pipeline` — dedicated route in `routes/workflows.ts`
 - `GET /v1/deals/stats` — dedicated route in `routes/workflows.ts`
+- `GET /v1/organizations/current` and `PATCH /v1/organizations/current` — dedicated route in `routes/organizations.ts`
+- `POST /v1/tags/:id/attach` — dedicated route in `routes/workflows.ts`
+- `POST /v1/tags/:id/detach` — dedicated route in `routes/workflows.ts`
+- `GET /v1/webhooks/:id/deliveries` — dedicated route in `routes/webhooks.ts`
 - `POST /v1/webhooks/:id/redeliver` — dedicated route in `routes/webhooks.ts`
 - `DELETE /v1/objects/:type/fields/:fieldName` — in `routes/objects.ts`
 
@@ -3630,11 +3711,13 @@ The following routes from [02-api.md](/docs/specs/02-api.md) section 5 must be a
 
 The following methods from [03-sdk.md](/docs/specs/03-sdk.md) must be added:
 
-- `ContactResource`: add `import()` and `export()` methods
+- `BaseResource`: add `batch(body)` and `response().batch(body)` for batch-capable entities
+- `DealResource`: add `.pipeline(query)` and `.stats(query)`
 - `SequenceResource`: `.enroll(id, body)` calls `POST /v1/sequences/:id/enroll`
 - `SequenceEnrollmentResource`: `.unenroll(enrollmentId)` calls `POST /v1/sequence_enrollments/:id/unenroll` (NOT on SequenceResource)
+- `TagResource`: add `.attach(id, body)` and `.detach(id, body)`
 - `SchemaResource`: add `deleteField(type, fieldName)`, `applyMigration(body)`, `rollbackMigration(id)`
-- `WebhookResource`: `.deliveries(id)` must return `AutoPager<WebhookDeliveryRead>`, not a bare Promise; add `.redeliver(id, deliveryId)`
+- `WebhookResource`: `.deliveries(id)` must return `AutoPager<WebhookDeliveryRead>`, not a bare Promise; add `.redeliver(id, deliveryId)` and `.response().deliveries(...)`
 
 ### A.4 Webhook URL Validation (T4 SSRF)
 
@@ -3695,11 +3778,7 @@ app.post('/v1/bootstrap/organizations', requireScope('platform:bootstrap'), asyn
 
 The plan's Task 12 OpenAPI generation requires route schemas to exist. During Tasks 5-6 and 10, route registrations should use Zod schemas for request/response shapes. Task 12's OpenAPI generator collects these schemas.
 
-Two approaches (choose during execution):
-1. Use `@hono/zod-openapi` from Task 5 onward — routes use `createRoute()` with embedded schemas
-2. Use a standalone schema registry — routes register schemas in a side map, Task 12 consumes it
-
-Approach 1 is cleaner but requires adding `@hono/zod-openapi` to `package.json` in Task 1. Approach 2 is simpler but produces a less integrated result.
+Use the standalone schema registry approach: routes register schemas in `src/openapi/registry.ts`, shared schema definitions live in `src/openapi/schemas.ts`, and `src/openapi/generator.ts` emits `packages/api/openapi/openapi.json` and `packages/api/openapi/openapi.yaml`. Do not introduce a parallel handwritten OpenAPI source or a second registry implementation.
 
 ### A.8 Sanitization Tests (Required Additions)
 

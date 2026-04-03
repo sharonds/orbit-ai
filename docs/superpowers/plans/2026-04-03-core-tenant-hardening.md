@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Close Postgres-family tenant-isolation gaps by generating RLS DDL, wiring it into bootstrap, establishing a shared tenant-table allowlist with drift assertions, and auditing org-leading indexes.
+**Goal:** Close Postgres-family tenant-isolation gaps by generating idempotent RLS DDL, wiring it into migration-authority bootstrap paths, establishing a shared tenant-table allowlist with drift assertions, and auditing org-leading indexes across accepted schema helpers.
 
-**Architecture:** A new `schema-engine/rls.ts` module generates Postgres RLS SQL from the canonical tenant-table inventory in `tenant-scope.ts`. The Postgres bootstrap path (`adapters/postgres/schema.ts`) applies the generated RLS as part of its baseline provisioning. Drift assertion tests ensure tenant-scope registration, RLS generation, and bootstrap coverage stay in lockstep. Org-leading indexes are added where repository list/search patterns justify them; all other non-org-leading indexes are documented as intentional exceptions.
+**Architecture:** A new `schema-engine/rls.ts` module generates Postgres RLS SQL from the canonical tenant-table inventory in `tenant-scope.ts`. The Postgres bootstrap path (`adapters/postgres/schema.ts`) applies the generated RLS as part of its baseline provisioning through migration-authority code paths only. Drift assertion tests ensure tenant-scope registration, RLS generation, and bootstrap coverage stay in lockstep. Org-leading indexes are added where repository list/search patterns justify them; Postgres and SQLite schema helpers stay aligned anywhere index additions are accepted. All other non-org-leading indexes are documented as intentional exceptions.
 
 **Tech Stack:** TypeScript (strict), Vitest, Drizzle ORM `sql.raw()`, Postgres RLS DDL
 
@@ -48,7 +48,7 @@ These serve pre-tenant cross-org auth lookups via `lookupApiKeyForAuth()` and mu
 - `api_keys_prefix_idx` on (key_prefix)
 - `users_external_auth_idx` on (external_auth_id)
 
-**INTENTIONAL EXCEPTION — FK constraint / parent-scoped navigation (15 indexes):**
+**INTENTIONAL EXCEPTION — FK constraint / parent-scoped navigation (16 indexes):**
 These support FK constraint checks and join navigation where the parent entity is already org-scoped. Under RLS, the planner applies the org filter at the table scan level, and FK references are already constrained to the same org via parent validation. Adding org_id would break FK constraint usage without meaningful query benefit:
 - `contacts_company_idx` on (company_id)
 - `deals_stage_idx` on (stage_id)
@@ -78,7 +78,7 @@ These are used in repository `list` and `search` queries where the primary acces
 - `products_sort_order_idx` → replace with `(organization_id, sort_order)`
 - `audit_logs_occurred_at_idx` → replace with `(organization_id, occurred_at)`
 
-**LOW VALUE — status/low-cardinality without org-scoped list patterns (6 indexes):**
+**LOW VALUE — status/low-cardinality without org-scoped list patterns (5 indexes):**
 These filter on low-cardinality status columns. While repositories always include org_id, the status columns provide minimal selectivity gain over a table scan within the org. RLS already constrains to org. Not worth the write amplification:
 - `payments_status_idx` on (status)
 - `contracts_status_idx` on (status)
@@ -98,7 +98,10 @@ These filter on low-cardinality status columns. While repositories always includ
 **Modified files:**
 - `packages/core/src/repositories/tenant-scope.ts` — Export the canonical inventory for RLS consumption
 - `packages/core/src/adapters/postgres/schema.ts` — Wire RLS DDL into bootstrap; replace 8 indexes with org-leading versions
-- `packages/core/src/adapters/postgres/schema.test.ts` — Assert RLS DDL is part of bootstrap output
+- `packages/core/src/adapters/postgres/schema.test.ts` — Assert RLS DDL is part of bootstrap output and remains idempotent
+- `packages/core/src/adapters/postgres/adapter.test.ts` — Re-prove migration-authority boundaries after RLS bootstrap changes
+- `packages/core/src/adapters/postgres/tenant-context.test.ts` — Re-prove tenant-context behavior stays deny-by-default
+- `packages/core/src/adapters/sqlite/schema.ts` — Keep accepted org-leading index changes aligned with SQLite schema helper output
 - `packages/core/src/schema-engine/engine.ts` — Re-export `generatePostgresRlsSql` from schema-engine barrel (optional, keeps engine.ts as entry)
 
 **Documentation:**
@@ -218,14 +221,7 @@ describe('tenant-table inventory drift detection', () => {
 })
 ```
 
-This test will fail until we export `POSTGRES_TENANT_TABLE_NAMES_FROM_DDL` from schema.ts in Task 3. That's expected — we write the assertion first.
-
-- [ ] **Step 4: Commit the drift assertion tests**
-
-```bash
-git add packages/core/src/repositories/tenant-scope.test.ts
-git commit -m "test(core): add tenant-table allowlist drift assertion tests"
-```
+This test will fail until we export `POSTGRES_TENANT_TABLE_NAMES_FROM_DDL` from schema.ts in Task 3. That's expected. Do not commit this intermediate red state; continue directly into Task 3 and commit only after the drift suite is green.
 
 ---
 
@@ -301,7 +297,7 @@ git commit -m "feat(core): export Postgres bootstrap tenant table names for drif
 - Create: `packages/core/src/schema-engine/rls.ts`
 - Create: `packages/core/src/schema-engine/rls.test.ts`
 
-Implement the RLS SQL generator matching the frozen contract in `01-core.md` lines 1341-1357. This is pure SQL string generation — no execution.
+Implement the RLS SQL generator matching the frozen contract in `01-core.md` lines 1341-1357 while making bootstrap reruns safe. This is pure SQL string generation — no execution.
 
 - [ ] **Step 1: Write the RLS generation tests**
 
@@ -322,9 +318,9 @@ describe('generatePostgresRlsSql', () => {
     expect(statements[0]).toContain('language sql stable')
   })
 
-  it('generates 4 policies per tenant table plus 1 enable-rls statement', () => {
-    // 1 helper function + (27 tables * 5 statements each) = 136
-    expect(statements).toHaveLength(1 + IMPLEMENTED_TENANT_TABLES.length * 5)
+  it('generates idempotent policy DDL per tenant table', () => {
+    // 1 helper function + (27 tables * 9 statements each) = 244
+    expect(statements).toHaveLength(1 + IMPLEMENTED_TENANT_TABLES.length * 9)
   })
 
   it('emits enable-rls for every tenant table', () => {
@@ -335,12 +331,24 @@ describe('generatePostgresRlsSql', () => {
     }
   })
 
-  it('emits select, insert, update, and delete policies for every tenant table', () => {
+  it('emits drop-and-create policy statements for every tenant table', () => {
     for (const table of IMPLEMENTED_TENANT_TABLES) {
       const tableStatements = statements.filter((s) => s.includes(`orbit.${table}`))
-      // enable rls + 4 policies
-      expect(tableStatements).toHaveLength(5)
+      // enable rls + 4 drops + 4 creates
+      expect(tableStatements).toHaveLength(9)
 
+      expect(tableStatements).toContainEqual(
+        expect.stringContaining(`drop policy if exists ${table}_select on orbit.${table}`),
+      )
+      expect(tableStatements).toContainEqual(
+        expect.stringContaining(`drop policy if exists ${table}_insert on orbit.${table}`),
+      )
+      expect(tableStatements).toContainEqual(
+        expect.stringContaining(`drop policy if exists ${table}_update on orbit.${table}`),
+      )
+      expect(tableStatements).toContainEqual(
+        expect.stringContaining(`drop policy if exists ${table}_delete on orbit.${table}`),
+      )
       expect(tableStatements).toContainEqual(
         expect.stringContaining(`create policy ${table}_select on orbit.${table} for select`),
       )
@@ -419,7 +427,7 @@ import { IMPLEMENTED_TENANT_TABLES } from '../repositories/tenant-scope.js'
  * 1. A `current_org_id()` helper function reading the transaction-local
  *    `app.current_org_id` setting
  * 2. `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` for each tenant table
- * 3. Four policies per table: select, insert, update, delete
+ * 3. Four idempotent policy pairs per table: drop-if-exists + create
  *
  * This is pure SQL generation — no execution. The caller is responsible
  * for applying the returned statements through the appropriate adapter.
@@ -434,6 +442,10 @@ export function generatePostgresRlsSql(schema = 'orbit'): string[] {
   for (const table of IMPLEMENTED_TENANT_TABLES) {
     statements.push(
       `alter table ${schema}.${table} enable row level security;`,
+      `drop policy if exists ${table}_select on ${schema}.${table};`,
+      `drop policy if exists ${table}_insert on ${schema}.${table};`,
+      `drop policy if exists ${table}_update on ${schema}.${table};`,
+      `drop policy if exists ${table}_delete on ${schema}.${table};`,
       `create policy ${table}_select on ${schema}.${table} for select using (organization_id = ${schema}.current_org_id());`,
       `create policy ${table}_insert on ${schema}.${table} for insert with check (organization_id = ${schema}.current_org_id());`,
       `create policy ${table}_update on ${schema}.${table} for update using (organization_id = ${schema}.current_org_id()) with check (organization_id = ${schema}.current_org_id());`,
@@ -516,6 +528,19 @@ git add packages/core/src/repositories/tenant-scope.test.ts
 git commit -m "test(core): add RLS-to-inventory drift assertion"
 ```
 
+- [ ] **Step 4: Run the required mid-sequence tenant-safety gate**
+
+This is the mandatory Slice B checkpoint before any bootstrap integration work. If `orbit-tenant-safety-review` is unavailable in the execution environment, run an equivalent separate tenant-safety/security review pass that answers the same review questions.
+
+```bash
+pnpm --filter @orbit-ai/core test
+```
+
+Then run:
+- `orbit-tenant-safety-review`
+
+Expected: no unresolved tenant-isolation findings before proceeding to Task 6
+
 ---
 
 ## Task 6: Wire RLS into Postgres Bootstrap
@@ -523,8 +548,10 @@ git commit -m "test(core): add RLS-to-inventory drift assertion"
 **Files:**
 - Modify: `packages/core/src/adapters/postgres/schema.ts`
 - Modify: `packages/core/src/adapters/postgres/schema.test.ts`
+- Modify: `packages/core/src/adapters/postgres/adapter.test.ts`
+- Modify: `packages/core/src/adapters/postgres/tenant-context.test.ts`
 
-Integrate the RLS DDL into the Postgres bootstrap path so provisioning includes both table/index DDL and RLS policies.
+Integrate the RLS DDL into the Postgres bootstrap path so provisioning includes both table/index DDL and RLS policies. Preserve the accepted authority boundary: schema initialization that applies RLS DDL must remain reachable only through migration-authority paths, not ordinary request-path tenant context.
 
 - [ ] **Step 1: Update schema.ts to include RLS in bootstrap**
 
@@ -566,7 +593,7 @@ export async function initializePostgresWave1Schema(db: OrbitDatabase): Promise<
 
 Apply the same pattern to `initializePostgresWave2SliceASchema`, `initializePostgresWave2SliceBSchema`, `initializePostgresWave2SliceCSchema`, and `initializePostgresWave2SliceDSchema`.
 
-- [ ] **Step 2: Update schema.test.ts to assert RLS coverage**
+- [ ] **Step 2: Update schema.test.ts to assert RLS coverage and bootstrap idempotency**
 
 Replace the existing `schema.test.ts` with:
 
@@ -605,8 +632,8 @@ describe('initializePostgresWave1Schema', () => {
     // Wave 1 has 26 table/index statements
     expect(statements.slice(0, 26).some((s) => s.includes('create table'))).toBe(true)
 
-    // RLS: 1 helper + 27 tables * 5 = 136 statements
-    expect(statements.length).toBe(26 + 1 + IMPLEMENTED_TENANT_TABLES.length * 5)
+    // RLS: 1 helper + 27 tables * 9 = 244 statements
+    expect(statements.length).toBe(26 + 1 + IMPLEMENTED_TENANT_TABLES.length * 9)
     expect(statements[26]).toContain('current_org_id()')
     expect(statements[27]).toContain('enable row level security')
   })
@@ -623,7 +650,7 @@ describe('initializePostgresWave2SliceESchema', () => {
     // RLS helper exists
     expect(statements.some((s) => s.includes('current_org_id()'))).toBe(true)
 
-    // Every tenant table gets enable-rls and 4 policies
+    // Every tenant table gets enable-rls, 4 drop statements, and 4 policies
     for (const table of IMPLEMENTED_TENANT_TABLES) {
       expect(
         statements.some((s) => s.includes(`orbit.${table} enable row level security`)),
@@ -631,7 +658,7 @@ describe('initializePostgresWave2SliceESchema', () => {
       ).toBe(true)
       expect(
         statements.some((s) => s.includes(`${table}_select`)),
-        `missing select policy for ${table}`,
+        `missing select policy lifecycle for ${table}`,
       ).toBe(true)
       expect(
         statements.some((s) => s.includes(`${table}_insert`)),
@@ -659,7 +686,7 @@ describe('initializePostgresWave2SliceESchema', () => {
     ).toBe(false)
   })
 
-  it('bootstrap remains idempotent (CREATE IF NOT EXISTS and CREATE OR REPLACE)', async () => {
+  it('bootstrap remains idempotent (CREATE IF NOT EXISTS, DROP POLICY IF EXISTS, and CREATE OR REPLACE)', async () => {
     const statements = await collectStatements(initializePostgresWave2SliceESchema)
 
     const tableDdl = statements.filter((s) => s.includes('create table'))
@@ -675,19 +702,34 @@ describe('initializePostgresWave2SliceESchema', () => {
     // RLS helper uses CREATE OR REPLACE
     const helperFn = statements.find((s) => s.includes('current_org_id'))!
     expect(helperFn).toContain('create or replace function')
+
+    // Policies are dropped before they are recreated
+    for (const table of IMPLEMENTED_TENANT_TABLES) {
+      expect(
+        statements.some((s) => s.includes(`drop policy if exists ${table}_select on orbit.${table}`)),
+      ).toBe(true)
+    }
   })
 })
 ```
 
-- [ ] **Step 3: Run the schema tests**
+- [ ] **Step 3: Extend authority-boundary proof coverage**
+
+Update `packages/core/src/adapters/postgres/adapter.test.ts` and `packages/core/src/adapters/postgres/tenant-context.test.ts` so the branch explicitly proves:
+
+- schema initialization paths that emit RLS DDL still require migration authority
+- request-path tenant-context helpers do not gain any way to execute bootstrap SQL
+- deny-by-default tenant behavior is unchanged when no current org is set
+
+- [ ] **Step 4: Run the schema and authority tests**
 
 ```bash
-pnpm --filter @orbit-ai/core test -- src/adapters/postgres/schema.test.ts
+pnpm --filter @orbit-ai/core test -- src/adapters/postgres/schema.test.ts src/adapters/postgres/adapter.test.ts src/adapters/postgres/tenant-context.test.ts
 ```
 
 Expected: All tests pass
 
-- [ ] **Step 4: Run full test suite**
+- [ ] **Step 5: Run full test suite**
 
 ```bash
 pnpm --filter @orbit-ai/core test
@@ -695,10 +737,10 @@ pnpm --filter @orbit-ai/core test
 
 Expected: All tests pass
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add packages/core/src/adapters/postgres/schema.ts packages/core/src/adapters/postgres/schema.test.ts
+git add packages/core/src/adapters/postgres/schema.ts packages/core/src/adapters/postgres/schema.test.ts packages/core/src/adapters/postgres/adapter.test.ts packages/core/src/adapters/postgres/tenant-context.test.ts
 git commit -m "feat(core): wire RLS DDL into Postgres bootstrap path"
 ```
 
@@ -708,12 +750,13 @@ git commit -m "feat(core): wire RLS DDL into Postgres bootstrap path"
 
 **Files:**
 - Modify: `packages/core/src/adapters/postgres/schema.ts`
+- Modify: `packages/core/src/adapters/sqlite/schema.ts`
 
-Replace 8 non-org-leading indexes with org-leading composites where repository list/search patterns justify the change. See the Index Audit Summary above for the full classification.
+Replace 8 non-org-leading indexes with org-leading composites where repository list/search patterns justify the change. Keep Postgres and SQLite schema helpers aligned anywhere these accepted index changes appear. See the Index Audit Summary above for the full classification.
 
 - [ ] **Step 1: Replace the 8 indexes in the DDL statements**
 
-In `packages/core/src/adapters/postgres/schema.ts`, make these replacements:
+In `packages/core/src/adapters/postgres/schema.ts` and the analogous statement arrays in `packages/core/src/adapters/sqlite/schema.ts`, make these replacements:
 
 **In POSTGRES_WAVE_1_SCHEMA_STATEMENTS:**
 
@@ -803,12 +846,12 @@ With:
 pnpm --filter @orbit-ai/core test
 ```
 
-Expected: All tests pass. The Wave 1 schema test will still pass because the statement count hasn't changed — we replaced indexes, not added new ones.
+Expected: All tests pass. The schema tests will still pass because the statement count hasn't changed — the plan replaces indexes rather than adding new ones.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add packages/core/src/adapters/postgres/schema.ts
+git add packages/core/src/adapters/postgres/schema.ts packages/core/src/adapters/sqlite/schema.ts
 git commit -m "feat(core): replace 8 indexes with org-leading composites for tenant query patterns"
 ```
 
@@ -818,8 +861,10 @@ git commit -m "feat(core): replace 8 indexes with org-leading composites for ten
 
 **Files:**
 - Modify: `packages/core/src/adapters/postgres/schema.test.ts`
+- Modify: `packages/core/src/services/sqlite-persistence.test.ts`
+- Modify: `packages/core/src/services/postgres-persistence.test.ts`
 
-Add explicit assertions that the 8 replaced indexes are now org-leading, and that the 3 auth-exception indexes remain non-org-leading.
+Add explicit assertions that the 8 replaced indexes are now org-leading in the emitted schema output, and that the 3 auth-exception indexes remain non-org-leading. Extend persistence proofs as needed so adapter-facing tests cover the changed helper output in both Postgres and SQLite.
 
 - [ ] **Step 1: Add index audit assertions**
 
@@ -860,18 +905,22 @@ describe('org-leading index audit', () => {
 })
 ```
 
-- [ ] **Step 2: Run tests**
+- [ ] **Step 2: Extend persistence proofs where needed**
+
+Update `packages/core/src/services/postgres-persistence.test.ts` and `packages/core/src/services/sqlite-persistence.test.ts` if existing integrated coverage needs explicit assertions around the hardened indexes or RLS-aware bootstrap setup.
+
+- [ ] **Step 3: Run tests**
 
 ```bash
-pnpm --filter @orbit-ai/core test -- src/adapters/postgres/schema.test.ts
+pnpm --filter @orbit-ai/core test -- src/adapters/postgres/schema.test.ts src/services/postgres-persistence.test.ts src/services/sqlite-persistence.test.ts
 ```
 
 Expected: All tests pass
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add packages/core/src/adapters/postgres/schema.test.ts
+git add packages/core/src/adapters/postgres/schema.test.ts packages/core/src/services/postgres-persistence.test.ts packages/core/src/services/sqlite-persistence.test.ts
 git commit -m "test(core): add org-leading index audit assertions"
 ```
 
@@ -890,7 +939,15 @@ pnpm --filter @orbit-ai/core test
 
 Expected: All tests pass
 
-- [ ] **Step 2: Run typecheck**
+- [ ] **Step 2: Run targeted SQLite validation**
+
+```bash
+pnpm --filter @orbit-ai/core test -- src/adapters/sqlite
+```
+
+Expected: All SQLite adapter tests pass, confirming SQLite behavior remains unchanged apart from accepted schema-helper parity
+
+- [ ] **Step 3: Run typecheck**
 
 ```bash
 pnpm --filter @orbit-ai/core typecheck
@@ -898,7 +955,7 @@ pnpm --filter @orbit-ai/core typecheck
 
 Expected: exit 0
 
-- [ ] **Step 3: Run build**
+- [ ] **Step 4: Run build**
 
 ```bash
 pnpm --filter @orbit-ai/core build
@@ -906,7 +963,7 @@ pnpm --filter @orbit-ai/core build
 
 Expected: exit 0
 
-- [ ] **Step 4: Check for whitespace/diff issues**
+- [ ] **Step 5: Check for whitespace/diff issues**
 
 ```bash
 git diff --check
@@ -936,9 +993,9 @@ Scope: [core-tenant-hardening-plan.md](/docs/execution/core-tenant-hardening-pla
 ## What Landed
 
 1. **Shared tenant-table allowlist** — drift assertion tests enforce lockstep between `tenant-scope.ts`, Postgres bootstrap DDL, and RLS generation
-2. **Postgres RLS DDL generator** — `schema-engine/rls.ts` generates `current_org_id()` helper + 4 policies per tenant table for all 27 tenant tables
-3. **Bootstrap integration** — all Postgres wave bootstrap functions now emit RLS DDL after table/index DDL
-4. **Org-leading index hardening** — 8 indexes replaced with org-leading composites for list/search access patterns
+2. **Postgres RLS DDL generator** — `schema-engine/rls.ts` generates `current_org_id()` helper plus idempotent drop-and-create policy DDL for all 27 tenant tables
+3. **Bootstrap integration** — all Postgres wave bootstrap functions now emit RLS DDL after table/index DDL, with authority-boundary proofs re-run
+4. **Org-leading index hardening** — 8 indexes replaced with org-leading composites for list/search access patterns in accepted Postgres/SQLite schema helpers
 
 ## Index Audit Summary
 
@@ -957,7 +1014,7 @@ Scope: [core-tenant-hardening-plan.md](/docs/execution/core-tenant-hardening-pla
 - `api_keys_prefix_idx` on (key_prefix) — cross-tenant auth lookup
 - `users_external_auth_idx` on (external_auth_id) — cross-tenant auth lookup
 
-### Intentional exceptions — FK/parent-scoped (15):
+### Intentional exceptions — FK/parent-scoped (16):
 - `contacts_company_idx`, `deals_stage_idx`, `deals_pipeline_idx`, `deals_contact_idx`, `deals_company_idx`
 - `activities_contact_idx`, `activities_deal_idx`, `activities_company_idx`
 - `notes_contact_idx`, `notes_deal_idx`
@@ -967,7 +1024,7 @@ Scope: [core-tenant-hardening-plan.md](/docs/execution/core-tenant-hardening-pla
 
 Rationale: These support FK constraint checks and join navigation. The parent entity is already org-scoped, and RLS applies at the table scan level. Org-leading would break FK usage.
 
-### Low-value — not replaced (6):
+### Low-value — not replaced (5):
 - `payments_status_idx`, `contracts_status_idx`, `webhooks_status_idx` — low cardinality
 - `webhook_deliveries_next_attempt_idx` — background retry scan
 - `schema_migrations_applied_at_idx` — low query volume
@@ -981,14 +1038,14 @@ Rationale: These support FK constraint checks and join navigation. The parent en
 - No Supabase/Neon-specific specialization
 - SQLite remains application-enforced only
 - Explicit repository org filters preserved (RLS is defense in depth)
-- Runtime/migration authority boundary unchanged
+- No runtime authority widening; schema initialization still requires migration authority
 
 ## Security Review Questions
 
 1. **Does every implemented tenant table receive RLS coverage?** Yes — 27/27, verified by drift assertions
 2. **Can request-path code bypass tenant isolation?** No — `withTenantContext` still required, RLS adds database-layer enforcement
 3. **Does the allowlist make missing registration a test failure?** Yes — three-way drift assertions
-4. **Did bootstrap changes widen migration authority?** No — RLS DDL executes through the same `db.execute(sql.raw())` path
+4. **Did bootstrap changes widen migration authority?** No — adapter and tenant-context proof coverage was extended so RLS-applying initialization remains migration-authority only
 5. **Are new indexes justified?** Yes — 8 indexes tied to list/search repository patterns; 24 exceptions documented
 ```
 
@@ -1003,7 +1060,7 @@ Update the "Current focus" section to reflect tenant hardening is complete.
 
 Add to the Decision Log:
 ```
-- 2026-04-03: Executed the tenant hardening follow-up on branch `core-tenant-hardening`, adding Postgres RLS DDL generation for all 27 tenant tables, three-way allowlist drift assertions, bootstrap RLS integration, and 8 org-leading index replacements. 24 non-org-leading indexes documented as intentional exceptions (3 auth lookups, 15 FK/parent-scoped, 6 low-value).
+- 2026-04-03: Executed the tenant hardening follow-up on branch `core-tenant-hardening`, adding Postgres RLS DDL generation for all 27 tenant tables, three-way allowlist drift assertions, bootstrap RLS integration, and 8 org-leading index replacements. 24 non-org-leading indexes documented as intentional exceptions (3 auth lookups, 16 FK/parent-scoped, 5 low-value).
 ```
 
 - [ ] **Step 3: Commit**
@@ -1033,12 +1090,20 @@ Focus: bootstrap SQL changes, generated policy behavior
 
 - [ ] **Step 4: Run independent code review**
 
-Use `feature-dev:code-reviewer` sub-agent on the integrated diff
+Use a fresh code-review sub-agent on the integrated diff. Do not reuse an implementation agent for this pass.
 
-- [ ] **Step 5: Address any blocking findings and re-run validation**
+- [ ] **Step 5: Run independent security review**
+
+Use a fresh security-review sub-agent on the integrated diff. Do not reuse an implementation agent for this pass. If repo-local review skills are unavailable, this explicit pass is still required.
+
+- [ ] **Step 6: Address any blocking findings and re-run validation**
 
 ```bash
-pnpm --filter @orbit-ai/core test && pnpm --filter @orbit-ai/core typecheck && pnpm --filter @orbit-ai/core build && git diff --check
+pnpm --filter @orbit-ai/core test
+pnpm --filter @orbit-ai/core test -- src/adapters/sqlite
+pnpm --filter @orbit-ai/core typecheck
+pnpm --filter @orbit-ai/core build
+git diff --check
 ```
 
 ---
@@ -1048,10 +1113,10 @@ pnpm --filter @orbit-ai/core test && pnpm --filter @orbit-ai/core typecheck && p
 From the hardening plan section 12:
 
 - [ ] All 27 Postgres-family tenant tables have generated RLS SQL coverage
-- [ ] Postgres bootstrap applies RLS SQL as part of the tested baseline
+- [ ] Postgres bootstrap applies idempotent RLS SQL as part of the tested baseline
 - [ ] Shared tenant-table allowlist assertion prevents drift across hardening layers
 - [ ] Org-leading index gaps are either fixed (8) or documented as exceptions (24)
 - [ ] Runtime repositories still include explicit org filters
-- [ ] Adapter authority boundaries remain intact
+- [ ] Adapter authority boundaries remain intact and are re-proved in tests
 - [ ] Full core test, typecheck, build, and diff checks pass
 - [ ] Core review and security review report no unresolved blocking findings
