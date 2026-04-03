@@ -518,3 +518,34 @@ export async function applyPostgresRlsDdl(db: OrbitDatabase): Promise<void> {
     await db.execute(sql.raw(statement))
   }
 }
+
+const ORG_LEADING_INDEX_STATEMENTS = [
+  'create index if not exists api_keys_org_idx on api_keys (organization_id)',
+  'create index if not exists stages_org_idx on stages (organization_id)',
+  'create index if not exists deals_org_idx on deals (organization_id)',
+  'create index if not exists activities_org_idx on activities (organization_id)',
+  'create index if not exists tasks_org_idx on tasks (organization_id)',
+  'create index if not exists notes_org_idx on notes (organization_id)',
+  'create index if not exists products_org_idx on products (organization_id)',
+  'create index if not exists contracts_org_idx on contracts (organization_id)',
+  'create index if not exists sequence_steps_org_idx on sequence_steps (organization_id)',
+  'create index if not exists sequence_enrollments_org_idx on sequence_enrollments (organization_id)',
+  'create index if not exists sequence_events_org_idx on sequence_events (organization_id)',
+  'create index if not exists imports_org_idx on imports (organization_id)',
+  'create index if not exists webhooks_org_idx on webhooks (organization_id)',
+  'create index if not exists webhook_deliveries_org_idx on webhook_deliveries (organization_id)',
+  'create index if not exists schema_migrations_org_idx on schema_migrations (organization_id)',
+] as const
+
+/**
+ * Creates org-leading indexes on tenant tables that lack them.
+ * These indexes improve RLS filter performance and org-scoped list queries.
+ * Tables with existing composite indexes that lead with organization_id are excluded.
+ *
+ * Should only be called from migration-authority paths.
+ */
+export async function applyPostgresOrgLeadingIndexes(db: OrbitDatabase): Promise<void> {
+  for (const statement of ORG_LEADING_INDEX_STATEMENTS) {
+    await db.execute(sql.raw(statement))
+  }
+}

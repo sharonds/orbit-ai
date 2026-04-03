@@ -1,7 +1,7 @@
 import type { SQL } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
-import { initializePostgresWave1Schema, applyPostgresRlsDdl } from './schema.js'
+import { initializePostgresWave1Schema, applyPostgresRlsDdl, applyPostgresOrgLeadingIndexes } from './schema.js'
 
 function render(statement: SQL) {
   return statement.toQuery({
@@ -78,5 +78,28 @@ describe('applyPostgresRlsDdl', () => {
     // Verify last statement is for the last tenant table (idempotency_keys)
     expect(statements.at(-1)).toContain('idempotency_keys')
     expect(statements.at(-1)).toContain('for delete')
+  })
+})
+
+describe('applyPostgresOrgLeadingIndexes', () => {
+  it('emits org-leading indexes for tables without them', async () => {
+    const statements: string[] = []
+    const db = {
+      async execute(statement: SQL) {
+        statements.push(render(statement).sql)
+      },
+    }
+
+    await applyPostgresOrgLeadingIndexes(db as never)
+
+    expect(statements).toHaveLength(15)
+    // All statements are CREATE INDEX IF NOT EXISTS
+    for (const stmt of statements) {
+      expect(stmt).toMatch(/^create index if not exists \w+_org_idx/)
+      expect(stmt).toContain('(organization_id)')
+    }
+    // Spot check specific tables
+    expect(statements[0]).toContain('api_keys')
+    expect(statements.at(-1)).toContain('schema_migrations')
   })
 })
