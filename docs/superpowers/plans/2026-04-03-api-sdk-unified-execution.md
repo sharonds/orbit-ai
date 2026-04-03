@@ -2608,7 +2608,7 @@ Use `orbit-tenant-safety-review` skill. Focus: Wave 1 route tenancy, bootstrap b
 
 - [ ] **Step 5: Dispatch parity review**
 
-Use `orbit-api-sdk-parity` skill if installed. If unavailable, use this mandatory inline parity checklist:
+Use `orbit-api-sdk-parity` skill. Mandatory parity checklist:
 - SDK resource methods for Wave 1 entities map 1:1 to API routes
 - HTTP and direct transport produce identical envelope shapes for the same operation
 - HTTP and direct transport surface the same typed error codes
@@ -3635,7 +3635,7 @@ Use `orbit-tenant-safety-review` skill. Focus: final tenant isolation, bootstrap
 
 - [ ] **Step 5: Dispatch parity review**
 
-Use `orbit-api-sdk-parity` skill if installed. If unavailable, use this mandatory inline parity checklist:
+Use `orbit-api-sdk-parity` skill. Mandatory parity checklist:
 - SDK resource methods map 1:1 to API routes
 - HTTP and direct transport produce identical envelope/error shapes
 - Secret-bearing reads sanitized in both modes
