@@ -172,7 +172,7 @@ function stubAdapter(): StorageAdapter {
     supportsRls: false,
     supportsBranching: false,
     supportsJsonbIndexes: false,
-    authorityModel: { runtime: true, migration: false },
+    authorityModel: { runtimeAuthority: 'request-scoped', migrationAuthority: 'elevated', requestPathMayUseElevatedCredentials: false, notes: [] },
     unsafeRawDatabase: {} as any,
     users: {} as any,
     connect: async () => {},
@@ -184,7 +184,7 @@ function stubAdapter(): StorageAdapter {
     execute: async () => ({}),
     query: async () => [],
     withTenantContext: async (_ctx, fn) => fn({} as any),
-    getSchemaSnapshot: async () => ({ tables: [], version: '' }),
+    getSchemaSnapshot: async () => ({ customFields: [], tables: [] }),
   }
 }
 
@@ -554,7 +554,7 @@ function mockAdapter(lookup: ApiKeyAuthLookup | null): StorageAdapter {
     supportsRls: false,
     supportsBranching: false,
     supportsJsonbIndexes: false,
-    authorityModel: { runtime: true, migration: false },
+    authorityModel: { runtimeAuthority: 'request-scoped', migrationAuthority: 'elevated', requestPathMayUseElevatedCredentials: false, notes: [] },
     unsafeRawDatabase: {} as any,
     users: {} as any,
     connect: async () => {},
@@ -566,7 +566,7 @@ function mockAdapter(lookup: ApiKeyAuthLookup | null): StorageAdapter {
     execute: async () => ({}),
     query: async () => [],
     withTenantContext: async (_ctx, fn) => fn({} as any),
-    getSchemaSnapshot: async () => ({ tables: [], version: '' }),
+    getSchemaSnapshot: async () => ({ customFields: [], tables: [] }),
   }
 }
 
@@ -792,17 +792,33 @@ import '../context.js'
 
 const BOOTSTRAP_PATH_PREFIX = '/v1/bootstrap/'
 
+/** Tenant context bypass allow-list. Only paths in this list skip withTenantContext.
+ *  Update this list AND add a test when adding new platform-boundary route groups. */
+const TENANT_CONTEXT_BYPASS_PREFIXES = ['/v1/bootstrap/'] as const
+
 export function tenantContextMiddleware(adapter: StorageAdapter): MiddlewareHandler {
   return async (c, next) => {
-    if (c.req.path.startsWith(BOOTSTRAP_PATH_PREFIX)) {
+    const isBypass = TENANT_CONTEXT_BYPASS_PREFIXES.some((p) => c.req.path.startsWith(p))
+    if (isBypass) {
       await next()
       return
     }
 
+    // Fail-closed: if auth context is missing on a non-bootstrap path, reject immediately.
+    // This prevents silent pass-through without tenant isolation.
     const ctx = c.get('orbit')
     if (!ctx?.orgId) {
-      await next()
-      return
+      return c.json(
+        {
+          error: {
+            code: 'AUTH_CONTEXT_REQUIRED',
+            message: 'Tenant context is required for this path',
+            request_id: c.get('requestId'),
+            retryable: false,
+          },
+        },
+        401,
+      )
     }
 
     await adapter.withTenantContext(ctx, async () => {
@@ -836,12 +852,13 @@ export function requireScope(scope: string): MiddlewareHandler {
       )
     }
 
+    const [resource, action] = scope.split(':')
     const hasScope =
       ctx.scopes.includes(scope) ||
       ctx.scopes.includes('*') ||
-      (scope.endsWith(':read') && ctx.scopes.includes(scope.replace(':read', ':*'))) ||
-      (scope.endsWith(':write') && ctx.scopes.includes(scope.replace(':write', ':*'))) ||
-      ctx.scopes.includes('admin:*')
+      (resource && ctx.scopes.includes(`${resource}:*`)) ||
+      // admin:* only satisfies admin-prefixed scopes, not public entity scopes
+      (scope.startsWith('admin:') && ctx.scopes.includes('admin:*'))
 
     if (!hasScope) {
       return c.json(
@@ -960,7 +977,7 @@ describe('errorHandlerMiddleware', () => {
     app.use('*', requestIdMiddleware())
     app.use('*', errorHandlerMiddleware())
     app.get('/test', () => {
-      throw new OrbitError('VALIDATION_FAILED', 'Invalid email', { field: 'email' })
+      throw new OrbitError({ code: 'VALIDATION_FAILED', message: 'Invalid email', field: 'email' })
     })
 
     const res = await app.request('/test')
@@ -1088,6 +1105,8 @@ export function toError(
       code,
       message,
       request_id: c.get('requestId'),
+      doc_url: `https://orbit-ai.dev/docs/errors#${code.toLowerCase()}`,
+      retryable: false,
       ...extra,
     },
   }
@@ -1174,8 +1193,35 @@ export function sanitizePublicPage(entity: string, rows: unknown[]): unknown[] {
   return rows.map((row) => sanitizePublicRead(entity, row))
 }
 
+export function toApiKeyRead(record: Record<string, unknown>): Record<string, unknown> {
+  const { keyHash, encryptedKey, ...safe } = record
+  return safe
+}
+
+export function toIdempotencyKeyRead(record: Record<string, unknown>): Record<string, unknown> {
+  const { requestHash, responseBody, ...safe } = record
+  return safe
+}
+
+export function toAuditLogRead(record: Record<string, unknown>): Record<string, unknown> {
+  const REDACTED_SNAPSHOT_FIELDS = ['keyHash', 'encryptedKey', 'secretEncrypted', 'accessTokenEncrypted', 'refreshTokenEncrypted']
+  const sanitizeSnapshot = (snapshot: unknown): unknown => {
+    if (!snapshot || typeof snapshot !== 'object') return snapshot
+    const s = snapshot as Record<string, unknown>
+    return Object.fromEntries(Object.entries(s).filter(([k]) => !REDACTED_SNAPSHOT_FIELDS.includes(k)))
+  }
+  return {
+    ...record,
+    before: sanitizeSnapshot(record.before),
+    after: sanitizeSnapshot(record.after),
+  }
+}
+
 export function sanitizeAdminRead(entity: string, record: unknown): unknown {
   if (entity === 'webhook_deliveries') return toWebhookDeliveryRead(record as Record<string, unknown>)
+  if (entity === 'api_keys') return toApiKeyRead(record as Record<string, unknown>)
+  if (entity === 'idempotency_keys') return toIdempotencyKeyRead(record as Record<string, unknown>)
+  if (entity === 'audit_logs') return toAuditLogRead(record as Record<string, unknown>)
   return sanitizeNestedSensitiveReads(record)
 }
 
@@ -1921,8 +1967,8 @@ export interface OrbitClientOptions {
   baseUrl?: string
   /** Storage adapter for direct mode */
   adapter?: StorageAdapter
-  /** Trusted context for direct mode */
-  context?: { userId?: string; orgId: string }
+  /** Trusted context for direct mode. Scopes default to ['*'] if omitted. */
+  context?: { userId?: string; orgId: string; scopes?: string[] }
   /** API version header (default: 2026-04-01) */
   version?: string
   /** Request timeout in ms */
@@ -2359,6 +2405,9 @@ export class DirectTransport implements OrbitTransport {
     this.ctx = {
       orgId: options.context.orgId,
       userId: options.context.userId,
+      // Direct mode is operator-trusted context. Scopes default to ['*'] (full access).
+      // If the caller provides explicit scopes, those are used instead.
+      scopes: options.context.scopes ?? ['*'],
     }
   }
 
@@ -2381,6 +2430,25 @@ export class DirectTransport implements OrbitTransport {
     }
   }
 
+  /** Entities whose read results must be sanitized (same as the API route layer). */
+  private static readonly SANITIZED_ENTITIES: Record<string, (r: Record<string, unknown>) => unknown> = {
+    webhooks: (r) => {
+      const { secretEncrypted, ...safe } = r
+      return { ...safe, object: 'webhook' }
+    },
+    webhook_deliveries: (r) => {
+      const { payload, signature, idempotencyKey, responseBody, ...safe } = r
+      return { ...safe, object: 'webhook_delivery' }
+    },
+  }
+
+  private sanitizeResult(entity: string, data: unknown): unknown {
+    const sanitizer = DirectTransport.SANITIZED_ENTITIES[entity]
+    if (!sanitizer || !data) return data
+    if (Array.isArray(data)) return data.map((r) => sanitizer(r as Record<string, unknown>))
+    return sanitizer(data as Record<string, unknown>)
+  }
+
   private async dispatch(input: TransportRequest): Promise<unknown> {
     // Route dispatch — maps API paths to core service calls
     // This will be expanded as resource routes are added
@@ -2397,24 +2465,37 @@ export class DirectTransport implements OrbitTransport {
     const service = (this.services as any)[entity]
     if (!service) throw new Error(`Unknown entity: ${entity}`)
 
+    let result: unknown
     if (method === 'GET' && !action) {
-      return service.list(this.ctx, query ?? {})
+      result = await service.list(this.ctx, query ?? {})
+      // Sanitize paginated data arrays
+      if (result && typeof result === 'object' && 'data' in (result as any)) {
+        (result as any).data = this.sanitizeResult(entity!, (result as any).data)
+      }
+      return result
     }
     if (method === 'POST' && !action) {
-      return service.create(this.ctx, body)
+      result = await service.create(this.ctx, body)
+      return this.sanitizeResult(entity!, result)
     }
     if (method === 'GET' && action && action !== 'search') {
-      return service.get(this.ctx, action)
+      result = await service.get(this.ctx, action)
+      return this.sanitizeResult(entity!, result)
     }
     if (method === 'PATCH' && action) {
-      return service.update(this.ctx, action, body)
+      result = await service.update(this.ctx, action, body)
+      return this.sanitizeResult(entity!, result)
     }
     if (method === 'DELETE' && action) {
-      return service.delete(this.ctx, action)
+      await service.delete(this.ctx, action)
       return { id: action, deleted: true }
     }
     if (method === 'POST' && action === 'search') {
-      return service.search(this.ctx, body)
+      result = await service.search(this.ctx, body)
+      if (result && typeof result === 'object' && 'data' in (result as any)) {
+        (result as any).data = this.sanitizeResult(entity!, (result as any).data)
+      }
+      return result
     }
 
     throw new Error(`Unhandled dispatch: ${method} ${path}`)
@@ -2427,7 +2508,7 @@ export class DirectTransport implements OrbitTransport {
       return {
         data: paginated.data,
         meta: {
-          request_id: `req_direct_${Date.now()}`,
+          request_id: `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 26)}`,
           cursor: null,
           next_cursor: paginated.nextCursor ?? null,
           has_more: paginated.hasMore ?? false,
@@ -2440,7 +2521,7 @@ export class DirectTransport implements OrbitTransport {
     return {
       data: data as any,
       meta: {
-        request_id: `req_direct_${Date.now()}`,
+        request_id: `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 26)}`,
         cursor: null,
         next_cursor: null,
         has_more: false,
@@ -3484,6 +3565,152 @@ Verify generated OpenAPI matches real routes and SDK matches API.
 ```bash
 git commit --allow-empty -m "review: wave gate 3 accepted — API and SDK ready for CLI and MCP"
 ```
+
+---
+
+## Step-to-Task Mapping
+
+The design spec uses Step numbers; this plan uses Task numbers. Mapping:
+
+| Design Step | Plan Task(s) | Description |
+|---|---|---|
+| Step 1 | Task 1 | API package bootstrap |
+| Step 2 | Tasks 2-4 | Auth, tenant context, envelope boundary |
+| Wave Gate 1 | Wave Gate 1 | Auth/envelope review |
+| Step 4 (API Agent A) | Tasks 5-6 | API Wave 1 routes |
+| Step 4 (SDK Agent B) | Task 7 | SDK package bootstrap |
+| Step 4 (Agent C) | Task 7a (below) | Pre-write SDK transport parity tests |
+| Step 5 | Task 8 | SDK HTTP + direct transport |
+| Wave Gate 2 | Wave Gate 2 | API Wave 1 + SDK transport review |
+| Step 7 (API Agent A) | Task 10 | API Wave 2 routes |
+| Step 7 (SDK Agent B) | Task 9 | SDK Wave 1 resources |
+| Step 7 (Agent C) | Task 11a (below) | Pre-write idempotency/rate-limit/parity tests |
+| Step 8 (API Agent A) | Task 12 | API contract hardening |
+| Step 8 (SDK Agent B) | Task 11 | SDK Wave 2 resources |
+| Step 9 | Task 13 | SDK final parity |
+| Wave Gate 3 | Wave Gate 3 | Final contract + security review |
+
+---
+
+## Appendix A: Review Findings And Required Corrections
+
+This appendix documents findings from the code review, architecture review, and security review conducted after the initial plan was written. All critical and high fixes have been applied inline above. The items below are additional required corrections that must be applied during execution.
+
+### A.1 Test-First Pre-Write Tasks (Design Compliance)
+
+The design spec requires Agent C in Steps 4 and 7 to pre-write failing tests before the next step's implementation begins. These are mandatory:
+
+**Task 7a: Pre-write SDK transport parity tests** (between Task 7 and Task 8)
+
+Create `packages/sdk/src/__tests__/transport-parity.test.ts` with tests that assert:
+- HTTP and direct transport produce identical envelope shapes for the same operation
+- Direct transport synthesizes same cursor metadata as HTTP mode
+- Both transports surface same typed error codes
+- Direct transport does not call `runWithMigrationAuthority`
+
+These tests MUST be red before Task 8 starts.
+
+**Task 11a: Pre-write idempotency/rate-limit/parity tests** (between Task 11 and Task 12)
+
+Create `packages/api/src/__tests__/idempotency.test.ts` and `packages/api/src/__tests__/rate-limit.test.ts` with the full test-first contracts from the design spec. Also create `packages/sdk/src/__tests__/resources-wave2-parity.test.ts` for Wave 2 parity.
+
+These tests MUST be red before Task 12 starts.
+
+### A.2 Missing API Routes
+
+The following routes from [02-api.md](/docs/specs/02-api.md) section 5 must be added to Task 10:
+
+- `POST /v1/activities/log` — dedicated workflow endpoint in `routes/workflows.ts`
+- `GET /v1/deals/pipeline` — dedicated route in `routes/workflows.ts`
+- `GET /v1/deals/stats` — dedicated route in `routes/workflows.ts`
+- `POST /v1/webhooks/:id/redeliver` — dedicated route in `routes/webhooks.ts`
+- `DELETE /v1/objects/:type/fields/:fieldName` — in `routes/objects.ts`
+
+### A.3 Missing SDK Resource Methods
+
+The following methods from [03-sdk.md](/docs/specs/03-sdk.md) must be added:
+
+- `ContactResource`: add `import()` and `export()` methods
+- `SequenceResource`: `.enroll(id, body)` calls `POST /v1/sequences/:id/enroll`
+- `SequenceEnrollmentResource`: `.unenroll(enrollmentId)` calls `POST /v1/sequence_enrollments/:id/unenroll` (NOT on SequenceResource)
+- `SchemaResource`: add `deleteField(type, fieldName)`, `applyMigration(body)`, `rollbackMigration(id)`
+- `WebhookResource`: `.deliveries(id)` must return `AutoPager<WebhookDeliveryRead>`, not a bare Promise; add `.redeliver(id, deliveryId)`
+
+### A.4 Webhook URL Validation (T4 SSRF)
+
+Webhook create and update MUST NOT go through the generic entity route loop. Instead, dedicate `routes/webhooks.ts` with explicit URL validation:
+
+```typescript
+function validateWebhookUrl(url: string): void {
+  const parsed = new URL(url)
+  if (parsed.protocol !== 'https:') {
+    throw new OrbitError({ code: 'VALIDATION_FAILED', message: 'Webhook URL must use HTTPS' })
+  }
+  // In hosted mode, also reject RFC1918, loopback, and link-local addresses
+  // after DNS resolution. This is enforced at the delivery worker level
+  // but validated at registration time for immediate feedback.
+}
+```
+
+Move `webhooks` out of `PUBLIC_ENTITY_CAPABILITIES` and into its own route registration.
+
+### A.5 Webhook One-Time Secret Exposure
+
+`POST /v1/webhooks` must return the plaintext signing secret exactly once in the create response:
+
+```typescript
+// In routes/webhooks.ts:
+app.post('/v1/webhooks', async (c) => {
+  const body = await c.req.json()
+  validateWebhookUrl(body.url)
+  const created = await services.webhooks.create(c.get('orbit'), body)
+  // One-time secret exposure: include secret in create response only
+  const sanitized = toWebhookRead(created as Record<string, unknown>)
+  return c.json(toEnvelope(c, { ...sanitized, secret: (created as any).signingSecret }), 201)
+})
+```
+
+All subsequent `GET /v1/webhooks/:id` reads use `toWebhookRead()` which strips the secret.
+
+### A.6 Bootstrap Route Body Validation
+
+Replace the `as any` cast in bootstrap routes with explicit Zod validation:
+
+```typescript
+import { z } from 'zod'
+
+const bootstrapOrgSchema = z.object({
+  name: z.string().min(1),
+  // Only fields that the organization create path accepts
+})
+
+app.post('/v1/bootstrap/organizations', requireScope('platform:bootstrap'), async (c) => {
+  const body = bootstrapOrgSchema.parse(await c.req.json())
+  const created = await services.system.organizations.create(body)
+  return c.json(toEnvelope(c, created), 201)
+})
+```
+
+### A.7 OpenAPI Schema Registration
+
+The plan's Task 12 OpenAPI generation requires route schemas to exist. During Tasks 5-6 and 10, route registrations should use Zod schemas for request/response shapes. Task 12's OpenAPI generator collects these schemas.
+
+Two approaches (choose during execution):
+1. Use `@hono/zod-openapi` from Task 5 onward — routes use `createRoute()` with embedded schemas
+2. Use a standalone schema registry — routes register schemas in a side map, Task 12 consumes it
+
+Approach 1 is cleaner but requires adding `@hono/zod-openapi` to `package.json` in Task 1. Approach 2 is simpler but produces a less integrated result.
+
+### A.8 Sanitization Tests (Required Additions)
+
+Add these tests to `packages/api/src/__tests__/sanitization.test.ts`:
+
+- `toApiKeyRead` strips `keyHash` and `encryptedKey` from admin reads
+- `toIdempotencyKeyRead` strips `requestHash` and `responseBody`
+- `toAuditLogRead` strips sensitive fields from `before`/`after` snapshots
+- Audit log containing a webhook `before` state returns sanitized webhook (no `secretEncrypted`)
+- `POST /v1/webhooks` returns `secret` field on 201; `GET /v1/webhooks/:id` does NOT
+- Direct transport webhook list does NOT contain `secretEncrypted`
 
 ---
 
