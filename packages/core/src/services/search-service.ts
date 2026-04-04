@@ -121,15 +121,6 @@ export function createSearchService(deps: {
     }
   }
 
-  const PLURAL_TO_SINGULAR: Record<string, SearchResultRecord['objectType']> = {
-    contacts: 'contact',
-    companies: 'company',
-    deals: 'deal',
-    pipelines: 'pipeline',
-    stages: 'stage',
-    users: 'user',
-  }
-
   function shouldFetch(type: string, object_types: string[] | undefined): boolean {
     if (!object_types?.length) return true
     return object_types.includes(type)

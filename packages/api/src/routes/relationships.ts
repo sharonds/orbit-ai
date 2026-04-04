@@ -22,7 +22,12 @@ function paginationParams(c: Context) {
 }
 
 function assertPaginatedResult(result: unknown, operation: string): asserts result is InternalPaginatedResult<unknown> {
-  if (!result || typeof result !== 'object' || !Array.isArray((result as any).data)) {
+  if (
+    !result ||
+    typeof result !== 'object' ||
+    !Array.isArray((result as any).data) ||
+    typeof (result as any).hasMore !== 'boolean'
+  ) {
     throw new OrbitError({ code: 'INTERNAL_ERROR', message: `${operation} returned unexpected shape` })
   }
 }

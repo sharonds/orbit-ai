@@ -61,4 +61,34 @@ describe('SearchService', () => {
     expect(types.has('company')).toBe(true)
     expect(types.has('contact')).toBe(true)
   })
+
+  it('only fetches requested repos when object_types is specified', async () => {
+    const companiesRepo = mockRepo([{ id: 'company_01', name: 'Acme', updatedAt: new Date() }])
+    const contactsRepo = mockRepo([{ id: 'contact_01', name: 'Alice', status: 'active', updatedAt: new Date() }])
+    const dealsRepo = mockRepo([])
+    const pipelinesRepo = mockRepo([])
+    const stagesRepo = mockRepo([])
+    const usersRepo = mockRepo([])
+
+    const service = createSearchService({
+      companies: companiesRepo as any,
+      contacts: contactsRepo as any,
+      deals: dealsRepo as any,
+      pipelines: pipelinesRepo as any,
+      stages: stagesRepo as any,
+      users: usersRepo as any,
+    })
+
+    await service.search(
+      { orgId: 'org_test', apiKeyId: 'key_test', scopes: ['*'] },
+      { query: '', object_types: ['contacts'] },
+    )
+
+    expect(contactsRepo.search).toHaveBeenCalled()
+    expect(companiesRepo.search).not.toHaveBeenCalled()
+    expect(dealsRepo.search).not.toHaveBeenCalled()
+    expect(pipelinesRepo.search).not.toHaveBeenCalled()
+    expect(stagesRepo.search).not.toHaveBeenCalled()
+    expect(usersRepo.search).not.toHaveBeenCalled()
+  })
 })

@@ -58,3 +58,47 @@ describe('Relationship routes — pagination', () => {
     expect(body.meta.next_cursor).toBeNull()
   })
 })
+
+describe('Relationship routes — limit validation', () => {
+  it('rejects non-numeric limit with 400', async () => {
+    const dealsFn = vi.fn(async () => ({ data: [], hasMore: false, nextCursor: null }))
+    const services = { contacts: { deals: dealsFn } } as unknown as CoreServices
+    const app = createRouteTestApp()
+    registerRelationshipRoutes(app, services)
+
+    const res = await app.request('/v1/contacts/contact_01/deals?limit=abc')
+    expect(res.status).toBe(400)
+    const body = await res.json() as any
+    expect(body.error.code).toBe('VALIDATION_FAILED')
+  })
+
+  it('rejects float limit with 400', async () => {
+    const dealsFn = vi.fn(async () => ({ data: [], hasMore: false, nextCursor: null }))
+    const services = { contacts: { deals: dealsFn } } as unknown as CoreServices
+    const app = createRouteTestApp()
+    registerRelationshipRoutes(app, services)
+
+    const res = await app.request('/v1/contacts/contact_01/deals?limit=10.5')
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects limit over 100 with 400', async () => {
+    const dealsFn = vi.fn(async () => ({ data: [], hasMore: false, nextCursor: null }))
+    const services = { contacts: { deals: dealsFn } } as unknown as CoreServices
+    const app = createRouteTestApp()
+    registerRelationshipRoutes(app, services)
+
+    const res = await app.request('/v1/contacts/contact_01/deals?limit=101')
+    expect(res.status).toBe(400)
+  })
+
+  it('rejects limit=0 with 400', async () => {
+    const dealsFn = vi.fn(async () => ({ data: [], hasMore: false, nextCursor: null }))
+    const services = { contacts: { deals: dealsFn } } as unknown as CoreServices
+    const app = createRouteTestApp()
+    registerRelationshipRoutes(app, services)
+
+    const res = await app.request('/v1/contacts/contact_01/deals?limit=0')
+    expect(res.status).toBe(400)
+  })
+})

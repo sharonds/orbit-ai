@@ -255,3 +255,21 @@ describe('Bootstrap routes — success', () => {
     expect(body.data.key).toBe('sk_test_full_key')
   })
 })
+
+describe('Bootstrap routes — malformed JSON', () => {
+  it('returns 400 VALIDATION_FAILED for invalid JSON body', async () => {
+    const services = mockCoreServicesForBootstrap()
+    const app = createRouteTestApp(['platform:bootstrap'])
+    registerBootstrapRoutes(app, services)
+
+    const res = await app.request('/v1/bootstrap/organizations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{ invalid json ',
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: { code: string; hint: string } }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
+    expect(body.error.hint).toBeDefined()
+  })
+})

@@ -52,6 +52,8 @@ export const orbitErrorHandler: ErrorHandler = (err, c) => {
           code: 'VALIDATION_FAILED' as OrbitErrorCode,
           message: 'Request body contains invalid JSON',
           request_id: c.get('requestId'),
+          doc_url: 'https://orbit-ai.dev/docs/errors#validation_failed',
+          hint: 'Ensure the request body is valid JSON',
           retryable: false,
         },
       },
