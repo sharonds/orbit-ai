@@ -26,8 +26,7 @@ const HOSTNAME_DENY_PATTERNS = [
   /^::1$/,
   /^0:0:0:0:0:0:0:1$/,
   /^fe80:/i,   // link-local
-  /^fc00:/i,   // unique-local (fd00: is the commonly used half)
-  /^fd[0-9a-f]{2}:/i,
+  /^f[cd][0-9a-f]{2}:/i,   // fc00::/7 unique-local (covers fc00::/8 + fd00::/8)
   /^metadata\.google\.internal$/i,
 ]
 
@@ -72,7 +71,12 @@ function validateWebhookUrl(url: string): string | null {
 
   // Check IPv4-mapped IPv6 (::ffff:hex:hex → convert to dotted-decimal and re-check)
   const mappedIPv4 = ipv4MappedToIPv4(hostname)
-  if (mappedIPv4 && isPrivateIPv4(mappedIPv4)) {
+  if (mappedIPv4 !== null) {
+    if (isPrivateIPv4(mappedIPv4)) {
+      return 'Webhook URL must not point to private or loopback addresses'
+    }
+  } else if (/::ffff:/i.test(hostname)) {
+    // Unrecognized IPv4-mapped form (e.g. three-group ::ffff:0:7f00:1) — deny conservatively
     return 'Webhook URL must not point to private or loopback addresses'
   }
 
