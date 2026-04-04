@@ -1,20 +1,27 @@
 /**
- * Base entity names used by the OpenAPI generator.
- * Mirrors the 12 base entities from @orbit-ai/core.
+ * Entity names used by the OpenAPI generator.
+ * Matches the public API route surface (PUBLIC_ENTITY_CAPABILITIES + dedicated routes).
  */
 export const BASE_ENTITIES = [
   'contacts',
   'companies',
   'deals',
-  'pipeline_stages',
+  'pipelines',
+  'stages',
+  'users',
   'activities',
+  'tasks',
+  'notes',
   'products',
   'payments',
   'contracts',
-  'channels',
   'sequences',
+  'sequence_steps',
+  'sequence_enrollments',
+  'sequence_events',
   'tags',
-  'notes',
+  'imports',
+  'webhooks',
 ] as const
 
 export type BaseEntityName = (typeof BASE_ENTITIES)[number]

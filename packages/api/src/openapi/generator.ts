@@ -59,7 +59,7 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
         operationId: `get${tag}`,
         tags: [tag],
         parameters: [
-          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', description: 'Orbit prefixed ULID (e.g. contact_01ARZ...)' } },
         ],
         responses: {
           '200': { description: `${singular} details` },
@@ -71,7 +71,7 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
         operationId: `update${tag}`,
         tags: [tag],
         parameters: [
-          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', description: 'Orbit prefixed ULID (e.g. contact_01ARZ...)' } },
         ],
         requestBody: {
           required: true,
@@ -87,7 +87,7 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
         operationId: `delete${tag}`,
         tags: [tag],
         parameters: [
-          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', description: 'Orbit prefixed ULID (e.g. contact_01ARZ...)' } },
         ],
         responses: {
           '204': { description: `${singular} deleted` },
@@ -123,7 +123,7 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
       version: info.version,
       description: info.description ?? 'Orbit AI — CRM infrastructure for AI agents',
     },
-    servers: [{ url: '/v1', description: 'API v1' }],
+    servers: [{ url: '/', description: 'Orbit AI API' }],
     security: [{ bearerAuth: [] }],
     paths,
     components: {
@@ -159,8 +159,16 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
               type: 'object',
               properties: {
                 request_id: { type: 'string' },
-                org_id: { type: 'string' },
-                api_version: { type: 'string' },
+                version: { type: 'string' },
+                cursor: { type: 'string', nullable: true },
+                next_cursor: { type: 'string', nullable: true },
+                has_more: { type: 'boolean' },
+              },
+            },
+            links: {
+              type: 'object',
+              properties: {
+                self: { type: 'string' },
               },
             },
           },
