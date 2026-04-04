@@ -50,4 +50,4 @@ export type { SequenceEnrollmentRecord, CreateSequenceEnrollmentInput, UpdateSeq
 export type { SequenceEventRecord } from './resources/sequence-events.js'
 export type { TagRecord, CreateTagInput, UpdateTagInput } from './resources/tags.js'
 export type { WebhookRecord, CreateWebhookInput, UpdateWebhookInput } from './resources/webhooks.js'
-export type { ImportRecord, CreateImportInput, UpdateImportInput } from './resources/imports.js'
+export type { ImportRecord, CreateImportInput } from './resources/imports.js'
