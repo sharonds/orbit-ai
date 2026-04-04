@@ -13,7 +13,10 @@ export interface ListQuery {
   filter?: Record<string, unknown>
 }
 
+export const SEARCHABLE_OBJECT_TYPES = ['contacts', 'companies', 'deals', 'pipelines', 'stages', 'users'] as const
+export type SearchableObjectType = (typeof SEARCHABLE_OBJECT_TYPES)[number]
+
 export interface SearchQuery extends ListQuery {
   query?: string
-  object_types?: string[]
+  object_types?: SearchableObjectType[]
 }

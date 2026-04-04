@@ -45,6 +45,19 @@ export const orbitErrorHandler: ErrorHandler = (err, c) => {
       status as Parameters<typeof c.json>[1],
     )
   }
+  if (err instanceof SyntaxError && err.message.includes('JSON')) {
+    return c.json(
+      {
+        error: {
+          code: 'VALIDATION_FAILED' as OrbitErrorCode,
+          message: 'Request body contains invalid JSON',
+          request_id: c.get('requestId'),
+          retryable: false,
+        },
+      },
+      400,
+    )
+  }
   return c.json(
     {
       error: {
