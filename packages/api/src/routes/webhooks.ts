@@ -1,8 +1,15 @@
 import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
 import { toEnvelope, toError, toWebhookRead, toWebhookDeliveryRead } from '../responses.js'
+import { requireScope } from '../scopes.js'
 
-/** Deny-list of hostnames and IP patterns that must not be used as webhook targets. */
+/**
+ * Deny-list of hostnames and IP patterns that must not be used as webhook targets.
+ *
+ * NOTE: This is a first-layer defense. For production, webhook delivery workers
+ * should also validate the resolved IP address after DNS lookup to guard against
+ * DNS rebinding, decimal/hex/octal IP encodings, and IPv4-mapped IPv6 addresses.
+ */
 const SSRF_DENY_PATTERNS = [
   /^localhost$/i,
   /^127\.\d+\.\d+\.\d+$/,
@@ -10,7 +17,13 @@ const SSRF_DENY_PATTERNS = [
   /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
   /^192\.168\.\d+\.\d+$/,
   /^169\.254\.\d+\.\d+$/,
-  /^\[?::1\]?$/,
+  /^::1$/,
+  /^0:0:0:0:0:0:0:1$/,
+  /^::ffff:127\.\d+\.\d+\.\d+$/i,
+  /^::ffff:10\.\d+\.\d+\.\d+$/i,
+  /^::ffff:172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/i,
+  /^::ffff:192\.168\.\d+\.\d+$/i,
+  /^::ffff:169\.254\.\d+\.\d+$/i,
   /^0\.0\.0\.0$/,
   /^metadata\.google\.internal$/i,
 ]
@@ -34,7 +47,7 @@ function validateWebhookUrl(url: string): string | null {
 
 export function registerWebhookRoutes(app: Hono, services: CoreServices) {
   // GET /v1/webhooks — list
-  app.get('/v1/webhooks', async (c) => {
+  app.get('/v1/webhooks', requireScope('webhooks:read'), async (c) => {
     const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined
     const cursor = c.req.query('cursor') ?? undefined
     const service = services.webhooks as any
@@ -44,7 +57,7 @@ export function registerWebhookRoutes(app: Hono, services: CoreServices) {
   })
 
   // POST /v1/webhooks — create with URL validation
-  app.post('/v1/webhooks', async (c) => {
+  app.post('/v1/webhooks', requireScope('webhooks:write'), async (c) => {
     const body = await c.req.json()
 
     // Validate webhook URL (HTTPS-only + SSRF protection)
@@ -70,7 +83,7 @@ export function registerWebhookRoutes(app: Hono, services: CoreServices) {
   })
 
   // GET /v1/webhooks/:id — read (sanitized)
-  app.get('/v1/webhooks/:id', async (c) => {
+  app.get('/v1/webhooks/:id', requireScope('webhooks:read'), async (c) => {
     const service = services.webhooks as any
     const record = await service.get(c.get('orbit'), c.req.param('id'))
     if (!record) {
@@ -80,7 +93,7 @@ export function registerWebhookRoutes(app: Hono, services: CoreServices) {
   })
 
   // PATCH /v1/webhooks/:id — update with URL validation
-  app.patch('/v1/webhooks/:id', async (c) => {
+  app.patch('/v1/webhooks/:id', requireScope('webhooks:write'), async (c) => {
     const body = await c.req.json()
 
     // Validate webhook URL if provided (HTTPS-only + SSRF protection)
@@ -100,14 +113,14 @@ export function registerWebhookRoutes(app: Hono, services: CoreServices) {
   })
 
   // DELETE /v1/webhooks/:id
-  app.delete('/v1/webhooks/:id', async (c) => {
+  app.delete('/v1/webhooks/:id', requireScope('webhooks:write'), async (c) => {
     const service = services.webhooks as any
     await service.delete(c.get('orbit'), c.req.param('id'))
     return c.json(toEnvelope(c, { id: c.req.param('id'), deleted: true }))
   })
 
   // GET /v1/webhooks/:id/deliveries — list deliveries for a webhook
-  app.get('/v1/webhooks/:id/deliveries', async (c) => {
+  app.get('/v1/webhooks/:id/deliveries', requireScope('webhooks:read'), async (c) => {
     const deliveriesService = services.system.webhookDeliveries as any
     if (typeof deliveriesService.list !== 'function') {
       return c.json(toError(c, 'INTERNAL_ERROR', 'Webhook deliveries not implemented'), 501)
@@ -124,7 +137,7 @@ export function registerWebhookRoutes(app: Hono, services: CoreServices) {
   })
 
   // POST /v1/webhooks/:id/redeliver — redeliver a webhook
-  app.post('/v1/webhooks/:id/redeliver', async (c) => {
+  app.post('/v1/webhooks/:id/redeliver', requireScope('webhooks:write'), async (c) => {
     const service = services.webhooks as any
     if (typeof service.redeliver !== 'function') {
       return c.json(toError(c, 'INTERNAL_ERROR', 'Webhook redelivery not implemented'), 501)

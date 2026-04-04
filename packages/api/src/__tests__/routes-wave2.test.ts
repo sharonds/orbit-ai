@@ -285,6 +285,53 @@ describe('Webhook dedicated routes', () => {
     const res = await app.request('/v1/webhooks/wh_01/redeliver', { method: 'POST' })
     expect(res.status).toBe(501)
   })
+
+  describe('SSRF protection', () => {
+    const ssrfUrls = [
+      'https://localhost/hook',
+      'https://127.0.0.1/hook',
+      'https://10.0.0.1/hook',
+      'https://172.16.0.1/hook',
+      'https://192.168.1.1/hook',
+      'https://169.254.169.254/latest/meta-data/',
+      'https://0.0.0.0/hook',
+      'https://metadata.google.internal/computeMetadata/v1/',
+    ]
+
+    for (const url of ssrfUrls) {
+      it(`rejects private/loopback URL: ${url}`, async () => {
+        const services = mockWave2CoreServices()
+        const app = createRouteTestApp()
+        registerWebhookRoutes(app, services)
+
+        const res = await app.request('/v1/webhooks', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ url, events: ['contact.created'] }),
+        })
+        expect(res.status).toBe(400)
+        const body = (await res.json()) as { error: { code: string } }
+        expect(body.error.code).toBe('VALIDATION_FAILED')
+      })
+    }
+
+    it('accepts valid public HTTPS URL', async () => {
+      const services = mockWave2CoreServices()
+      ;(services.webhooks as any).create.mockResolvedValueOnce({
+        id: 'wh_03', organization_id: 'org_test', url: 'https://api.example.com/webhook',
+        events: ['contact.created'], status: 'active', description: null,
+      })
+      const app = createRouteTestApp()
+      registerWebhookRoutes(app, services)
+
+      const res = await app.request('/v1/webhooks', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: 'https://api.example.com/webhook', events: ['contact.created'] }),
+      })
+      expect(res.status).toBe(201)
+    })
+  })
 })
 
 // =============================================================================

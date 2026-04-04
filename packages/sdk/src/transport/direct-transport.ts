@@ -28,6 +28,9 @@ export class DirectTransport implements OrbitTransport {
 
   async request<T>(input: TransportRequest): Promise<OrbitEnvelope<T>> {
     try {
+      // Defense-in-depth: wrap in withTenantContext even though core repositories
+      // also call it internally. This ensures RLS session variables are set before
+      // any service code runs, protecting against future repository changes.
       const result = await this.options.adapter!.withTenantContext(this.ctx, async () => {
         return this.dispatch(input)
       })
