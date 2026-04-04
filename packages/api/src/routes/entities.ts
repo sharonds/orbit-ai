@@ -22,7 +22,7 @@ const PUBLIC_ENTITY_CAPABILITIES = {
   sequence_enrollments: { read: true, write: true, batch: false },
   sequence_events: { read: true, write: false, batch: false },
   tags: { read: true, write: true, batch: true },
-  imports: { read: true, write: true, batch: false },
+  // imports: dedicated routes in imports.ts (not in generic entity loop)
 } as const
 
 type PublicEntityName = keyof typeof PUBLIC_ENTITY_CAPABILITIES

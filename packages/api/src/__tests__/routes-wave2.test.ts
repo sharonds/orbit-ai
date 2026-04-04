@@ -88,7 +88,7 @@ function mockWave2CoreServices(): CoreServices {
 
 const WAVE2_ENTITIES = [
   'activities', 'tasks', 'notes', 'products', 'payments',
-  'contracts', 'sequences', 'tags', 'imports',
+  'contracts', 'sequences', 'tags',
 ] as const
 
 describe('Public entity routes — Wave 2', () => {
