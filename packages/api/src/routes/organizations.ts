@@ -1,10 +1,11 @@
 import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
 import { toEnvelope, toError } from '../responses.js'
+import { requireScope } from '../scopes.js'
 
 export function registerOrganizationRoutes(app: Hono, services: CoreServices) {
   // GET /v1/organizations/current — returns current org
-  app.get('/v1/organizations/current', async (c) => {
+  app.get('/v1/organizations/current', requireScope('organizations:read'), async (c) => {
     const ctx = c.get('orbit')
     const service = services.system.organizations as any
     const record = await service.get(ctx, ctx.orgId)
@@ -15,7 +16,7 @@ export function registerOrganizationRoutes(app: Hono, services: CoreServices) {
   })
 
   // PATCH /v1/organizations/current — updates current org
-  app.patch('/v1/organizations/current', async (c) => {
+  app.patch('/v1/organizations/current', requireScope('organizations:write'), async (c) => {
     const ctx = c.get('orbit')
     const service = services.system.organizations as any
     if (typeof service.update !== 'function') {

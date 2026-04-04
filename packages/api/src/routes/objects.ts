@@ -11,7 +11,7 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
   const schema = services.schema as any
 
   // GET /v1/objects — list object types
-  app.get('/v1/objects', async (c) => {
+  app.get('/v1/objects', requireScope('schema:read'), async (c) => {
     if (typeof schema.listObjects !== 'function') {
       return notImplemented(c, 'List object types')
     }
@@ -20,7 +20,7 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
   })
 
   // GET /v1/objects/:type — get object type schema
-  app.get('/v1/objects/:type', async (c) => {
+  app.get('/v1/objects/:type', requireScope('schema:read'), async (c) => {
     if (typeof schema.getObject !== 'function') {
       return notImplemented(c, 'Get object type')
     }
@@ -32,7 +32,7 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
   })
 
   // POST /v1/objects/:type/fields — add a custom field
-  app.post('/v1/objects/:type/fields', async (c) => {
+  app.post('/v1/objects/:type/fields', requireScope('schema:write'), async (c) => {
     if (typeof schema.addField !== 'function') {
       return notImplemented(c, 'Add custom field')
     }
@@ -42,7 +42,7 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
   })
 
   // PATCH /v1/objects/:type/fields/:fieldName — update a custom field
-  app.patch('/v1/objects/:type/fields/:fieldName', async (c) => {
+  app.patch('/v1/objects/:type/fields/:fieldName', requireScope('schema:write'), async (c) => {
     if (typeof schema.updateField !== 'function') {
       return notImplemented(c, 'Update custom field')
     }
@@ -57,7 +57,7 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
   })
 
   // DELETE /v1/objects/:type/fields/:fieldName — delete a custom field
-  app.delete('/v1/objects/:type/fields/:fieldName', async (c) => {
+  app.delete('/v1/objects/:type/fields/:fieldName', requireScope('schema:write'), async (c) => {
     if (typeof schema.deleteField !== 'function') {
       return notImplemented(c, 'Delete custom field')
     }
@@ -68,7 +68,7 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
   // --- Schema migrations ---
 
   // POST /v1/schema/migrations/preview — preview a migration
-  app.post('/v1/schema/migrations/preview', async (c) => {
+  app.post('/v1/schema/migrations/preview', requireScope('schema:read'), async (c) => {
     if (typeof schema.preview !== 'function') {
       return notImplemented(c, 'Schema migration preview')
     }
