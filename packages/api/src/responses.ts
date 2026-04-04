@@ -188,11 +188,11 @@ export function toAuditLogRead(
   record: Record<string, unknown>,
 ): Record<string, unknown> {
   const REDACTED = [
-    'keyHash',
-    'encryptedKey',
-    'secretEncrypted',
-    'accessTokenEncrypted',
-    'refreshTokenEncrypted',
+    'keyHash', 'key_hash',
+    'encryptedKey', 'encrypted_key',
+    'secretEncrypted', 'secret_encrypted',
+    'accessTokenEncrypted', 'access_token_encrypted',
+    'refreshTokenEncrypted', 'refresh_token_encrypted',
   ]
   const sanitizeSnapshot = (s: unknown): unknown => {
     if (!s || typeof s !== 'object') return s

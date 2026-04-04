@@ -22,7 +22,7 @@ const IPV4_DENY_PATTERNS = [
 
 /** Hostname deny patterns (DNS names and IPv6 literals). */
 const HOSTNAME_DENY_PATTERNS = [
-  /^localhost$/i,
+  /^localhost(\..*)?$/i,
   /^::1$/,
   /^0:0:0:0:0:0:0:1$/,
   /^fe80:/i,   // link-local

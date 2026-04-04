@@ -29,7 +29,7 @@ export function registerAdminRoutes(app: Hono, services: CoreServices) {
     const typedRoute = route as AdminEntityRoute
 
     // GET /v1/admin/<entity> — list
-    app.get(`/v1/admin/${route}`, async (c) => {
+    app.get(`/v1/admin/${route}`, requireScope('admin:*'), async (c) => {
       const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined
       const cursor = c.req.query('cursor') ?? undefined
       const service = resolveAdminService(services, serviceKey)
@@ -38,7 +38,7 @@ export function registerAdminRoutes(app: Hono, services: CoreServices) {
     })
 
     // GET /v1/admin/<entity>/:id — get
-    app.get(`/v1/admin/${route}/:id`, async (c) => {
+    app.get(`/v1/admin/${route}/:id`, requireScope('admin:*'), async (c) => {
       const service = resolveAdminService(services, serviceKey)
       const record = await service.get(c.get('orbit'), c.req.param('id'))
       if (!record) return c.json(toError(c, 'RESOURCE_NOT_FOUND', `${route} not found`), 404)

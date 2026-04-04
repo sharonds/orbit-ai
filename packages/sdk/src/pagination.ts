@@ -37,7 +37,7 @@ export class AutoPager<T> {
         query: serializeListQuery(query),
       })
       for (const row of page.data) yield row
-      if (!page.meta.has_more || !page.meta.next_cursor) return
+      if (!page.meta?.has_more || !page.meta?.next_cursor) return
       cursor = page.meta.next_cursor
     }
   }

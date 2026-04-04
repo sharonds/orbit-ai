@@ -10,7 +10,19 @@ export class OrbitApiError extends Error {
   }
 
   static async fromResponse(response: Response): Promise<OrbitApiError> {
-    const body = (await response.json()) as { error: OrbitErrorShape }
-    return new OrbitApiError(body.error, response.status)
+    let errorShape: OrbitErrorShape = {
+      code: 'INTERNAL_ERROR',
+      message: `HTTP ${response.status}`,
+      retryable: response.status >= 500,
+    }
+    try {
+      const body = (await response.json()) as { error?: OrbitErrorShape }
+      if (body.error) {
+        errorShape = body.error
+      }
+    } catch {
+      // Non-JSON response (gateway errors, proxies, etc.)
+    }
+    return new OrbitApiError(errorShape, response.status)
   }
 }

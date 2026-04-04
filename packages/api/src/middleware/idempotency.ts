@@ -32,7 +32,7 @@ export function _resetIdempotencyStore(): void {
 export function idempotencyMiddleware(): MiddlewareHandler {
   return async (c, next) => {
     // Only apply to mutating requests
-    if (c.req.method === 'GET') {
+    if (c.req.method === 'GET' || c.req.method === 'HEAD' || c.req.method === 'OPTIONS') {
       await next()
       return
     }

@@ -74,7 +74,7 @@ export class DirectTransport implements OrbitTransport {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const service = (this.services as any)[entity] as
-      | { list?: Function; create?: Function; get?: Function; update?: Function; delete?: Function; search?: Function }
+      | { list?: Function; create?: Function; get?: Function; update?: Function; delete?: Function; search?: Function; batch?: Function }
       | undefined
     if (!service) throw new Error(`Unknown entity: ${entity}`)
 
@@ -96,6 +96,7 @@ export class DirectTransport implements OrbitTransport {
       return { id: action, deleted: true }
     }
     if (method === 'POST' && action === 'search' && service.search) return service.search(this.ctx, body)
+    if (method === 'POST' && action === 'batch' && typeof service.batch === 'function') return service.batch(this.ctx, body)
 
     throw new Error(`Unhandled dispatch: ${method} ${path}`)
   }
