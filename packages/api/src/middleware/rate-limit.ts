@@ -10,6 +10,7 @@ interface Bucket {
 const buckets = new Map<string, Bucket>()
 const DEFAULT_LIMIT = 100 // requests per window
 const WINDOW_MS = 60 * 1000 // 1 minute
+const MAX_BUCKETS = 10_000
 
 /** Expose the store for testing only. */
 export function _resetRateLimitBuckets(): void {
@@ -36,6 +37,19 @@ export function rateLimitMiddleware(opts?: RateLimitOptions): MiddlewareHandler 
     if (!bucket || now - bucket.lastRefill >= windowMs) {
       bucket = { tokens: limit, lastRefill: now }
       buckets.set(key, bucket)
+
+      // Evict oldest bucket if at capacity
+      if (buckets.size > MAX_BUCKETS) {
+        let oldestKey = ''
+        let oldestTime = Infinity
+        for (const [k, v] of buckets) {
+          if (v.lastRefill < oldestTime) {
+            oldestTime = v.lastRefill
+            oldestKey = k
+          }
+        }
+        if (oldestKey) buckets.delete(oldestKey)
+      }
     }
 
     bucket.tokens -= 1

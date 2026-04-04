@@ -244,6 +244,46 @@ describe('authMiddleware', () => {
   })
 })
 
+// --- Auth edge case tests ---
+
+describe('auth edge cases', () => {
+  it('rejects empty bearer token', async () => {
+    const adapter = createMockAdapter()
+    const app = createAuthApp(adapter)
+
+    const res = await app.request('/test', {
+      headers: { authorization: 'Bearer ' },
+    })
+    expect(res.status).toBe(401)
+    const body = (await res.json()) as { code: string }
+    expect(body.code).toBe('AUTH_INVALID_API_KEY')
+  })
+
+  it('rejects wrong auth scheme', async () => {
+    const adapter = createMockAdapter()
+    const app = createAuthApp(adapter)
+
+    const res = await app.request('/test', {
+      headers: { authorization: 'Token xyz' },
+    })
+    expect(res.status).toBe(401)
+    const body = (await res.json()) as { code: string }
+    expect(body.code).toBe('AUTH_INVALID_API_KEY')
+  })
+
+  it('rejects raw key without Bearer prefix', async () => {
+    const adapter = createMockAdapter()
+    const app = createAuthApp(adapter)
+
+    const res = await app.request('/test', {
+      headers: { authorization: 'sk_test_abc' },
+    })
+    expect(res.status).toBe(401)
+    const body = (await res.json()) as { code: string }
+    expect(body.code).toBe('AUTH_INVALID_API_KEY')
+  })
+})
+
 // --- Tenant context middleware tests ---
 
 describe('tenantContextMiddleware', () => {

@@ -5,6 +5,7 @@ import { createApi } from '../create-api.js'
 import type { RuntimeApiAdapter } from '../config.js'
 import { requestIdMiddleware } from '../middleware/request-id.js'
 import { versionMiddleware } from '../middleware/version.js'
+import { orbitErrorHandler } from '../middleware/error-handler.js'
 import { registerHealthCheck, registerStatusRoute } from '../routes/health.js'
 import { registerSearchRoutes } from '../routes/search.js'
 import { registerContextRoutes } from '../routes/context.js'
@@ -401,6 +402,72 @@ describe('Public entity routes — Wave 1', () => {
       })
     })
   }
+})
+
+// =============================================================================
+// Scope enforcement on entity routes
+// =============================================================================
+
+function createScopedRouteTestApp(scopes: string[]) {
+  const app = new Hono()
+  app.onError(orbitErrorHandler)
+  app.use('*', requestIdMiddleware())
+  app.use('/v1/*', versionMiddleware('2026-04-01'))
+  app.use('/v1/*', async (c, next) => {
+    c.set('orbit', {
+      orgId: 'org_test',
+      apiKeyId: 'key_test',
+      scopes,
+    })
+    await next()
+  })
+  return app
+}
+
+describe('scope enforcement', () => {
+  it('GET /v1/contacts returns 403 without contacts:read scope', async () => {
+    const services = mockEntityCoreServices()
+    const app = createScopedRouteTestApp(['deals:read'])
+    registerPublicEntityRoutes(app, services)
+
+    const res = await app.request('/v1/contacts')
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('AUTH_INSUFFICIENT_SCOPE')
+  })
+
+  it('POST /v1/contacts returns 403 without contacts:write scope', async () => {
+    const services = mockEntityCoreServices()
+    const app = createScopedRouteTestApp(['contacts:read'])
+    registerPublicEntityRoutes(app, services)
+
+    const res = await app.request('/v1/contacts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Test' }),
+    })
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('AUTH_INSUFFICIENT_SCOPE')
+  })
+
+  it('GET /v1/contacts passes with contacts:read scope', async () => {
+    const services = mockEntityCoreServices()
+    const app = createScopedRouteTestApp(['contacts:read'])
+    registerPublicEntityRoutes(app, services)
+
+    const res = await app.request('/v1/contacts')
+    expect(res.status).toBe(200)
+  })
+
+  it('GET /v1/contacts passes with wildcard scope', async () => {
+    const services = mockEntityCoreServices()
+    const app = createScopedRouteTestApp(['*'])
+    registerPublicEntityRoutes(app, services)
+
+    const res = await app.request('/v1/contacts')
+    expect(res.status).toBe(200)
+  })
 })
 
 describe('Non-public entity routes return 404', () => {

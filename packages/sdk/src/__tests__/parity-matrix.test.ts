@@ -140,6 +140,34 @@ describe('SDK parity matrix — pagination', () => {
     expect(page.meta.has_more).toBe(true)
   })
 
+  it('list().autoPaginate() yields records across pages', async () => {
+    const transport = createMockTransport()
+    let callCount = 0
+    ;(transport.request as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      callCount++
+      if (callCount === 1) {
+        return {
+          data: [{ id: '1' }, { id: '2' }],
+          meta: { request_id: 'req_01', cursor: null, next_cursor: 'page2', has_more: true, version: '2026-04-01' },
+          links: { self: '/v1/contacts' },
+        }
+      }
+      return {
+        data: [{ id: '3' }],
+        meta: { request_id: 'req_02', cursor: null, next_cursor: null, has_more: false, version: '2026-04-01' },
+        links: { self: '/v1/contacts' },
+      }
+    })
+    const { ContactResource } = await import('../resources/contacts.js')
+    const contacts = new ContactResource(transport)
+    const records: unknown[] = []
+    for await (const record of contacts.list().autoPaginate()) {
+      records.push(record)
+    }
+    expect(records).toHaveLength(3)
+    expect(records).toEqual([{ id: '1' }, { id: '2' }, { id: '3' }])
+  })
+
   it('list() returns an AutoPager with firstPage and autoPaginate', async () => {
     const transport = createMockTransport()
     const { ContactResource } = await import('../resources/contacts.js')

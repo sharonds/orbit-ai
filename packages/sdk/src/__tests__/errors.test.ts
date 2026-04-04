@@ -32,4 +32,40 @@ describe('OrbitApiError', () => {
     const err = new OrbitApiError(shape, 422)
     expect(err.message).toBe('Name is required')
   })
+
+  describe('fromResponse', () => {
+    it('parses JSON error response', async () => {
+      const response = new Response(
+        JSON.stringify({ error: { code: 'VALIDATION_FAILED', message: 'Bad input', retryable: false } }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      )
+      const err = await OrbitApiError.fromResponse(response)
+      expect(err).toBeInstanceOf(OrbitApiError)
+      expect(err.status).toBe(400)
+      expect(err.error.code).toBe('VALIDATION_FAILED')
+      expect(err.error.message).toBe('Bad input')
+    })
+
+    it('handles non-JSON error responses gracefully', async () => {
+      const response = new Response('<html>Bad Gateway</html>', {
+        status: 502,
+        headers: { 'content-type': 'text/html' },
+      })
+      const err = await OrbitApiError.fromResponse(response)
+      expect(err.status).toBe(502)
+      expect(err.error.code).toBe('INTERNAL_ERROR')
+      expect(err.error.retryable).toBe(true)
+    })
+
+    it('handles empty JSON body without error field', async () => {
+      const response = new Response(JSON.stringify({}), {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      })
+      const err = await OrbitApiError.fromResponse(response)
+      expect(err.status).toBe(500)
+      expect(err.error.code).toBe('INTERNAL_ERROR')
+      expect(err.error.retryable).toBe(true)
+    })
+  })
 })

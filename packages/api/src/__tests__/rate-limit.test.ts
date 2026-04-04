@@ -74,6 +74,38 @@ describe('rate limit middleware', () => {
     expect(ok.status).toBe(200)
   })
 
+  it('resets rate limit after window expires', async () => {
+    const app = createApp(2)
+
+    // Exhaust quota
+    await app.request('/v1/contacts')
+    await app.request('/v1/contacts')
+
+    const limited = await app.request('/v1/contacts')
+    expect(limited.status).toBe(429)
+
+    // Reset buckets to simulate window expiry
+    _resetRateLimitBuckets()
+
+    // After reset, requests should succeed again
+    const res = await app.request('/v1/contacts')
+    expect(res.status).toBe(200)
+    expect(res.headers.get('x-ratelimit-remaining')).toBe('1')
+  })
+
+  it('X-RateLimit-Reset header contains a future unix timestamp', async () => {
+    const app = createApp(10)
+    const nowSec = Math.floor(Date.now() / 1000)
+
+    const res = await app.request('/v1/contacts')
+    const resetHeader = res.headers.get('x-ratelimit-reset')
+    expect(resetHeader).toBeTruthy()
+    const resetTs = Number(resetHeader)
+    // Reset timestamp should be in the future (within the 60s window)
+    expect(resetTs).toBeGreaterThanOrEqual(nowSec)
+    expect(resetTs).toBeLessThanOrEqual(nowSec + 61)
+  })
+
   it('different API keys have independent rate limits', async () => {
     const app = createApp(3)
 

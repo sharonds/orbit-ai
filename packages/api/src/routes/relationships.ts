@@ -21,7 +21,7 @@ export function registerRelationshipRoutes(app: Hono, services: CoreServices) {
   })
 
   // GET /v1/contacts/:id/deals
-  app.get('/v1/contacts/:id/deals', requireScope('contacts:read'), async (c) => {
+  app.get('/v1/contacts/:id/deals', requireScope('contacts:read'), requireScope('deals:read'), async (c) => {
     const service = services.contacts as any
     if (typeof service.deals !== 'function') {
       return notImplemented(c, 'Contact deals')
@@ -31,7 +31,7 @@ export function registerRelationshipRoutes(app: Hono, services: CoreServices) {
   })
 
   // GET /v1/contacts/:id/activities
-  app.get('/v1/contacts/:id/activities', requireScope('contacts:read'), async (c) => {
+  app.get('/v1/contacts/:id/activities', requireScope('contacts:read'), requireScope('activities:read'), async (c) => {
     const service = services.contacts as any
     if (typeof service.activities !== 'function') {
       return notImplemented(c, 'Contact activities')
@@ -41,7 +41,7 @@ export function registerRelationshipRoutes(app: Hono, services: CoreServices) {
   })
 
   // GET /v1/contacts/:id/tasks
-  app.get('/v1/contacts/:id/tasks', requireScope('contacts:read'), async (c) => {
+  app.get('/v1/contacts/:id/tasks', requireScope('contacts:read'), requireScope('tasks:read'), async (c) => {
     const service = services.contacts as any
     if (typeof service.tasks !== 'function') {
       return notImplemented(c, 'Contact tasks')
@@ -51,7 +51,7 @@ export function registerRelationshipRoutes(app: Hono, services: CoreServices) {
   })
 
   // GET /v1/contacts/:id/tags
-  app.get('/v1/contacts/:id/tags', requireScope('contacts:read'), async (c) => {
+  app.get('/v1/contacts/:id/tags', requireScope('contacts:read'), requireScope('tags:read'), async (c) => {
     const service = services.contacts as any
     if (typeof service.tags !== 'function') {
       return notImplemented(c, 'Contact tags')
@@ -63,7 +63,7 @@ export function registerRelationshipRoutes(app: Hono, services: CoreServices) {
   // --- Company relationships ---
 
   // GET /v1/companies/:id/contacts
-  app.get('/v1/companies/:id/contacts', requireScope('companies:read'), async (c) => {
+  app.get('/v1/companies/:id/contacts', requireScope('companies:read'), requireScope('contacts:read'), async (c) => {
     const service = services.companies as any
     if (typeof service.contacts !== 'function') {
       return notImplemented(c, 'Company contacts')
@@ -73,7 +73,7 @@ export function registerRelationshipRoutes(app: Hono, services: CoreServices) {
   })
 
   // GET /v1/companies/:id/deals
-  app.get('/v1/companies/:id/deals', requireScope('companies:read'), async (c) => {
+  app.get('/v1/companies/:id/deals', requireScope('companies:read'), requireScope('deals:read'), async (c) => {
     const service = services.companies as any
     if (typeof service.deals !== 'function') {
       return notImplemented(c, 'Company deals')
