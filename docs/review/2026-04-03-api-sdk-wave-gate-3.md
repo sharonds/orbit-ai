@@ -2,12 +2,12 @@
 
 **Date:** 2026-04-03
 **Branch:** `api-sdk-execution`
-**Scope:** Full implementation (Tasks 1-13) + 7 remediation commits
-**Decision:** ACCEPTED after 6 review rounds
+**Scope:** Full implementation (Tasks 1-13) + 10 remediation commits
+**Decision:** ACCEPTED after 7 review rounds (including 6-agent end-to-end review)
 
 ## Verification (fresh, final)
 
-- API: 207 tests pass, typecheck exit 0, build exit 0
+- API: 207 tests pass, typecheck exit 0, build exit 0 (commit d0daab2)
 - SDK: 164 tests pass, typecheck exit 0, build exit 0
 - **Total: 371 tests, 0 failures**
 
@@ -82,17 +82,38 @@
 7. SSRF: regex+conversion first layer; DNS-resolution needed for production
 8. Wave 2 SDK resources: `any` generics (typed interfaces needed before GA)
 
-## Commits (24)
+## End-to-End Review (6 parallel agents)
+
+| Agent | Focus | Critical | Important | Result |
+|-------|-------|----------|-----------|--------|
+| 1. Middleware | Auth, tenant, error handler, idempotency, rate-limit | 1 (body stream) | 3 (memory, HEAD/OPTIONS) | Fixed |
+| 2. Route scopes | All 12 route files, every handler | 0 | 2 (status no scope, admin wildcard) | Fixed |
+| 3. SSRF + sanitization | Deny-list, bit arithmetic, secret stripping | 0 | 3 (localhost variants, audit snake_case, apiKey spread) | Fixed |
+| 4. SDK transports | Http/Direct transport, error parity | 2 (fromResponse crash, batch missing) | 2 (Bearer undefined, error msg) | Fixed |
+| 5. SDK resources | All 21 resources, paths, types, AutoPager | 0 | 2 (any generics, meta guard) | Fixed |
+| 6. Test coverage | All 19 test files, gap analysis | 0 | 4 (negative scope, auth edge, autoPaginate, rate reset) | Tracked |
+
+### Deferred items (pre-alpha acceptable, documented):
+- Idempotency body stream: Hono caches in Node.js; document Cloudflare/Edge risk
+- Idempotency/rate-limit memory: in-memory MVP; production needs Redis
+- Relationship routes check parent scope only (design decision)
+- `/v1/status` has no scope (intentional — benign status endpoint)
+- Test coverage gaps: negative scope tests, autoPaginate, network errors
+- `toApiKeyRead` rest-spread pattern
+
+## Commits (27)
 
 Implementation (16):
 1-16. See original commit list
 
-Remediation (8):
+Remediation (11):
 17. `5867d45` — WG1: request-id validation + doc_url
 18. `8285099` — WG2: error code map + withTenantContext
 19. `33355f3` — WG3: scope enforcement (entities), SSRF, idempotency body
 20. `ef56eef` — Remediation #1: webhook scopes, IPv6 SSRF patterns, SSRF tests
 21. `07cfc95` — Remediation #2: ipv4MappedToIPv4 hex conversion, IPv6 deny patterns
 22. `3549b28` — Remediation #3: conservative ::ffff: fallback, fc00::/7 consolidation
-23. `452f50d` — Final: scope enforcement on ALL 7 remaining route files
-24. `8b2f0f4` — Final: remove duplicate import routes from generic entity loop
+23. `452f50d` — Scope enforcement on ALL 7 remaining route files
+24. `8b2f0f4` — Remove duplicate import routes from generic entity loop
+25. `a1d87ed` — Updated review artifact
+26. `d0daab2` — 6-agent review fixes: fromResponse, batch dispatch, localhost, audit snake_case, HEAD/OPTIONS, admin per-route scope, AutoPager guard
