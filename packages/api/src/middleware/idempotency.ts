@@ -13,10 +13,6 @@ const store = new Map<string, StoredResponse>()
 const TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 const MAX_STORE_SIZE = 10_000
 
-function hashBody(body: unknown): string {
-  return JSON.stringify(body ?? null)
-}
-
 /** Evict entries older than TTL. */
 function evictExpired(): void {
   const now = Date.now()
@@ -47,7 +43,9 @@ export function idempotencyMiddleware(): MiddlewareHandler {
     // Clean expired entries
     evictExpired()
 
-    const routeKey = `${c.req.method}:${c.req.path}:${key}`
+    // Include orgId in store key to prevent cross-tenant response replay
+    const orgId = c.get('orbit')?.orgId ?? 'unknown'
+    const routeKey = `${orgId}:${c.req.method}:${c.req.path}:${key}`
     const existing = store.get(routeKey)
 
     // Parse JSON body for hash comparison. We call c.req.json() here — the same
@@ -63,7 +61,7 @@ export function idempotencyMiddleware(): MiddlewareHandler {
     } catch {
       // no body or not JSON — that's fine
     }
-    const currentHash = hashBody(bodyText)
+    const currentHash = bodyText || 'null'
 
     if (existing) {
       if (currentHash !== existing.requestHash) {
@@ -97,13 +95,12 @@ export function idempotencyMiddleware(): MiddlewareHandler {
       createdAt: Date.now(),
     })
 
-    // Evict oldest entries if store exceeds max size
+    // Evict oldest entry if store exceeds max size.
+    // Map preserves insertion order and entries are never re-inserted,
+    // so the first key is always the oldest.
     if (store.size > MAX_STORE_SIZE) {
-      const entries = [...store.entries()].sort(
-        (a, b) => a[1].createdAt - b[1].createdAt,
-      )
-      const toEvict = entries.slice(0, store.size - MAX_STORE_SIZE)
-      for (const [key] of toEvict) store.delete(key)
+      const oldest = store.keys().next().value
+      if (oldest) store.delete(oldest)
     }
 
     // Echo the idempotency key in the response
