@@ -2,69 +2,97 @@
 
 **Date:** 2026-04-03
 **Branch:** `api-sdk-execution`
-**Scope:** Full implementation (Tasks 1-13)
-**Decision:** ACCEPTED
+**Scope:** Full implementation (Tasks 1-13) + 7 remediation commits
+**Decision:** ACCEPTED after 6 review rounds
 
-## Verification
+## Verification (fresh, final)
 
-- API: 192 tests pass, typecheck clean, build clean
-- SDK: 164 tests pass, typecheck clean, build clean
-- **Total: 356 tests, 0 failures**
+- API: 207 tests pass, typecheck exit 0, build exit 0
+- SDK: 164 tests pass, typecheck exit 0, build exit 0
+- **Total: 371 tests, 0 failures**
 
-## Reviewers
+## Review Rounds
 
-| Reviewer | Focus | Status |
-|----------|-------|--------|
-| Code + Security Review | Full implementation review | Dispatched |
-| Tenant Safety Review | All routes, transports, scopes | Dispatched |
+| Round | Reviewers | Critical Findings | Status |
+|-------|-----------|-------------------|--------|
+| WG1 | Code+Security, Tenant Safety | 1 (request-id injection) | Fixed |
+| WG2 | Code+Parity | 3 (error map, scope, sanitization) | Fixed |
+| WG3 | Code+Security | 3 (idempotency body, SSRF, scope) | Fixed |
+| Remediation #1 | Code+Security | 2 (IPv6 SSRF bypass, webhook scope) | Fixed |
+| Remediation #2 | Code+Security | 1 (three-group ::ffff: bypass) | Fixed |
+| **Final** | **Code+Security, Tenant Safety, Parity** | **Scope gaps in 7 route files, duplicate import routes** | **Fixed** |
 
-## Implementation Summary
+## Final Review Findings (3 parallel agents)
 
-### @orbit-ai/api (192 tests)
-- 5 middleware layers: request-id (validated), version, auth (SHA-256), tenant-context (fail-closed), error-handler
-- 2 contract middleware: idempotency (in-memory, 24h TTL), rate-limit (token bucket, per-key)
-- 8 route groups: health, entities (17 types), admin (8 entities), bootstrap, organizations, workflows, relationships, webhooks
-- 3 specialized route groups: objects/schema (501 stubs), imports, OpenAPI generation
-- Response boundary: toEnvelope, toError, 5 sanitization functions
+### Code + Security Review: APPROVE
+- No critical findings in remediation code
+- SSRF validation correct (ipv4MappedToIPv4 bit arithmetic verified)
+- Conservative ::ffff: deny fallback blocks unknown forms
+- Scope enforcement on entities + webhooks verified correct
+- Error code map 20/20 parity confirmed
+- I-2 (scope gaps in other routes) — **fixed in 452f50d**
+- I-3 (duplicate import routes) — **fixed in 8b2f0f4**
 
-### @orbit-ai/sdk (164 tests)
-- Dual-mode client: HTTP (apiKey) and Direct (adapter+context)
-- 21 resource classes with CRUD, list (AutoPager), search, batch, response()
-- Retry with exponential backoff
-- 64 parity tests (transport parity + resource parity matrix)
+### Tenant Safety Review: PASS (all 4 checks)
+1. **No caller-controlled org context**: PASS — all orgId from `c.get('orbit')` via API key lookup
+2. **Runtime credentials only**: PASS — `RuntimeApiAdapter` type strips migrate/runWithMigrationAuthority
+3. **Defense-in-depth on tables**: N/A — no new tables
+4. **Secrets stay redacted**: PASS — webhook secrets (one-time), API keys, audit logs all sanitized
 
-## Architecture
+### Parity Review: PASS
+- Error code map: 20/20 exact match between API and SDK
+- SDK→API route mapping: all 19 resources map to valid routes
+- Scope enforcement: all routes now covered (fixed)
+- Import deduplication: fixed
 
-```
-Client → OrbitClient
-  ├── HTTP mode → HttpTransport → fetch → API server → CoreServices
-  └── Direct mode → DirectTransport → CoreServices (bypass HTTP)
-```
+## Scope Enforcement Coverage (final state)
+
+| Route File | Scope | Status |
+|-----------|-------|--------|
+| entities.ts | `entity:read` / `entity:write` | Enforced |
+| webhooks.ts | `webhooks:read` / `webhooks:write` | Enforced |
+| admin.ts | `admin:*` | Enforced |
+| bootstrap.ts | `platform:bootstrap` | Enforced |
+| search.ts | `search:read` | Enforced |
+| context.ts | `contacts:read` | Enforced |
+| workflows.ts | `deals/sequences/tags/activities:read/write` | Enforced |
+| relationships.ts | `contacts/companies/deals:read` | Enforced |
+| organizations.ts | `organizations:read/write` | Enforced |
+| objects.ts | `schema:read/write/apply` | Enforced |
+| imports.ts | `imports:read/write` | Enforced |
+
+## SSRF Protection Layers
+
+1. HTTPS-only protocol check
+2. Hostname deny-list (localhost, cloud metadata)
+3. IPv4 dotted-decimal deny (RFC1918, loopback, link-local)
+4. IPv4-mapped IPv6 hex conversion + re-check
+5. Conservative deny-on-unknown `::ffff:` forms
+6. IPv6 deny (::1, fe80:: link-local, fc00::/7 unique-local)
+7. Documented: production delivery workers need DNS-resolution-based IP validation
 
 ## Known Limitations
 
-1. Batch operations: Interface defined but not implemented in core (routes return 501)
-2. Schema engine: Only preview() exists in core (routes return 501)
-3. Bootstrap create: Admin services lack create() (routes return 501)
-4. Idempotency: In-memory store (not persistent across restarts)
-5. Rate limiting: In-memory buckets (not shared across instances)
-6. Relationship routes: Stub implementations (501) pending core relationship queries
+1. Batch: not implemented in core (501)
+2. Schema engine: stub only (501)
+3. Bootstrap create: admin services lack create() (501)
+4. Idempotency/rate-limit: in-memory only
+5. DirectTransport: CRUD-only dispatch (workflow/relationship/schema paths throw)
+6. DirectTransport: no webhook sanitization (medium — same-process SDK only)
+7. SSRF: regex+conversion first layer; DNS-resolution needed for production
+8. Wave 2 SDK resources: `any` generics (typed interfaces needed before GA)
 
-## Commits (16)
+## Commits (24)
 
-1. `b26232a` — API package scaffold
-2. `4caff0e` — Request-id and version middleware
-3. `67f5489` — Auth and tenant-context middleware
-4. `9cfe41e` — Envelope, error handler, sanitization
-5. `5867d45` — Wave Gate 1 remediation
-6. `a0b66e7` — Health, search, context routes
-7. `72003cf` — Generic entity routes Wave 1
-8. `a1868c8` — SDK bootstrap
-9. `81742d3` — Transport parity tests (pre-write)
-10. `71a9abf` — HTTP and direct transports
-11. `2e96130` — SDK Wave 1 resources
-12. `41325d9` — API Wave 2 routes
-13. `5de8fdd` — SDK Wave 2 resources
-14. `bea9dfc` — Pre-write contract tests
-15. `39b485e` — Idempotency, rate limiting, OpenAPI
-16. `0ccbdee` — Final parity matrix tests
+Implementation (16):
+1-16. See original commit list
+
+Remediation (8):
+17. `5867d45` — WG1: request-id validation + doc_url
+18. `8285099` — WG2: error code map + withTenantContext
+19. `33355f3` — WG3: scope enforcement (entities), SSRF, idempotency body
+20. `ef56eef` — Remediation #1: webhook scopes, IPv6 SSRF patterns, SSRF tests
+21. `07cfc95` — Remediation #2: ipv4MappedToIPv4 hex conversion, IPv6 deny patterns
+22. `3549b28` — Remediation #3: conservative ::ffff: fallback, fc00::/7 consolidation
+23. `452f50d` — Final: scope enforcement on ALL 7 remaining route files
+24. `8b2f0f4` — Final: remove duplicate import routes from generic entity loop
