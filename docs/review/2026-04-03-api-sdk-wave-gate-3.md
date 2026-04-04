@@ -117,3 +117,34 @@ Remediation (11):
 24. `8b2f0f4` — Remove duplicate import routes from generic entity loop
 25. `a1d87ed` — Updated review artifact
 26. `d0daab2` — 6-agent review fixes: fromResponse, batch dispatch, localhost, audit snake_case, HEAD/OPTIONS, admin per-route scope, AutoPager guard
+
+## Post-Remediation Addendum (2026-04-04)
+
+**Supersedes verification counts above.** Additional Codex review on 2026-04-04 found contract/spec gaps not covered by the original review rounds.
+
+### Updated Verification
+
+- API: 225 tests pass (up from 207→216→225)
+- SDK: 171 tests pass (up from 164→168→171)
+- Core: 264 tests pass (2 skipped)
+- Total: 660 tests, 0 failures
+
+### Resolved in this remediation
+
+1. Bootstrap org ID validation: accepts Orbit prefixed ULIDs (was: UUID-only)
+2. Search `object_types`: implemented end-to-end in core + API
+3. `ImportResource`: now route-accurate (list/create/get only)
+4. Relationship/timeline routes: honor cursor pagination contract
+5. OpenAPI stub: corrected entities, ID format, server URL, envelope schema
+
+### Still open (pre-alpha acceptable, tracked)
+
+1. DirectTransport: CRUD-only dispatch — explicitly de-scoped from parity claim
+2. Idempotency/rate-limit: in-memory only — pre-hosting blocker
+3. SSRF: first-layer deny-list — production workers need DNS-resolution validation
+4. OpenAPI: still a stub, not the planned registry-driven pipeline
+5. Parity tests: mock-based, not real cross-transport black-box
+
+### Status
+
+Branch is green and contract-aligned for the implemented surface. The "ACCEPTED" status from the original review applies to the branch as a working pre-alpha base, not as a fully spec-complete delivery.
