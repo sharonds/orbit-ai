@@ -1,5 +1,6 @@
 import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
+import { assertOrbitId } from '@orbit-ai/core'
 import { requireScope } from '../scopes.js'
 import { toEnvelope, toError } from '../responses.js'
 import { z } from 'zod'
@@ -11,7 +12,10 @@ const CreateOrganizationSchema = z.object({
 })
 
 const CreateApiKeySchema = z.object({
-  organization_id: z.string().uuid(),
+  organization_id: z.string().refine(
+    (v) => { try { assertOrbitId(v, 'organization'); return true } catch { return false } },
+    { message: 'Must be a valid Orbit organization ID (org_...)' },
+  ),
   name: z.string().min(1).max(255),
   scopes: z.array(z.string()).min(1),
   expires_at: z.string().datetime().optional(),

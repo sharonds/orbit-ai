@@ -80,7 +80,7 @@ describe('Bootstrap routes — scope enforcement', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        organization_id: '550e8400-e29b-41d4-a716-446655440000',
+        organization_id: 'org_01ARZ3NDEKTSV4RRFFQ69G5FAV',
         name: 'test-key',
         scopes: ['*'],
       }),
@@ -127,7 +127,7 @@ describe('Bootstrap routes — validation', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        organization_id: '550e8400-e29b-41d4-a716-446655440000',
+        organization_id: 'org_01ARZ3NDEKTSV4RRFFQ69G5FAV',
         name: 'test',
       }),
     })
@@ -175,12 +175,46 @@ describe('Bootstrap routes — 501 fallback', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        organization_id: '550e8400-e29b-41d4-a716-446655440000',
+        organization_id: 'org_01ARZ3NDEKTSV4RRFFQ69G5FAV',
         name: 'test-key',
         scopes: ['*'],
       }),
     })
     expect(res.status).toBe(501)
+  })
+})
+
+describe('Bootstrap routes — Orbit prefixed ULID organization_id', () => {
+  it('POST /v1/bootstrap/api-keys accepts Orbit prefixed ULID organization_id', async () => {
+    const services = mockCoreServicesForBootstrap()
+    const app = createRouteTestApp(['platform:bootstrap'])
+    registerBootstrapRoutes(app, services)
+    const res = await app.request('/v1/bootstrap/api-keys', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        organization_id: 'org_01ARZ3NDEKTSV4RRFFQ69G5FAV',
+        name: 'test-key',
+        scopes: ['contacts:read'],
+      }),
+    })
+    expect(res.status).toBe(201)
+  })
+
+  it('POST /v1/bootstrap/api-keys rejects non-Orbit organization_id format', async () => {
+    const services = mockCoreServicesForBootstrap()
+    const app = createRouteTestApp(['platform:bootstrap'])
+    registerBootstrapRoutes(app, services)
+    const res = await app.request('/v1/bootstrap/api-keys', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        organization_id: '550e8400-e29b-41d4-a716-446655440000',
+        name: 'test',
+        scopes: ['*'],
+      }),
+    })
+    expect(res.status).toBe(400)
   })
 })
 
@@ -210,7 +244,7 @@ describe('Bootstrap routes — success', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        organization_id: '550e8400-e29b-41d4-a716-446655440000',
+        organization_id: 'org_01ARZ3NDEKTSV4RRFFQ69G5FAV',
         name: 'my-key',
         scopes: ['contacts:read', 'contacts:write'],
       }),
