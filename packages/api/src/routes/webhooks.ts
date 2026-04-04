@@ -10,23 +10,43 @@ import { requireScope } from '../scopes.js'
  * should also validate the resolved IP address after DNS lookup to guard against
  * DNS rebinding, decimal/hex/octal IP encodings, and IPv4-mapped IPv6 addresses.
  */
-const SSRF_DENY_PATTERNS = [
-  /^localhost$/i,
+/** IPv4 dotted-decimal deny patterns for private/loopback/link-local/metadata ranges. */
+const IPV4_DENY_PATTERNS = [
   /^127\.\d+\.\d+\.\d+$/,
   /^10\.\d+\.\d+\.\d+$/,
   /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
   /^192\.168\.\d+\.\d+$/,
   /^169\.254\.\d+\.\d+$/,
+  /^0\.0\.0\.0$/,
+]
+
+/** Hostname deny patterns (DNS names and IPv6 literals). */
+const HOSTNAME_DENY_PATTERNS = [
+  /^localhost$/i,
   /^::1$/,
   /^0:0:0:0:0:0:0:1$/,
-  /^::ffff:127\.\d+\.\d+\.\d+$/i,
-  /^::ffff:10\.\d+\.\d+\.\d+$/i,
-  /^::ffff:172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/i,
-  /^::ffff:192\.168\.\d+\.\d+$/i,
-  /^::ffff:169\.254\.\d+\.\d+$/i,
-  /^0\.0\.0\.0$/,
+  /^fe80:/i,   // link-local
+  /^fc00:/i,   // unique-local (fd00: is the commonly used half)
+  /^fd[0-9a-f]{2}:/i,
   /^metadata\.google\.internal$/i,
 ]
+
+/**
+ * Parse an IPv4-mapped IPv6 hostname (e.g. `::ffff:7f00:1`) back to dotted-decimal.
+ * Node.js URL parser normalizes `::ffff:127.0.0.1` to hex form `::ffff:7f00:1`,
+ * so regex matching against dotted notation would miss these.
+ */
+function ipv4MappedToIPv4(hostname: string): string | null {
+  const match = hostname.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i)
+  if (!match) return null
+  const hi = parseInt(match[1]!, 16)
+  const lo = parseInt(match[2]!, 16)
+  return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`
+}
+
+function isPrivateIPv4(ip: string): boolean {
+  return IPV4_DENY_PATTERNS.some((p) => p.test(ip))
+}
 
 function validateWebhookUrl(url: string): string | null {
   let parsed: URL
@@ -39,9 +59,23 @@ function validateWebhookUrl(url: string): string | null {
     return 'Webhook URL must use HTTPS'
   }
   const hostname = parsed.hostname.replace(/^\[|\]$/g, '')
-  if (SSRF_DENY_PATTERNS.some((p) => p.test(hostname))) {
+
+  // Check hostname deny patterns (DNS names, IPv6 literals)
+  if (HOSTNAME_DENY_PATTERNS.some((p) => p.test(hostname))) {
     return 'Webhook URL must not point to private or loopback addresses'
   }
+
+  // Check IPv4 dotted-decimal
+  if (isPrivateIPv4(hostname)) {
+    return 'Webhook URL must not point to private or loopback addresses'
+  }
+
+  // Check IPv4-mapped IPv6 (::ffff:hex:hex → convert to dotted-decimal and re-check)
+  const mappedIPv4 = ipv4MappedToIPv4(hostname)
+  if (mappedIPv4 && isPrivateIPv4(mappedIPv4)) {
+    return 'Webhook URL must not point to private or loopback addresses'
+  }
+
   return null
 }
 

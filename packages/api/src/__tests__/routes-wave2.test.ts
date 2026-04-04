@@ -288,6 +288,7 @@ describe('Webhook dedicated routes', () => {
 
   describe('SSRF protection', () => {
     const ssrfUrls = [
+      // IPv4
       'https://localhost/hook',
       'https://127.0.0.1/hook',
       'https://10.0.0.1/hook',
@@ -295,6 +296,16 @@ describe('Webhook dedicated routes', () => {
       'https://192.168.1.1/hook',
       'https://169.254.169.254/latest/meta-data/',
       'https://0.0.0.0/hook',
+      // IPv6 loopback
+      'https://[::1]/hook',
+      // IPv4-mapped IPv6 (Node.js normalizes to hex: ::ffff:7f00:1)
+      'https://[::ffff:127.0.0.1]/hook',
+      'https://[::ffff:10.0.0.1]/hook',
+      'https://[::ffff:192.168.1.1]/hook',
+      // IPv6 link-local and unique-local
+      'https://[fe80::1]/hook',
+      'https://[fc00::1]/hook',
+      // Cloud metadata
       'https://metadata.google.internal/computeMetadata/v1/',
     ]
 
