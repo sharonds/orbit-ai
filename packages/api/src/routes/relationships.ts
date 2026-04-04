@@ -9,8 +9,10 @@ function notImplemented(c: Context, operation: string) {
 }
 
 function paginationParams(c: Context) {
+  const raw = c.req.query('limit')
+  const parsed = raw ? Number(raw) : undefined
   return {
-    limit: c.req.query('limit') ? Number(c.req.query('limit')) : undefined,
+    limit: parsed !== undefined && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
     cursor: c.req.query('cursor') ?? undefined,
   }
 }
