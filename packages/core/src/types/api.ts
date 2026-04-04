@@ -15,4 +15,5 @@ export interface ListQuery {
 
 export interface SearchQuery extends ListQuery {
   query?: string
+  object_types?: string[]
 }

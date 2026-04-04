@@ -121,9 +121,18 @@ export function createSearchService(deps: {
     }
   }
 
+  const PLURAL_TO_SINGULAR: Record<string, string> = {
+    contacts: 'contact',
+    companies: 'company',
+    deals: 'deal',
+    pipelines: 'pipeline',
+    stages: 'stage',
+    users: 'user',
+  }
+
   return {
     async search(ctx, query) {
-      const { cursor: _cursor, ...queryWithoutCursor } = query
+      const { cursor: _cursor, object_types, ...queryWithoutCursor } = query
 
       const [companies, contacts, deals, pipelines, stages, users] = await Promise.all([
         fetchAllPages((page) => deps.companies.search(ctx, page), queryWithoutCursor),
@@ -185,7 +194,15 @@ export function createSearchService(deps: {
         })),
       ]
 
-      return runArrayQuery(rows, query, {
+      // Map spec-level plural names to internal singular objectType values
+      const singularTypes = object_types?.map((t) => PLURAL_TO_SINGULAR[t]).filter(Boolean)
+      const filtered = singularTypes?.length
+        ? rows.filter((r) => singularTypes.includes(r.objectType))
+        : rows
+
+      // Strip object_types before passing to runArrayQuery — it's not a ListQuery field
+      const { object_types: _ot, ...listQuery } = query
+      return runArrayQuery(filtered, listQuery, {
         searchableFields: ['title', 'subtitle'],
         defaultSort: [{ field: 'updated_at', direction: 'desc' }],
       })
