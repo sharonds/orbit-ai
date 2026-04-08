@@ -9,6 +9,7 @@ import { registerImportRoutes } from '../routes/imports.js'
 import { registerWorkflowRoutes } from '../routes/workflows.js'
 import { registerRelationshipRoutes } from '../routes/relationships.js'
 import { registerObjectRoutes } from '../routes/objects.js'
+import { orbitErrorHandler } from '../middleware/error-handler.js'
 import { registerOrganizationRoutes } from '../routes/organizations.js'
 
 // --- Helper: create a minimal Hono app with middleware ---
@@ -552,6 +553,26 @@ describe('Object / Schema routes', () => {
       body: JSON.stringify({}),
     })
     expect(res.status).toBe(501)
+  })
+
+  it('POST /v1/schema/migrations/preview surfaces JSON parse errors as 400, not 501', async () => {
+    const services = mockWave2CoreServices()
+    // Make schema.preview exist so the notImplemented guard doesn't short-circuit.
+    ;(services as any).schema = {
+      preview: vi.fn(async () => ({ ok: true })),
+    }
+    const app = createRouteTestApp()
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/schema/migrations/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{not valid json',
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
   })
 })
 

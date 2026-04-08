@@ -72,13 +72,9 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
     if (typeof schema.preview !== 'function') {
       return notImplemented(c, 'Schema migration preview')
     }
-    try {
-      const body = await c.req.json()
-      const result = await schema.preview(c.get('orbit'), body)
-      return c.json(toEnvelope(c, result))
-    } catch {
-      return notImplemented(c, 'Schema migration preview')
-    }
+    const body = await c.req.json()
+    const result = await schema.preview(c.get('orbit'), body)
+    return c.json(toEnvelope(c, result))
   })
 
   // POST /v1/schema/migrations/apply — apply a migration (requires schema:apply scope)
