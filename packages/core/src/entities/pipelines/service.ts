@@ -2,6 +2,7 @@ import type { TransactionScope } from '../../adapters/interface.js'
 import { generateId } from '../../ids/generate-id.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { EntityService } from '../../services/entity-service.js'
+import { createOrbitError } from '../../types/errors.js'
 import type { PipelineRepository } from './repository.js'
 import {
   pipelineCreateInputSchema,
@@ -11,6 +12,31 @@ import {
   type PipelineRecord,
   type PipelineUpdateInput,
 } from './validators.js'
+
+/**
+ * Translate a DB unique-index violation on `pipelines_org_default_unique_idx`
+ * into a typed CONFLICT. The app-level `demoteOtherDefaults` closes the
+ * same-transaction race; this coercer handles the case where two
+ * concurrent transactions both passed their own demote check and then
+ * both tried to write `is_default = true`, leaving the DB partial
+ * unique index to decide.
+ */
+function coercePipelineConflict(error: unknown): never {
+  if (
+    error instanceof Error &&
+    (error.message.includes('pipelines_org_default_unique_idx') ||
+      (error.message.toLowerCase().includes('unique') &&
+        error.message.includes('is_default')))
+  ) {
+    throw createOrbitError({
+      code: 'CONFLICT',
+      message:
+        'Another default pipeline already exists in this organization. Retry after confirming the current default.',
+      field: 'isDefault',
+    })
+  }
+  throw error
+}
 
 /**
  * Find every other pipeline (in this org) currently marked `isDefault: true`
@@ -72,18 +98,22 @@ export function createPipelineService(deps: {
       return deps.tx.run(ctx, async (txDb) => {
         const txPipelines = deps.pipelines.withDatabase(txDb)
         await demoteOtherDefaults(ctx, txPipelines, null)
-        return txPipelines.create(
-          ctx,
-          pipelineRecordSchema.parse({
-            id: generateId('pipeline'),
-            organizationId: ctx.orgId,
-            name: parsed.name,
-            description: parsed.description ?? null,
-            isDefault: true,
-            createdAt: now,
-            updatedAt: now,
-          }),
-        )
+        try {
+          return await txPipelines.create(
+            ctx,
+            pipelineRecordSchema.parse({
+              id: generateId('pipeline'),
+              organizationId: ctx.orgId,
+              name: parsed.name,
+              description: parsed.description ?? null,
+              isDefault: true,
+              createdAt: now,
+              updatedAt: now,
+            }),
+          )
+        } catch (error) {
+          coercePipelineConflict(error)
+        }
       })
     },
     async get(ctx, id) {
@@ -121,7 +151,11 @@ export function createPipelineService(deps: {
         if (parsed.name !== undefined) patch.name = parsed.name
         if (parsed.description !== undefined) patch.description = parsed.description
 
-        return assertFound(await txPipelines.update(ctx, id, patch), `Pipeline ${id} not found`)
+        try {
+          return assertFound(await txPipelines.update(ctx, id, patch), `Pipeline ${id} not found`)
+        } catch (error) {
+          coercePipelineConflict(error)
+        }
       })
     },
     async delete(ctx, id) {
