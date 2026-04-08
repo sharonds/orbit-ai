@@ -16,23 +16,29 @@ import {
  * Find every other pipeline (in this org) currently marked `isDefault: true`
  * and clear the flag. Used by create/update when the caller asks for the new
  * record to become the default — at most one pipeline per org should ever be
- * the default. We page through up to MAX_LIST_LIMIT existing pipelines; in
- * practice an org has a handful, so a single page suffices.
+ * the default. In normal operation a tenant has at most a handful, but we
+ * still page through every match so a degenerate org with > MAX_LIST_LIMIT
+ * legacy defaults is repaired correctly instead of being half-demoted.
  */
 async function demoteOtherDefaults(
   ctx: Parameters<EntityService<PipelineCreateInput, PipelineUpdateInput, PipelineRecord>['create']>[0],
   repo: PipelineRepository,
   excludeId: string | null,
 ): Promise<void> {
-  const existing = await repo.list(ctx, {
-    filter: { is_default: true },
-    limit: 100,
-  })
-  for (const record of existing.data) {
-    if (excludeId !== null && record.id === excludeId) continue
-    if (!record.isDefault) continue
-    await repo.update(ctx, record.id, { isDefault: false, updatedAt: new Date() })
-  }
+  let cursor: string | undefined
+  do {
+    const page = await repo.list(ctx, {
+      filter: { is_default: true },
+      limit: 100,
+      ...(cursor !== undefined ? { cursor } : {}),
+    })
+    for (const record of page.data) {
+      if (excludeId !== null && record.id === excludeId) continue
+      if (!record.isDefault) continue
+      await repo.update(ctx, record.id, { isDefault: false, updatedAt: new Date() })
+    }
+    cursor = page.hasMore && page.nextCursor ? page.nextCursor : undefined
+  } while (cursor !== undefined)
 }
 
 export function createPipelineService(deps: {
