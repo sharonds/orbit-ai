@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { Hono } from 'hono'
+import { ZodError } from 'zod'
 import { OrbitError } from '@orbit-ai/core'
 import { orbitErrorHandler } from '../middleware/error-handler.js'
 import { requestIdMiddleware } from '../middleware/request-id.js'
@@ -74,6 +75,46 @@ describe('orbitErrorHandler logging', () => {
       headers: { 'content-type': 'application/json' },
     })
     expect(res.status).toBe(400)
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('maps ZodError to 400 VALIDATION_FAILED with field-level hints', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const app = new Hono()
+    app.use('*', requestIdMiddleware())
+    app.onError(orbitErrorHandler)
+    app.post('/validate', () => {
+      throw new ZodError([
+        {
+          code: 'invalid_type',
+          expected: 'string',
+          received: 'undefined',
+          path: ['name'],
+          message: 'Required',
+        },
+        {
+          code: 'invalid_type',
+          expected: 'string',
+          received: 'number',
+          path: ['email'],
+          message: 'Expected string, received number',
+        },
+      ])
+    })
+
+    const res = await app.request('/validate', { method: 'POST' })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as {
+      error: { code: string; message: string; hint: string; retryable: boolean }
+    }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
+    expect(body.error.message).toBe('Request body failed validation')
+    expect(body.error.hint).toContain('name')
+    expect(body.error.hint).toContain('email')
+    expect(body.error.retryable).toBe(false)
+
+    // ZodError is a client-caused validation error — not a server bug, should NOT be logged
     expect(spy).not.toHaveBeenCalled()
   })
 })
