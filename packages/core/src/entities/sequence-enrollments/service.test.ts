@@ -44,6 +44,7 @@ async function createEnrollmentGraph() {
     sequenceSteps,
     sequences,
     sequenceEvents,
+    tx: createNoopTransactionScope(),
   })
   const sequenceEnrollmentService = createSequenceEnrollmentService({
     sequenceEnrollments,

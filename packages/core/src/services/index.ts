@@ -830,6 +830,7 @@ export function createCoreServices(
         sequenceSteps: getSequenceStepsRepository(),
         sequences: getSequencesRepository(),
         sequenceEvents: getSequenceEventsRepository(),
+        tx,
       })
 
       return sequenceStepsService
