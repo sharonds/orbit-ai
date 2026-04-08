@@ -253,28 +253,40 @@ export function createPaymentService(deps: {
     },
     async update(ctx, id, input) {
       const parsed = paymentUpdateInputSchema.parse(input)
-      const current = assertFound(await deps.payments.get(ctx, id), `Payment ${id} not found`)
+      // Relation reads (contacts, deals) stay outside the rebound view —
+      // FK constraints catch deletion races at update time.
       await assertPaymentRelations(ctx, deps, {
         contactId: parsed.contactId,
         dealId: parsed.dealId,
       })
 
-      const nextStatus = parsed.status ?? current.status
-      assertPaymentTransition(current.status, nextStatus)
-      const nextPaidAt = resolvePaidAt({
-        now: new Date(),
-        status: nextStatus,
-        paidAt: parsed.paidAt !== undefined ? parsed.paidAt ?? null : current.paidAt,
-        previousStatus: current.status,
-        previousPaidAt: current.paidAt,
-      })
-      assertPaymentState({
-        nextStatus,
-        paidAt: nextPaidAt,
-      })
-
+      // Phase 2 gate fix: the `current` get and the
+      // assertPaymentTransition / resolvePaidAt / assertPaymentState
+      // checks must run inside the rebound transaction. Reading
+      // `current.status` outside the transaction lets two concurrent
+      // updates both validate against the same stale state and both
+      // commit a forbidden transition (e.g. paid → refunded || canceled).
+      // The transition guard is a logical invariant that no DB constraint
+      // can rescue, so the check MUST share the transaction with the
+      // write.
       return deps.tx.run(ctx, async (txDb) => {
         const txPayments = deps.payments.withDatabase(txDb)
+        const current = assertFound(await txPayments.get(ctx, id), `Payment ${id} not found`)
+
+        const nextStatus = parsed.status ?? current.status
+        assertPaymentTransition(current.status, nextStatus)
+        const nextPaidAt = resolvePaidAt({
+          now: new Date(),
+          status: nextStatus,
+          paidAt: parsed.paidAt !== undefined ? parsed.paidAt ?? null : current.paidAt,
+          previousStatus: current.status,
+          previousPaidAt: current.paidAt,
+        })
+        assertPaymentState({
+          nextStatus,
+          paidAt: nextPaidAt,
+        })
+
         await assertUniqueExternalId(ctx, txPayments, parsed.externalId ?? current.externalId, id)
 
         const patch: Partial<PaymentRecord> = {
