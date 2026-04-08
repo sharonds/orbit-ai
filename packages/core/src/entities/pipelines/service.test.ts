@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { createNoopTransactionScope } from '../../adapters/noop-transaction-scope.js'
 import { createInMemoryCompanyRepository } from '../companies/repository.js'
 import { createCompanyService } from '../companies/service.js'
 import { createInMemoryContactRepository } from '../contacts/repository.js'
@@ -38,6 +39,7 @@ describe('pipeline, stage, and deal services', () => {
       stages: ownedStages,
       contacts,
       companies,
+      tx: createNoopTransactionScope(),
     })
 
     const pipeline = await pipelineSvc.create(orgA, { name: 'Sales' })
@@ -87,7 +89,7 @@ describe('pipeline, stage, and deal services', () => {
 
     const pipelineSvc = createPipelineService(pipelines)
     const stageSvc = createStageService({ stages, pipelines })
-    const dealSvc = createDealService({ deals, pipelines, stages, contacts, companies })
+    const dealSvc = createDealService({ deals, pipelines, stages, contacts, companies, tx: createNoopTransactionScope() })
 
     const pipeline = await pipelineSvc.create(orgA, { name: 'Support' })
     const stage = await stageSvc.create(orgA, {

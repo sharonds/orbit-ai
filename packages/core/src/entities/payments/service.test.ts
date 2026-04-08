@@ -37,7 +37,7 @@ async function createLinkedDealGraph() {
   const contactService = createContactService({ contacts, companies })
   const pipelineService = createPipelineService(pipelines)
   const stageService = createStageService({ stages, pipelines })
-  const dealService = createDealService({ deals, pipelines, stages, contacts, companies })
+  const dealService = createDealService({ deals, pipelines, stages, contacts, companies, tx: createNoopTransactionScope() })
   const paymentService = createPaymentService({ payments, contacts, deals, tx: createNoopTransactionScope() })
 
   const company = await companyService.create(ctx, { name: 'Orbit Labs' })

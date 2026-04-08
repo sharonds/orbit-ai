@@ -1,4 +1,5 @@
-import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import type { OrbitAuthContext, OrbitDatabase, StorageAdapter } from '../../adapters/interface.js'
+import { createTxBoundAdapter } from '../../adapters/tx-bound-adapter.js'
 import {
   createTenantSqliteRepository,
   fromSqliteDate,
@@ -23,6 +24,8 @@ export interface DealRepository {
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
   list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<DealRecord>>
   search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<DealRecord>>
+  /** See `SequenceRepository.withDatabase` — same contract. */
+  withDatabase(txDb: OrbitDatabase): DealRepository
 }
 
 export function createInMemoryDealRepository(seed: DealRecord[] = []): DealRepository {
@@ -33,7 +36,7 @@ export function createInMemoryDealRepository(seed: DealRecord[] = []): DealRepos
     return [...rows.values()].filter((record) => record.organizationId === orgId)
   }
 
-  return {
+  const repo: DealRepository = {
     async create(ctx, record) {
       const orgId = assertOrgContext(ctx)
       if (record.organizationId !== orgId) {
@@ -119,11 +122,15 @@ export function createInMemoryDealRepository(seed: DealRecord[] = []): DealRepos
         defaultSort: [{ field: 'updated_at', direction: 'desc' }],
       })
     },
+    withDatabase() {
+      return repo
+    },
   }
+  return repo
 }
 
 export function createSqliteDealRepository(adapter: StorageAdapter): DealRepository {
-  return createTenantSqliteRepository<DealRecord>(adapter, {
+  const base = createTenantSqliteRepository<DealRecord>(adapter, {
     tableName: 'deals',
     columns: [
       'id',
@@ -213,10 +220,16 @@ export function createSqliteDealRepository(adapter: StorageAdapter): DealReposit
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createSqliteDealRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }
 
 export function createPostgresDealRepository(adapter: StorageAdapter): DealRepository {
-  return createTenantPostgresRepository<DealRecord>(adapter, {
+  const base = createTenantPostgresRepository<DealRecord>(adapter, {
     tableName: 'deals',
     columns: [
       'id',
@@ -306,4 +319,10 @@ export function createPostgresDealRepository(adapter: StorageAdapter): DealRepos
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createPostgresDealRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }
