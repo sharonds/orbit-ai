@@ -38,6 +38,14 @@ export class HttpTransport implements OrbitTransport {
         if (input.body) {
           init.body = JSON.stringify(input.body)
         }
+        // Wire OrbitClientOptions.timeoutMs into AbortSignal so a slow or
+        // hanging server cannot block the SDK consumer indefinitely. We use
+        // AbortSignal.timeout (Node 17.3+, all modern browsers) so the
+        // resulting fetch rejects with a DOMException-like AbortError once
+        // the deadline elapses.
+        if (this.options.timeoutMs !== undefined) {
+          init.signal = AbortSignal.timeout(this.options.timeoutMs)
+        }
 
         const response = await fetch(url, init)
 
