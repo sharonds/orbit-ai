@@ -15,6 +15,7 @@ import {
 import { buildSetTenantContextStatement, withTenantContext } from './tenant-context.js'
 import { assertOrbitId } from '../../ids/parse-id.js'
 import { fromPostgresDate, fromPostgresJson } from '../../repositories/postgres/shared.js'
+import { initializeAllPostgresSchemas } from './schema.js'
 
 const defaultUserResolver: IUserResolver = {
   async resolveByExternalAuthId() {
@@ -57,7 +58,11 @@ export class PostgresStorageAdapter implements StorageAdapter {
     this.users = config.users ?? defaultUserResolver
     this.connectImpl = config.connect ?? (async () => undefined)
     this.disconnectImpl = config.disconnect ?? (async () => undefined)
-    this.migrateImpl = config.migrate ?? (async () => undefined)
+    this.migrateImpl = config.migrate ?? (async () => {
+      await this.runWithMigrationAuthority(async (db) => {
+        await initializeAllPostgresSchemas(db)
+      })
+    })
     this.getSchemaSnapshotImpl =
       config.getSchemaSnapshot ??
       (async () => ({

@@ -236,6 +236,88 @@ describe('PostgresStorageAdapter', () => {
     expect(migrationStatements.some((s) => s.includes('schema_migrations_org_idx'))).toBe(true)
   })
 
+  it('migrate() with no custom config runs all wave init functions and creates tables', async () => {
+    // Track all SQL statements executed via the migration database.
+    // The migration database is used by runWithMigrationAuthority, which the
+    // default migrateImpl calls.
+    const migrationStatements: string[] = []
+
+    const runtimeDb = {
+      async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+        return fn(this)
+      },
+      async execute() {
+        return undefined
+      },
+      async query() {
+        return []
+      },
+    } satisfies OrbitDatabase
+
+    const migrationDb = {
+      async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+        return fn(this)
+      },
+      async execute(statement: SQL) {
+        const query = render(statement)
+        migrationStatements.push(query.sql)
+        return undefined
+      },
+      async query() {
+        return []
+      },
+    } satisfies OrbitDatabase
+
+    const adapter = createPostgresStorageAdapter({
+      database: runtimeDb,
+      migrationDatabase: asMigrationDatabase(migrationDb),
+    })
+
+    await adapter.migrate()
+
+    // Verify that core Wave 1 and Wave 2 tables were scheduled for creation.
+    // The wave init functions use "create table if not exists <name>", so
+    // we check that each expected table name appears in the emitted SQL.
+    const allSql = migrationStatements.join('\n')
+    for (const tableName of [
+      'organizations',
+      'contacts',
+      'companies',
+      'deals',
+      'activities', // wave 2 slice A
+      'products',   // wave 2 slice B
+      'sequences',  // wave 2 slice C
+      'tags',       // wave 2 slice D
+      'audit_logs', // wave 2 slice E
+    ]) {
+      expect(allSql).toContain(tableName)
+    }
+
+    // The migration database should have been used (not the runtime database)
+    expect(migrationStatements.length).toBeGreaterThan(0)
+  })
+
+  it('migrate() respects a custom migrate function when provided', async () => {
+    const customMigrate = vi.fn(async () => undefined)
+    const runtimeDb = {
+      async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+        return fn(this)
+      },
+      execute: vi.fn(async () => undefined),
+      async query() {
+        return []
+      },
+    } satisfies OrbitDatabase
+
+    const adapter = createPostgresStorageAdapter({ database: runtimeDb, migrate: customMigrate })
+
+    await adapter.migrate()
+
+    expect(customMigrate).toHaveBeenCalledTimes(1)
+    // When a custom migrate is provided, the default schema init should NOT run.
+    expect(runtimeDb.execute).not.toHaveBeenCalled()
+  })
+
   it('authority model remains unchanged after slice E bootstrap hardening', async () => {
     const runtimeDb = {
       async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
