@@ -169,4 +169,64 @@ describe('idempotency middleware', () => {
     expect(res2.headers.get('x-idempotent-replayed')).toBeNull()
     expect(callCount).toBe(2)
   })
+
+  it('same idempotency key across different orgIds does NOT replay (cross-tenant isolation)', async () => {
+    const app = new Hono()
+    app.onError(orbitErrorHandler)
+    app.use('*', requestIdMiddleware())
+
+    // Fake tenant context middleware — simulates org A on the first call and
+    // org B on the second. In production the real middleware derives this
+    // from the API key.
+    let nextOrgId = 'org_A'
+    app.use('*', async (c, next) => {
+      c.set('orbit', { orgId: nextOrgId, scopes: ['*'] })
+      await next()
+    })
+
+    app.use('*', idempotencyMiddleware())
+
+    let callCount = 0
+    app.post('/v1/contacts', async (c) => {
+      callCount += 1
+      const body = await c.req.json()
+      return c.json({ id: `ct_${callCount}`, name: body.name, org: nextOrgId }, 201)
+    })
+
+    const body = JSON.stringify({ name: 'Alice' })
+    const headers = {
+      'idempotency-key': 'idem_xtenant_001',
+      'content-type': 'application/json',
+    }
+
+    // Org A's first call — processes fresh.
+    nextOrgId = 'org_A'
+    const resA = await app.request('/v1/contacts', { method: 'POST', body, headers })
+    expect(resA.status).toBe(201)
+    const bodyA = (await resA.json()) as { id: string; org: string }
+    expect(bodyA.id).toBe('ct_1')
+    expect(bodyA.org).toBe('org_A')
+
+    // Org B's call — same idempotency key, same body text — MUST process
+    // fresh because the store key is scoped to orgId.
+    nextOrgId = 'org_B'
+    const resB = await app.request('/v1/contacts', { method: 'POST', body, headers })
+    expect(resB.status).toBe(201)
+    const bodyB = (await resB.json()) as { id: string; org: string }
+    expect(bodyB.id).toBe('ct_2')
+    expect(bodyB.org).toBe('org_B')
+    expect(resB.headers.get('x-idempotent-replayed')).toBeNull()
+
+    expect(callCount).toBe(2)
+
+    // Sanity: org A replaying its own key still gets a replay.
+    nextOrgId = 'org_A'
+    const resA2 = await app.request('/v1/contacts', { method: 'POST', body, headers })
+    expect(resA2.status).toBe(201)
+    const bodyA2 = (await resA2.json()) as { id: string; org: string }
+    expect(bodyA2.id).toBe('ct_1') // replayed — still the first id
+    expect(bodyA2.org).toBe('org_A')
+    expect(resA2.headers.get('x-idempotent-replayed')).toBe('true')
+    expect(callCount).toBe(2) // handler NOT re-invoked
+  })
 })
