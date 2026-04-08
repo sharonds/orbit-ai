@@ -1,6 +1,7 @@
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
-import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import type { OrbitAuthContext, OrbitDatabase, StorageAdapter } from '../../adapters/interface.js'
+import { createTxBoundAdapter } from '../../adapters/tx-bound-adapter.js'
 import {
   createTenantSqliteRepository,
   fromSqliteBoolean,
@@ -26,6 +27,8 @@ export interface ContactRepository {
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
   list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<ContactRecord>>
   search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<ContactRecord>>
+  /** See `SequenceRepository.withDatabase` — same contract. */
+  withDatabase(txDb: OrbitDatabase): ContactRepository
 }
 
 export function createInMemoryContactRepository(seed: ContactRecord[] = []): ContactRepository {
@@ -36,7 +39,7 @@ export function createInMemoryContactRepository(seed: ContactRecord[] = []): Con
     return [...rows.values()].filter((record) => record.organizationId === orgId)
   }
 
-  return {
+  const repo: ContactRepository = {
     async create(ctx, record) {
       const orgId = assertOrgContext(ctx)
       if (record.organizationId !== orgId) {
@@ -117,11 +120,15 @@ export function createInMemoryContactRepository(seed: ContactRecord[] = []): Con
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
+    withDatabase() {
+      return repo
+    },
   }
+  return repo
 }
 
 export function createSqliteContactRepository(adapter: StorageAdapter): ContactRepository {
-  return createTenantSqliteRepository<ContactRecord>(adapter, {
+  const base = createTenantSqliteRepository<ContactRecord>(adapter, {
     tableName: 'contacts',
     columns: [
       'id',
@@ -199,10 +206,16 @@ export function createSqliteContactRepository(adapter: StorageAdapter): ContactR
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createSqliteContactRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }
 
 export function createPostgresContactRepository(adapter: StorageAdapter): ContactRepository {
-  return createTenantPostgresRepository<ContactRecord>(adapter, {
+  const base = createTenantPostgresRepository<ContactRecord>(adapter, {
     tableName: 'contacts',
     columns: [
       'id',
@@ -280,4 +293,10 @@ export function createPostgresContactRepository(adapter: StorageAdapter): Contac
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createPostgresContactRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }

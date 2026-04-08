@@ -17,9 +17,17 @@ import {
   type DealUpdateInput,
 } from './validators.js'
 
+/**
+ * Graph validation for create/update. Accepts a `graphDeps` bundle so the
+ * caller can pass REBOUND repositories (inside a transaction) or the outer
+ * unbound ones (in create, where no transaction is open). The cross-entity
+ * "stage belongs to pipeline" check is NOT backed by a composite FK, so it
+ * must run in the same transaction as the write or a concurrent stage move
+ * can silently invalidate the validated graph.
+ */
 async function resolveDealGraph(
   ctx: Parameters<EntityService<DealCreateInput, DealUpdateInput, DealRecord>['create']>[0],
-  deps: {
+  graphDeps: {
     pipelines: PipelineRepository
     stages: StageRepository
     contacts: ContactRepository
@@ -71,7 +79,7 @@ async function resolveDealGraph(
   }
 
   if (nextStageId !== null) {
-    const stage = await deps.stages.get(ctx, nextStageId)
+    const stage = await graphDeps.stages.get(ctx, nextStageId)
     if (!stage) {
       throw relationNotFound(`Stage ${nextStageId} not found for deal`)
     }
@@ -84,21 +92,21 @@ async function resolveDealGraph(
   }
 
   if (nextPipelineId) {
-    const pipeline = await deps.pipelines.get(ctx, nextPipelineId)
+    const pipeline = await graphDeps.pipelines.get(ctx, nextPipelineId)
     if (!pipeline) {
       throw relationNotFound(`Pipeline ${nextPipelineId} not found for deal`)
     }
   }
 
   if (input.contactId !== undefined && input.contactId !== null) {
-    const contact = await deps.contacts.get(ctx, input.contactId)
+    const contact = await graphDeps.contacts.get(ctx, input.contactId)
     if (!contact) {
       throw relationNotFound(`Contact ${input.contactId} not found for deal`)
     }
   }
 
   if (input.companyId !== undefined && input.companyId !== null) {
-    const company = await deps.companies.get(ctx, input.companyId)
+    const company = await graphDeps.companies.get(ctx, input.companyId)
     if (!company) {
       throw relationNotFound(`Company ${input.companyId} not found for deal`)
     }
@@ -166,16 +174,22 @@ export function createDealService(deps: {
     },
     async update(ctx, id, input) {
       const parsed = dealUpdateInputSchema.parse(input)
-      // M7: read the current deal, validate the next graph state
-      // (stage/pipeline/contact/company), and write — all inside one
-      // transaction so a concurrent stage/pipeline mutation cannot
-      // invalidate the validation between read and write. The deal repo
-      // is rebound to the transaction-scoped db handle. Relation reads
-      // (stages, pipelines, contacts, companies) stay outside the rebound
-      // view; the FK constraints on the deals table catch any deletion
-      // race at the final update statement.
+      // M7 (+ Codex follow-up): read the current deal, validate the
+      // next graph state (stage belongs to pipeline, pipeline exists,
+      // contact exists, company exists), and write — all inside one
+      // transaction using REBOUND repos so a concurrent stage move or
+      // relation delete cannot invalidate the validation between read
+      // and write. The "stage belongs to pipeline" invariant is a
+      // cross-entity consistency check with no backing composite FK, so
+      // it MUST be read through the rebound view.
       return deps.tx.run(ctx, async (txDb) => {
         const txDeals = deps.deals.withDatabase(txDb)
+        const txGraphDeps = {
+          pipelines: deps.pipelines.withDatabase(txDb),
+          stages: deps.stages.withDatabase(txDb),
+          contacts: deps.contacts.withDatabase(txDb),
+          companies: deps.companies.withDatabase(txDb),
+        }
         const current = assertFound(await txDeals.get(ctx, id), `Deal ${id} not found`)
         const patch: Partial<DealRecord> = {
           updatedAt: new Date(),
@@ -184,7 +198,7 @@ export function createDealService(deps: {
         if (parsed.stageId !== undefined || parsed.pipelineId !== undefined) {
           const graph = await resolveDealGraph(
             ctx,
-            deps,
+            txGraphDeps,
             {
               stageId: parsed.stageId,
               pipelineId: parsed.pipelineId,
@@ -200,14 +214,14 @@ export function createDealService(deps: {
         }
 
         if (parsed.contactId !== undefined && parsed.contactId !== null) {
-          const contact = await deps.contacts.get(ctx, parsed.contactId)
+          const contact = await txGraphDeps.contacts.get(ctx, parsed.contactId)
           if (!contact) {
             throw relationNotFound(`Contact ${parsed.contactId} not found for deal`)
           }
         }
 
         if (parsed.companyId !== undefined && parsed.companyId !== null) {
-          const company = await deps.companies.get(ctx, parsed.companyId)
+          const company = await txGraphDeps.companies.get(ctx, parsed.companyId)
           if (!company) {
             throw relationNotFound(`Company ${parsed.companyId} not found for deal`)
           }
