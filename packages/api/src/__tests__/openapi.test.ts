@@ -86,13 +86,90 @@ describe('OpenAPI spec', () => {
   })
 
   it('envelope schema has correct metadata fields', () => {
-    const envelope = spec.components.schemas.Envelope
-    const metaProps = envelope.properties.meta.properties
+    // After T6 the Envelope's `meta` is a $ref to EnvelopeMeta — assert
+    // against the dedicated meta schema instead of an inlined object.
+    const meta = spec.components.schemas.EnvelopeMeta
+    expect(meta).toBeDefined()
+    const metaProps = meta.properties
     expect(metaProps).toHaveProperty('request_id')
     expect(metaProps).toHaveProperty('version')
     expect(metaProps).toHaveProperty('has_more')
     expect(metaProps).toHaveProperty('next_cursor')
     expect(metaProps).not.toHaveProperty('org_id')
     expect(metaProps).not.toHaveProperty('api_version')
+
+    // The Envelope itself should reference the shared meta schema.
+    const envelope = spec.components.schemas.Envelope
+    expect(envelope.properties.meta).toEqual({ $ref: '#/components/schemas/EnvelopeMeta' })
+  })
+
+  describe('T6 — response schemas reference shared envelope/error', () => {
+    it('list responses use the paginated envelope and document standard auth errors', () => {
+      const listOp = spec.paths['/v1/contacts']?.get
+      expect(listOp?.responses?.['200']?.content?.['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/EnvelopePaginated',
+      })
+      // Standard auth error responses should reference the Error schema, not
+      // be bare descriptions.
+      expect(listOp?.responses?.['401']?.content?.['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/Error',
+      })
+      expect(listOp?.responses?.['429']?.content?.['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/Error',
+      })
+    })
+
+    it('create responses use the envelope and document validation/conflict errors', () => {
+      const createOp = spec.paths['/v1/contacts']?.post
+      expect(createOp?.responses?.['201']?.content?.['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/Envelope',
+      })
+      expect(createOp?.responses?.['400']?.content?.['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/Error',
+      })
+      expect(createOp?.responses?.['409']?.content?.['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/Error',
+      })
+    })
+
+    it('get responses use the envelope and document the 404 path', () => {
+      const getOp = spec.paths['/v1/contacts/{id}']?.get
+      expect(getOp?.responses?.['200']?.content?.['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/Envelope',
+      })
+      expect(getOp?.responses?.['404']?.content?.['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/Error',
+      })
+    })
+
+    it('dedicated import routes also reference the shared schemas', () => {
+      const listImports = spec.paths['/v1/imports']?.get
+      expect(listImports?.responses?.['200']?.content?.['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/EnvelopePaginated',
+      })
+      const createImport = spec.paths['/v1/imports']?.post
+      expect(createImport?.responses?.['201']?.content?.['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/Envelope',
+      })
+    })
+
+    it('the Error schema documents the full structured shape', () => {
+      const errorSchema = spec.components.schemas.Error
+      expect(errorSchema.required).toContain('error')
+      const errorProps = errorSchema.properties.error.properties
+      expect(errorProps).toHaveProperty('code')
+      expect(errorProps).toHaveProperty('message')
+      expect(errorProps).toHaveProperty('retryable')
+      expect(errorProps).toHaveProperty('field')
+      expect(errorSchema.properties.error.required).toEqual(
+        expect.arrayContaining(['code', 'message', 'retryable']),
+      )
+    })
+
+    it('exposes a separate EnvelopePaginated schema with array data', () => {
+      const paginated = spec.components.schemas.EnvelopePaginated
+      expect(paginated).toBeDefined()
+      expect(paginated.properties.data.type).toBe('array')
+    })
   })
 })
