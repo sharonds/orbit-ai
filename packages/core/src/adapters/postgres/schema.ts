@@ -623,3 +623,34 @@ export async function applyPostgresOrgLeadingIndexes(db: MigrationDatabase): Pro
     await db.execute(sql.raw(statement))
   }
 }
+
+/**
+ * Runs all Orbit schema init functions against a MigrationDatabase in the
+ * correct order (wave 1 → wave 2 slices A-E), then applies row-level
+ * security policies. This is the default migration implementation used by
+ * PostgresStorageAdapter when no custom `migrate` is provided.
+ *
+ * Every init function uses `CREATE TABLE IF NOT EXISTS` so calling this
+ * repeatedly is safe against existing databases — existing rows are
+ * untouched.
+ *
+ * NOTE: RLS policies are applied via initializePostgresWave2SliceESchema
+ * (which includes RLS by default). The explicit applyPostgresRlsDdl call
+ * below is a belt-and-suspenders guard to ensure RLS is always applied even
+ * if the slice E call is somehow bypassed.
+ */
+export async function initializeAllPostgresSchemas(db: MigrationDatabase): Promise<void> {
+  await initializePostgresWave1Schema(db)
+  await initializePostgresWave2SliceASchema(db)
+  await initializePostgresWave2SliceBSchema(db)
+  await initializePostgresWave2SliceCSchema(db)
+  await initializePostgresWave2SliceDSchema(db)
+  await initializePostgresWave2SliceESchema(db)
+  // applyPostgresRlsDdl exists in this file and applies RLS policies.
+  // initializePostgresWave2SliceESchema already calls generatePostgresRlsSql
+  // (includeRls: true by default), so this is a belt-and-suspenders call that
+  // is idempotent (DROP POLICY IF EXISTS + CREATE POLICY + CREATE OR REPLACE
+  // FUNCTION). It ensures RLS is always present even if the slice E
+  // includeRls option were ever changed to false.
+  await applyPostgresRlsDdl(db)
+}
