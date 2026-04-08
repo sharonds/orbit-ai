@@ -1,6 +1,7 @@
 import type { ErrorHandler } from 'hono'
 import { OrbitError } from '@orbit-ai/core'
 import type { OrbitErrorCode } from '@orbit-ai/core'
+import { ZodError } from 'zod'
 import '../context.js'
 
 const ERROR_STATUS_MAP: Partial<Record<OrbitErrorCode, number>> = {
@@ -48,6 +49,24 @@ export const orbitErrorHandler: ErrorHandler = (err, c) => {
         },
       },
       status as Parameters<typeof c.json>[1],
+    )
+  }
+  if (err instanceof ZodError) {
+    const hint = err.issues
+      .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+      .join('; ')
+    return c.json(
+      {
+        error: {
+          code: 'VALIDATION_FAILED' as OrbitErrorCode,
+          message: 'Request body failed validation',
+          request_id: c.get('requestId'),
+          doc_url: 'https://orbit-ai.dev/docs/errors#validation_failed',
+          hint,
+          retryable: false,
+        },
+      },
+      400,
     )
   }
   if (err instanceof SyntaxError && err.message.includes('JSON')) {
