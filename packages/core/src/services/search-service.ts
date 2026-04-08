@@ -8,6 +8,7 @@ import type { UserRepository } from '../entities/users/repository.js'
 import { runArrayQuery } from './service-helpers.js'
 import { MAX_LIST_LIMIT } from '../query/list-query.js'
 import type { SearchQuery } from '../types/api.js'
+import { createOrbitError } from '../types/errors.js'
 import type { InternalPaginatedResult } from '../types/pagination.js'
 
 /**
@@ -64,17 +65,21 @@ export function createSearchService(deps: {
       rows.push(...page.data)
       cursor = page.hasMore ? page.nextCursor : null
 
-      // L11 OOM cap: stop pulling pages once we hit MAX_SEARCH_ROWS_PER_TYPE
-      // and warn so operators see the truncation. The merged sort/slice
-      // downstream still produces a valid (truncated) result.
-      if (rows.length >= MAX_SEARCH_ROWS_PER_TYPE) {
-        if (cursor !== null) {
-          // eslint-disable-next-line no-console
-          console.warn(
-            `[orbit] search-service: hit MAX_SEARCH_ROWS_PER_TYPE (${MAX_SEARCH_ROWS_PER_TYPE}) — additional pages discarded`,
-          )
-        }
-        return rows.slice(0, MAX_SEARCH_ROWS_PER_TYPE)
+      // L11 OOM cap: refuse the request loudly once we hit
+      // MAX_SEARCH_ROWS_PER_TYPE. Originally this returned a truncated
+      // result with a console.warn, but the Phase 2 silent-failure-hunter
+      // gate flagged that as a real risk: the API would respond with
+      // hasMore: false on a truncated dataset, leaving the caller no way
+      // to detect the truncation. Throwing forces the caller to refine
+      // the query (filters, narrower object_types) instead of unknowingly
+      // operating on incomplete data.
+      if (rows.length >= MAX_SEARCH_ROWS_PER_TYPE && cursor !== null) {
+        throw createOrbitError({
+          code: 'SEARCH_RESULT_TOO_LARGE',
+          message:
+            `Search would return more than ${MAX_SEARCH_ROWS_PER_TYPE} rows for a single ` +
+            `entity type. Narrow the query with filters or restrict object_types.`,
+        })
       }
     } while (cursor)
 
