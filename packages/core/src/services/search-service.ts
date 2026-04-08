@@ -202,11 +202,23 @@ export function createSearchService(deps: {
         })),
       ]
 
-      // Strip object_types before passing to runArrayQuery — it's not a ListQuery field
-      const { object_types: _ot, ...listQuery } = query
+      // Strip both `object_types` and `query` before passing to runArrayQuery.
+      // - `object_types` is not a ListQuery field (M5 fix from a prior wave).
+      // - `query` is the free-text search term, which the per-entity repos
+      //   already applied via their own `search()` implementations. Leaving
+      //   it in here would re-run text search against the merged result's
+      //   reduced surface (only `title`/`subtitle` are searchable at this
+      //   layer), silently dropping results whose match was on a field that
+      //   only the underlying entity repo knew about (e.g. company.industry,
+      //   contact.email). M1 fix.
+      const { object_types: _ot, query: _q, ...listQuery } = query
       return runArrayQuery(rows, listQuery, {
         searchableFields: ['title', 'subtitle'],
-        defaultSort: [{ field: 'updated_at', direction: 'desc' }],
+        // M2 fix: emitted records use camelCase `updatedAt` (see
+        // SearchResultRecord above). The sort field must match the emitted
+        // shape — the previous snake_case `updated_at` only worked by
+        // accident through `toRecordKey` conversion in the helper.
+        defaultSort: [{ field: 'updatedAt', direction: 'desc' }],
       })
     },
   }
