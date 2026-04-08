@@ -21,18 +21,18 @@ import type { OrbitClientOptions } from '../config.js'
 
 const LIST_REQUEST: TransportRequest = {
   method: 'GET',
-  path: '/contacts',
+  path: '/v1/contacts',
   query: { limit: 10 },
 }
 
 const GET_REQUEST: TransportRequest = {
   method: 'GET',
-  path: '/contacts/cid_123',
+  path: '/v1/contacts/cid_123',
 }
 
 const CREATE_REQUEST: TransportRequest = {
   method: 'POST',
-  path: '/contacts',
+  path: '/v1/contacts',
   body: { name: 'Ada Lovelace', email: 'ada@example.com' },
 }
 
@@ -140,7 +140,7 @@ describe('Transport parity — envelope shape', () => {
 
   it('HttpTransport.request returns a valid OrbitEnvelope', async () => {
     fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify(makeEnvelope({ id: 'cid_123' }, '/contacts/cid_123')), {
+      new Response(JSON.stringify(makeEnvelope({ id: 'cid_123' }, '/v1/contacts/cid_123')), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
@@ -158,7 +158,7 @@ describe('Transport parity — envelope shape', () => {
 
   it('both transports return identical top-level keys for GET single', async () => {
     fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify(makeEnvelope({ id: 'cid_123' }, '/contacts/cid_123')), {
+      new Response(JSON.stringify(makeEnvelope({ id: 'cid_123' }, '/v1/contacts/cid_123')), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
@@ -176,7 +176,7 @@ describe('Transport parity — envelope shape', () => {
 
   it('both transports return identical meta keys for list request', async () => {
     fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify(makeListEnvelope([], '/contacts')), {
+      new Response(JSON.stringify(makeListEnvelope([], '/v1/contacts')), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
@@ -192,7 +192,7 @@ describe('Transport parity — envelope shape', () => {
 
   it('both transports return identical link keys for POST request', async () => {
     fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify(makeEnvelope({ id: 'cid_new' }, '/contacts')), {
+      new Response(JSON.stringify(makeEnvelope({ id: 'cid_new' }, '/v1/contacts')), {
         status: 201,
         headers: { 'content-type': 'application/json' },
       }),
@@ -236,7 +236,7 @@ describe('Transport parity — cursor metadata', () => {
 
   it('direct transport synthesizes next_cursor matching HTTP shape', async () => {
     fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify(makeListEnvelope([], '/contacts')), {
+      new Response(JSON.stringify(makeListEnvelope([], '/v1/contacts')), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
@@ -251,7 +251,7 @@ describe('Transport parity — cursor metadata', () => {
 
   it('direct transport synthesizes has_more matching HTTP shape', async () => {
     fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify(makeListEnvelope([], '/contacts')), {
+      new Response(JSON.stringify(makeListEnvelope([], '/v1/contacts')), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
@@ -267,7 +267,7 @@ describe('Transport parity — cursor metadata', () => {
   it('cursor is null for single-resource GET on both transports', async () => {
     fetchSpy.mockResolvedValueOnce(
       new Response(
-        JSON.stringify(makeEnvelope({ id: 'cid_123' }, '/contacts/cid_123')),
+        JSON.stringify(makeEnvelope({ id: 'cid_123' }, '/v1/contacts/cid_123')),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
     )
@@ -286,7 +286,7 @@ describe('Transport parity — cursor metadata', () => {
   it('version string is identical across transports', async () => {
     fetchSpy.mockResolvedValueOnce(
       new Response(
-        JSON.stringify(makeEnvelope({ id: 'cid_123' }, '/contacts/cid_123')),
+        JSON.stringify(makeEnvelope({ id: 'cid_123' }, '/v1/contacts/cid_123')),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
     )
@@ -327,7 +327,7 @@ describe('Transport parity — error codes', () => {
 
     const notFoundReq: TransportRequest = {
       method: 'GET',
-      path: '/contacts/nonexistent_999',
+      path: '/v1/contacts/nonexistent_999',
     }
 
     const httpErr = await http.request(notFoundReq).catch((e) => e)
@@ -371,7 +371,7 @@ describe('Transport parity — error codes', () => {
 
     const badCreate: TransportRequest = {
       method: 'POST',
-      path: '/contacts',
+      path: '/v1/contacts',
       body: {}, // missing required fields
     }
 
@@ -397,7 +397,7 @@ describe('Transport parity — error codes', () => {
 
     const notFoundReq: TransportRequest = {
       method: 'GET',
-      path: '/contacts/nonexistent_999',
+      path: '/v1/contacts/nonexistent_999',
     }
 
     const httpErr = (await http.request(notFoundReq).catch((e) => e)) as OrbitApiError
