@@ -1,7 +1,7 @@
 import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
 import { requireScope } from '../scopes.js'
-import { toEnvelope, toError } from '../responses.js'
+import { toEnvelope, toError, sanitizeSchemaRead } from '../responses.js'
 
 function notImplemented(c: any, operation: string) {
   return c.json(toError(c, 'INTERNAL_ERROR', `${operation} not implemented`), 501)
@@ -16,7 +16,7 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
       return notImplemented(c, 'List object types')
     }
     const result = await schema.listObjects(c.get('orbit'))
-    return c.json(toEnvelope(c, result))
+    return c.json(toEnvelope(c, Array.isArray(result) ? result.map(sanitizeSchemaRead) : sanitizeSchemaRead(result)))
   })
 
   // GET /v1/objects/:type — get object type schema
@@ -28,7 +28,7 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
     if (!result) {
       return c.json(toError(c, 'RESOURCE_NOT_FOUND', `Object type '${c.req.param('type')}' not found`), 404)
     }
-    return c.json(toEnvelope(c, result))
+    return c.json(toEnvelope(c, sanitizeSchemaRead(result)))
   })
 
   // POST /v1/objects/:type/fields — add a custom field
@@ -38,7 +38,7 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
     }
     const body = await c.req.json()
     const result = await schema.addField(c.get('orbit'), c.req.param('type'), body)
-    return c.json(toEnvelope(c, result), 201)
+    return c.json(toEnvelope(c, sanitizeSchemaRead(result)), 201)
   })
 
   // PATCH /v1/objects/:type/fields/:fieldName — update a custom field
@@ -53,7 +53,7 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
       c.req.param('fieldName'),
       body,
     )
-    return c.json(toEnvelope(c, result))
+    return c.json(toEnvelope(c, sanitizeSchemaRead(result)))
   })
 
   // DELETE /v1/objects/:type/fields/:fieldName — delete a custom field
@@ -74,7 +74,7 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
     }
     const body = await c.req.json()
     const result = await schema.preview(c.get('orbit'), body)
-    return c.json(toEnvelope(c, result))
+    return c.json(toEnvelope(c, sanitizeSchemaRead(result)))
   })
 
   // POST /v1/schema/migrations/apply — apply a migration (requires schema:apply scope)
@@ -84,7 +84,7 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
     }
     const body = await c.req.json()
     const result = await schema.apply(c.get('orbit'), body)
-    return c.json(toEnvelope(c, result))
+    return c.json(toEnvelope(c, sanitizeSchemaRead(result)))
   })
 
   // POST /v1/schema/migrations/:id/rollback — rollback a migration (requires schema:apply scope)
@@ -93,6 +93,6 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
       return notImplemented(c, 'Schema migration rollback')
     }
     const result = await schema.rollback(c.get('orbit'), c.req.param('id'))
-    return c.json(toEnvelope(c, result))
+    return c.json(toEnvelope(c, sanitizeSchemaRead(result)))
   })
 }
