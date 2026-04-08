@@ -94,6 +94,9 @@ const SQLITE_WAVE_1_SCHEMA_STATEMENTS = [
     created_at text not null,
     updated_at text not null
   )`,
+  // L8 partial unique index — SQLite stores booleans as integers so the
+  // WHERE clause uses `is_default = 1` rather than `is_default = true`.
+  `create unique index if not exists pipelines_org_default_unique_idx on pipelines (organization_id) where is_default = 1`,
   `create table if not exists stages (
     id text primary key,
     organization_id text not null,

@@ -36,8 +36,14 @@ async function createPostgresAdapter() {
   const database = createPostgresOrbitDatabase({ pool })
   await initializePostgresWave2SliceESchema(asMigrationDatabase(database), {
     // pg-mem does not implement RLS DDL, so persistence proofs exercise the
-    // real bootstrap path with only the unsupported Postgres-specific step off.
+    // real bootstrap path with only the unsupported Postgres-specific steps
+    // off. Also opt out of partial unique indexes because pg-mem has a
+    // documented bug where rows with `is_default = false` become invisible
+    // to SELECTs filtered by `organization_id` once the L8 partial unique
+    // index exists. The L8 race is still covered by the in-memory
+    // pipeline repo mirror and the coerce-conflict unit test.
     includeRls: false,
+    includePartialUniqueIndexes: false,
   })
 
   const adapter = createPostgresStorageAdapter({

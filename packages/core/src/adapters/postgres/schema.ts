@@ -490,9 +490,31 @@ async function executeBootstrapStatements(
   })
 }
 
+/**
+ * Partial unique indexes emitted as a separate block. pg-mem (used by the
+ * in-memory Postgres persistence tests) has a bug where rows with
+ * `is_default = false` become invisible to any SELECT that filters by
+ * `organization_id` after this index is created. The real Postgres
+ * engine does not have this issue. Tests that run against pg-mem opt
+ * out via `includePartialUniqueIndexes: false`.
+ */
+const POSTGRES_PARTIAL_UNIQUE_INDEX_STATEMENTS = [
+  // L8 — at most one default pipeline per org. The service-layer
+  // `demoteOtherDefaults` closes the same-transaction race; this index
+  // closes the multi-transaction race that the service cannot see.
+  `create unique index if not exists pipelines_org_default_unique_idx on pipelines (organization_id) where is_default = true`,
+] as const
+
 export interface PostgresBootstrapOptions {
   includeOrgLeadingIndexes?: boolean
   includeRls?: boolean
+  /**
+   * Whether to emit partial unique index statements. Defaults to true
+   * in production. Tests running against pg-mem set this to false to
+   * work around a pg-mem SELECT-filtering bug documented on
+   * POSTGRES_PARTIAL_UNIQUE_INDEX_STATEMENTS.
+   */
+  includePartialUniqueIndexes?: boolean
 }
 
 export async function initializePostgresWave2SliceESchema(
@@ -501,6 +523,7 @@ export async function initializePostgresWave2SliceESchema(
 ): Promise<void> {
   const includeOrgLeadingIndexes = options.includeOrgLeadingIndexes ?? true
   const includeRls = options.includeRls ?? true
+  const includePartialUniqueIndexes = options.includePartialUniqueIndexes ?? true
 
   await db.transaction(async (tx) => {
     await tx.execute(sql.raw(buildCreateSchemaStatement()))
@@ -508,6 +531,12 @@ export async function initializePostgresWave2SliceESchema(
 
     for (const statement of POSTGRES_WAVE_2_SLICE_E_SCHEMA_STATEMENTS) {
       await tx.execute(sql.raw(statement))
+    }
+
+    if (includePartialUniqueIndexes) {
+      for (const statement of POSTGRES_PARTIAL_UNIQUE_INDEX_STATEMENTS) {
+        await tx.execute(sql.raw(statement))
+      }
     }
 
     if (includeOrgLeadingIndexes) {
