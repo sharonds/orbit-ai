@@ -5,6 +5,8 @@
  * - reads generic entity capabilities from the shared entity capability map
  * - includes selected dedicated import/webhook routes so the public spec does
  *   not regress while the broader registry-driven rebuild (T10) is pending
+ * - response bodies reference the shared `Envelope` / `EnvelopePaginated` /
+ *   `Error` schemas so consumers see meaningful contracts (T6)
  */
 
 import { PUBLIC_ENTITY_CAPABILITIES } from '../routes/entity-capabilities.js'
@@ -13,6 +15,44 @@ export interface OpenApiInfo {
   title: string
   version: string
   description?: string
+}
+
+const ENVELOPE_REF = { $ref: '#/components/schemas/Envelope' }
+const ENVELOPE_PAGINATED_REF = { $ref: '#/components/schemas/EnvelopePaginated' }
+const ERROR_REF = { $ref: '#/components/schemas/Error' }
+
+function jsonContent(schemaRef: Record<string, unknown>): Record<string, unknown> {
+  return { 'application/json': { schema: schemaRef } }
+}
+
+function envelopeResponse(description: string): Record<string, unknown> {
+  return { description, content: jsonContent(ENVELOPE_REF) }
+}
+
+function paginatedResponse(description: string): Record<string, unknown> {
+  return { description, content: jsonContent(ENVELOPE_PAGINATED_REF) }
+}
+
+function errorResponse(description: string): Record<string, unknown> {
+  return { description, content: jsonContent(ERROR_REF) }
+}
+
+const STANDARD_AUTH_ERRORS = {
+  '401': errorResponse('Unauthorized — missing, invalid, or expired API key'),
+  '403': errorResponse('Forbidden — API key lacks the required scope'),
+  '429': errorResponse('Rate limited'),
+  '500': errorResponse('Internal server error'),
+}
+
+const STANDARD_WRITE_ERRORS = {
+  '400': errorResponse('Validation error — request body or query parameters failed schema validation'),
+  ...STANDARD_AUTH_ERRORS,
+  '409': errorResponse('Conflict — uniqueness violation or idempotency conflict'),
+}
+
+const STANDARD_GET_ERRORS = {
+  ...STANDARD_AUTH_ERRORS,
+  '404': errorResponse('Not found'),
 }
 
 export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> {
@@ -30,13 +70,12 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
           operationId: `list${tag}`,
           tags: [tag],
           parameters: [
-            { name: 'limit', in: 'query', schema: { type: 'integer', default: 25 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 25 } },
             { name: 'cursor', in: 'query', schema: { type: 'string' } },
           ],
           responses: {
-            '200': { description: `Paginated list of ${entity}` },
-            '401': { description: 'Unauthorized' },
-            '429': { description: 'Rate limited' },
+            '200': paginatedResponse(`Paginated list of ${entity}`),
+            ...STANDARD_AUTH_ERRORS,
           },
         },
       }
@@ -50,8 +89,8 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
             { name: 'id', in: 'path', required: true, schema: { type: 'string', description: 'Orbit prefixed ULID (e.g. contact_01ARZ...)' } },
           ],
           responses: {
-            '200': { description: `${singular} details` },
-            '404': { description: 'Not found' },
+            '200': envelopeResponse(`${singular} details`),
+            ...STANDARD_GET_ERRORS,
           },
         },
       }
@@ -69,11 +108,8 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
             content: { 'application/json': { schema: { type: 'object' } } },
           },
           responses: {
-            '201': { description: `${singular} created` },
-            '400': { description: 'Validation error' },
-            '401': { description: 'Unauthorized' },
-            '409': { description: 'Conflict / idempotency conflict' },
-            '429': { description: 'Rate limited' },
+            '201': envelopeResponse(`${singular} created`),
+            ...STANDARD_WRITE_ERRORS,
           },
         },
       }
@@ -91,8 +127,8 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
           content: { 'application/json': { schema: { type: 'object' } } },
         },
         responses: {
-          '200': { description: `${singular} updated` },
-          '404': { description: 'Not found' },
+          '200': envelopeResponse(`${singular} updated`),
+          ...STANDARD_WRITE_ERRORS,
         },
       }
 
@@ -104,8 +140,8 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
           { name: 'id', in: 'path', required: true, schema: { type: 'string', description: 'Orbit prefixed ULID (e.g. contact_01ARZ...)' } },
         ],
         responses: {
-          '204': { description: `${singular} deleted` },
-          '404': { description: 'Not found' },
+          '204': { description: `${singular} deleted (no body)` },
+          ...STANDARD_GET_ERRORS,
         },
       }
     }
@@ -118,12 +154,12 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
       operationId: 'listImports',
       tags: ['Imports'],
       parameters: [
-        { name: 'limit', in: 'query', schema: { type: 'integer', default: 25 } },
+        { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 25 } },
         { name: 'cursor', in: 'query', schema: { type: 'string' } },
       ],
       responses: {
-        '200': { description: 'Paginated list of imports' },
-        '401': { description: 'Unauthorized' },
+        '200': paginatedResponse('Paginated list of imports'),
+        ...STANDARD_AUTH_ERRORS,
       },
     },
     post: {
@@ -135,9 +171,8 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
         content: { 'application/json': { schema: { type: 'object' } } },
       },
       responses: {
-        '201': { description: 'Import created' },
-        '400': { description: 'Validation error' },
-        '401': { description: 'Unauthorized' },
+        '201': envelopeResponse('Import created'),
+        ...STANDARD_WRITE_ERRORS,
       },
     },
   }
@@ -151,8 +186,8 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
         { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
       ],
       responses: {
-        '200': { description: 'Import details' },
-        '404': { description: 'Not found' },
+        '200': envelopeResponse('Import details'),
+        ...STANDARD_GET_ERRORS,
       },
     },
   }
@@ -164,12 +199,12 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
       operationId: 'listWebhooks',
       tags: ['Webhooks'],
       parameters: [
-        { name: 'limit', in: 'query', schema: { type: 'integer', default: 25 } },
+        { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 25 } },
         { name: 'cursor', in: 'query', schema: { type: 'string' } },
       ],
       responses: {
-        '200': { description: 'Paginated list of webhooks' },
-        '401': { description: 'Unauthorized' },
+        '200': paginatedResponse('Paginated list of webhooks'),
+        ...STANDARD_AUTH_ERRORS,
       },
     },
     post: {
@@ -181,9 +216,8 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
         content: { 'application/json': { schema: { type: 'object' } } },
       },
       responses: {
-        '201': { description: 'Webhook created' },
-        '400': { description: 'Validation error' },
-        '401': { description: 'Unauthorized' },
+        '201': envelopeResponse('Webhook created'),
+        ...STANDARD_WRITE_ERRORS,
       },
     },
   }
@@ -197,8 +231,8 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
         { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
       ],
       responses: {
-        '200': { description: 'Webhook details' },
-        '404': { description: 'Not found' },
+        '200': envelopeResponse('Webhook details'),
+        ...STANDARD_GET_ERRORS,
       },
     },
     patch: {
@@ -213,8 +247,8 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
         content: { 'application/json': { schema: { type: 'object' } } },
       },
       responses: {
-        '200': { description: 'Webhook updated' },
-        '404': { description: 'Not found' },
+        '200': envelopeResponse('Webhook updated'),
+        ...STANDARD_WRITE_ERRORS,
       },
     },
     delete: {
@@ -225,8 +259,8 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
         { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
       ],
       responses: {
-        '200': { description: 'Webhook deleted' },
-        '404': { description: 'Not found' },
+        '200': envelopeResponse('Webhook deleted'),
+        ...STANDARD_GET_ERRORS,
       },
     },
   }
@@ -238,12 +272,12 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
       tags: ['Webhooks'],
       parameters: [
         { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
-        { name: 'limit', in: 'query', schema: { type: 'integer', default: 25 } },
+        { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 25 } },
         { name: 'cursor', in: 'query', schema: { type: 'string' } },
       ],
       responses: {
-        '200': { description: 'Paginated list of webhook deliveries' },
-        '404': { description: 'Not found' },
+        '200': paginatedResponse('Paginated list of webhook deliveries'),
+        ...STANDARD_GET_ERRORS,
       },
     },
   }
@@ -257,8 +291,8 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
         { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
       ],
       responses: {
-        '200': { description: 'Webhook redelivery triggered' },
-        '404': { description: 'Not found' },
+        '200': envelopeResponse('Webhook redelivery triggered'),
+        ...STANDARD_GET_ERRORS,
       },
     },
   }
@@ -269,7 +303,16 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
       summary: 'Health check',
       operationId: 'healthCheck',
       tags: ['System'],
-      responses: { '200': { description: 'Service is healthy' } },
+      responses: {
+        '200': {
+          description: 'Service is healthy',
+          content: jsonContent({
+            type: 'object',
+            properties: { status: { type: 'string', enum: ['ok'] } },
+            required: ['status'],
+          }),
+        },
+      },
     },
   }
 
@@ -278,7 +321,10 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
       summary: 'Authenticated status',
       operationId: 'status',
       tags: ['System'],
-      responses: { '200': { description: 'Authenticated status with org info' } },
+      responses: {
+        '200': envelopeResponse('Authenticated status with org info'),
+        ...STANDARD_AUTH_ERRORS,
+      },
     },
   }
 
@@ -303,40 +349,81 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
       schemas: {
         Error: {
           type: 'object',
+          required: ['error'],
           properties: {
             error: {
               type: 'object',
-              properties: {
-                code: { type: 'string' },
-                message: { type: 'string' },
-                retryable: { type: 'boolean' },
-                request_id: { type: 'string' },
-                doc_url: { type: 'string' },
-              },
               required: ['code', 'message', 'retryable'],
+              properties: {
+                code: {
+                  type: 'string',
+                  description: 'Stable machine-readable error code (e.g. VALIDATION_FAILED, RESOURCE_NOT_FOUND, CONFLICT, RATE_LIMITED).',
+                },
+                message: {
+                  type: 'string',
+                  description: 'Human-readable description of the error.',
+                },
+                retryable: {
+                  type: 'boolean',
+                  description: 'True when the same request can be retried after a backoff.',
+                },
+                field: {
+                  type: 'string',
+                  description: 'For validation errors: the input field that caused the failure.',
+                },
+                request_id: {
+                  type: 'string',
+                  description: 'Server-generated request identifier (req_…) — useful for log correlation.',
+                },
+                doc_url: {
+                  type: 'string',
+                  description: 'Link to documentation for this specific error code.',
+                },
+              },
             },
+          },
+        },
+        EnvelopeMeta: {
+          type: 'object',
+          required: ['request_id', 'version', 'has_more'],
+          properties: {
+            request_id: { type: 'string' },
+            version: {
+              type: 'string',
+              description: 'API version pinned via the Orbit-Version header (e.g. 2026-04-01).',
+            },
+            cursor: { type: 'string', nullable: true },
+            next_cursor: { type: 'string', nullable: true },
+            has_more: { type: 'boolean' },
+          },
+        },
+        EnvelopeLinks: {
+          type: 'object',
+          properties: {
+            self: { type: 'string' },
+            next: { type: 'string' },
           },
         },
         Envelope: {
           type: 'object',
+          required: ['data', 'meta', 'links'],
+          description:
+            'Standard Orbit response envelope. `data` is the operation result (object, array, or null for delete responses).',
           properties: {
             data: {},
-            meta: {
-              type: 'object',
-              properties: {
-                request_id: { type: 'string' },
-                version: { type: 'string' },
-                cursor: { type: 'string', nullable: true },
-                next_cursor: { type: 'string', nullable: true },
-                has_more: { type: 'boolean' },
-              },
-            },
-            links: {
-              type: 'object',
-              properties: {
-                self: { type: 'string' },
-              },
-            },
+            meta: { $ref: '#/components/schemas/EnvelopeMeta' },
+            links: { $ref: '#/components/schemas/EnvelopeLinks' },
+          },
+        },
+        EnvelopePaginated: {
+          type: 'object',
+          required: ['data', 'meta', 'links'],
+          description:
+            'Paginated Orbit response envelope. `data` is always an array; cursor pagination is reported via `meta.next_cursor` and `meta.has_more`.',
+          properties: {
+            data: { type: 'array', items: {} },
+            meta: { $ref: '#/components/schemas/EnvelopeMeta' },
+            links: { $ref: '#/components/schemas/EnvelopeLinks' },
           },
         },
       },
