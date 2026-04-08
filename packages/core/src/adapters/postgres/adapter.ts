@@ -9,9 +9,11 @@ import {
   type OrbitDatabase,
   type SchemaSnapshot,
   type StorageAdapter,
+  type TransactionScope,
   type IUserResolver,
 } from '../interface.js'
-import { withTenantContext } from './tenant-context.js'
+import { buildSetTenantContextStatement, withTenantContext } from './tenant-context.js'
+import { assertOrbitId } from '../../ids/parse-id.js'
 import { fromPostgresDate, fromPostgresJson } from '../../repositories/postgres/shared.js'
 
 const defaultUserResolver: IUserResolver = {
@@ -101,6 +103,22 @@ export class PostgresStorageAdapter implements StorageAdapter {
 
   async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>): Promise<T> {
     return this.unsafeRawDatabase.transaction(fn)
+  }
+
+  beginTransaction(): TransactionScope {
+    const adapter = this
+    return {
+      async run<T>(ctx: OrbitAuthContext, fn: (txDb: OrbitDatabase) => Promise<T>): Promise<T> {
+        assertOrbitId(ctx.orgId, 'organization')
+        return adapter.unsafeRawDatabase.transaction(async (txDb) => {
+          // Set the tenant RLS context for the duration of this transaction
+          // (transaction-local — third arg `true` to set_config). All
+          // statements run on `txDb` see the same `app.current_org_id`.
+          await txDb.execute(buildSetTenantContextStatement(ctx.orgId))
+          return fn(txDb)
+        })
+      },
+    }
   }
 
   async execute(statement: Parameters<OrbitDatabase['execute']>[0]): Promise<unknown> {

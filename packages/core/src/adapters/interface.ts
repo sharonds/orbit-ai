@@ -75,6 +75,32 @@ export interface SchemaSnapshot {
   tables: string[]
 }
 
+/**
+ * A capability object that lets service code run a callback inside a real
+ * database transaction while preserving tenant context.
+ *
+ * Implementors must:
+ *   1. Open a real transaction boundary (BEGIN/COMMIT or equivalent)
+ *   2. Set the auth context (RLS variables on Postgres) before invoking `fn`
+ *   3. Roll back on any thrown error
+ *
+ * Service code should obtain a `TransactionScope` from
+ * `adapter.beginTransaction()` and use it for any read-then-write or
+ * multi-step operation that must be atomic. Do NOT call `adapter.transaction`
+ * directly from service code — that path bypasses tenant-context propagation.
+ */
+export interface TransactionScope {
+  /**
+   * Execute `fn` inside a single transaction. The `txDb` parameter is a
+   * transaction-scoped `OrbitDatabase`; repositories that accept it (via a
+   * `withDatabase(txDb)` rebinding) will run their queries inside the same
+   * transaction. The `ctx` parameter carries the auth context — Postgres-family
+   * adapters use it to issue `set_config('app.current_org_id', …)` for the
+   * duration of the transaction.
+   */
+  run<T>(ctx: OrbitAuthContext, fn: (txDb: OrbitDatabase) => Promise<T>): Promise<T>
+}
+
 export interface StorageAdapter {
   readonly name: AdapterName
   readonly dialect: AdapterDialect
@@ -95,6 +121,12 @@ export interface StorageAdapter {
   runWithMigrationAuthority<T>(fn: (db: MigrationDatabase) => Promise<T>): Promise<T>
   lookupApiKeyForAuth(keyHash: string): Promise<ApiKeyAuthLookup | null>
   transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>): Promise<T>
+  /**
+   * Return a `TransactionScope` that service code can use to run atomic
+   * operations with preserved tenant context. Prefer this over calling
+   * `transaction()` directly — the bare method does not carry auth context.
+   */
+  beginTransaction(): TransactionScope
   execute(statement: SQL): Promise<unknown>
   query<T extends Record<string, unknown>>(statement: SQL): Promise<T[]>
   withTenantContext<T>(context: OrbitAuthContext, fn: (db: OrbitDatabase) => Promise<T>): Promise<T>

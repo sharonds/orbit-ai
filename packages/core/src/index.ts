@@ -1,4 +1,5 @@
 export * from './adapters/interface.js'
+export * from './adapters/noop-transaction-scope.js'
 export * from './adapters/postgres/adapter.js'
 export * from './adapters/postgres/database.js'
 export * from './adapters/postgres/schema.js'
