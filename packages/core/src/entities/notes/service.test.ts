@@ -31,7 +31,7 @@ async function createLinkedDealGraph() {
 
   const companyService = createCompanyService(companies)
   const contactService = createContactService({ contacts, companies })
-  const pipelineService = createPipelineService(pipelines)
+  const pipelineService = createPipelineService({ pipelines, tx: createNoopTransactionScope() })
   const stageService = createStageService({ stages, pipelines })
   const dealService = createDealService({ deals, pipelines, stages, contacts, companies, tx: createNoopTransactionScope() })
   const noteService = createNoteService({ notes, contacts, companies, deals, users })
