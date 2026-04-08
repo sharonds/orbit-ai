@@ -3,6 +3,42 @@ import type { OrbitClientOptions } from '../config.js'
 import type { OrbitTransport, TransportRequest } from './index.js'
 import { OrbitApiError } from '../errors.js'
 
+/**
+ * In-process transport for the Orbit AI SDK.
+ *
+ * @security **TRUSTED-CALLER ONLY — this transport bypasses API middleware.**
+ *
+ * DirectTransport dispatches requests straight to core services inside the
+ * current process. It does NOT run any of the following middleware that
+ * `@orbit-ai/api` applies to HTTP requests:
+ *
+ * - Webhook URL SSRF validation (`validateWebhookUrl`)
+ * - Scope enforcement (`requireScope`)
+ * - Idempotency key handling
+ * - Rate limiting
+ * - Request body size limits
+ * - API version pinning
+ * - Tenant auth context derivation from API keys
+ *
+ * This is fine when the SDK caller is a trusted server-side application
+ * passing its own trusted inputs (e.g. a Next.js backend using DirectTransport
+ * against an embedded SQLite adapter for tests, or a CLI tool).
+ *
+ * It is NOT fine when ANY of these are true:
+ * - You forward user-supplied webhook URLs through this transport
+ *   (SSRF: a malicious user could target `http://169.254.169.254/` or
+ *    internal services).
+ * - You expose DirectTransport to multi-tenant end-users without enforcing
+ *   scopes at your application layer (privilege escalation).
+ * - You need idempotency guarantees across retries (they will not replay).
+ * - You need rate limiting (there is none).
+ *
+ * If any of the above apply, use {@link HttpTransport} with a real API server
+ * instead — it applies the full middleware chain.
+ *
+ * Tracked for refactor: extract the SSRF validation + scope check functions
+ * from `@orbit-ai/api` into a shared layer both transports can call.
+ */
 export class DirectTransport implements OrbitTransport {
   private readonly services: ReturnType<typeof createCoreServices>
   private readonly ctx: OrbitAuthContext
