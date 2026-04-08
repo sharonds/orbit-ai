@@ -23,6 +23,9 @@ const ERROR_STATUS_MAP: Partial<Record<OrbitErrorCode, number>> = {
   ADAPTER_TRANSACTION_FAILED: 500,
   RLS_GENERATION_FAILED: 500,
   WEBHOOK_DELIVERY_FAILED: 502,
+  // 413 Payload Too Large — the search query would return more than the
+  // per-entity-type row cap and must be refined before retrying.
+  SEARCH_RESULT_TOO_LARGE: 413,
   INTERNAL_ERROR: 500,
 }
 
