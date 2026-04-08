@@ -39,6 +39,23 @@ import { OrbitApiError } from '../errors.js'
  * Tracked for refactor: extract the SSRF validation + scope check functions
  * from `@orbit-ai/api` into a shared layer both transports can call.
  */
+
+/**
+ * Map URL path segments (snake_case) to service keys (camelCase).
+ * Only entries where the URL segment differs from the service key are listed.
+ * Keys verified against `createCoreServices()` return shape in
+ * `packages/core/src/services/index.ts`.
+ */
+const ENTITY_SERVICE_MAP: Record<string, string> = {
+  sequence_steps: 'sequenceSteps',
+  sequence_enrollments: 'sequenceEnrollments',
+  sequence_events: 'sequenceEvents',
+}
+
+export function resolveServiceKey(entity: string): string {
+  return ENTITY_SERVICE_MAP[entity] ?? entity
+}
+
 export class DirectTransport implements OrbitTransport {
   private readonly services: ReturnType<typeof createCoreServices>
   private readonly ctx: OrbitAuthContext
@@ -109,7 +126,8 @@ export class DirectTransport implements OrbitTransport {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const service = (this.services as any)[entity] as
+    const serviceKey = resolveServiceKey(entity)
+    const service = (this.services as any)[serviceKey] as
       | { list?: Function; create?: Function; get?: Function; update?: Function; delete?: Function; search?: Function; batch?: Function }
       | undefined
     if (!service) throw new Error(`Unknown entity: ${entity}`)

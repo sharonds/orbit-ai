@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { DirectTransport } from '../transport/direct-transport.js'
+import { DirectTransport, resolveServiceKey } from '../transport/direct-transport.js'
 
 describe('DirectTransport', () => {
   it('requires adapter and context.orgId', () => {
@@ -65,5 +65,27 @@ describe('DirectTransport', () => {
     }
 
     expect(mockAdapter.runWithMigrationAuthority).not.toHaveBeenCalled()
+  })
+})
+
+describe('resolveServiceKey', () => {
+  it('maps sequence_steps to sequenceSteps', () => {
+    expect(resolveServiceKey('sequence_steps')).toBe('sequenceSteps')
+  })
+
+  it('maps sequence_enrollments to sequenceEnrollments', () => {
+    expect(resolveServiceKey('sequence_enrollments')).toBe('sequenceEnrollments')
+  })
+
+  it('maps sequence_events to sequenceEvents', () => {
+    expect(resolveServiceKey('sequence_events')).toBe('sequenceEvents')
+  })
+
+  it('passes through non-underscored entities unchanged', () => {
+    expect(resolveServiceKey('contacts')).toBe('contacts')
+    expect(resolveServiceKey('deals')).toBe('deals')
+    expect(resolveServiceKey('companies')).toBe('companies')
+    expect(resolveServiceKey('pipelines')).toBe('pipelines')
+    expect(resolveServiceKey('tags')).toBe('tags')
   })
 })
