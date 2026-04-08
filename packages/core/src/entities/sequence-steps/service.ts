@@ -1,3 +1,4 @@
+import type { TransactionScope } from '../../adapters/interface.js'
 import { generateId } from '../../ids/generate-id.js'
 import type { EntityService } from '../../services/entity-service.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
@@ -101,36 +102,45 @@ export function createSequenceStepService(deps: {
   sequenceSteps: SequenceStepRepository
   sequences: SequenceRepository
   sequenceEvents: SequenceEventRepository
+  tx: TransactionScope
 }): EntityService<SequenceStepCreateInput, SequenceStepUpdateInput, SequenceStepRecord> {
   return {
     async create(ctx, input) {
       const parsed = sequenceStepCreateInputSchema.parse(input)
+      // Sequence existence read stays outside the rebound view — the FK
+      // on sequence_steps.sequence_id catches a deletion race at insert.
       await assertSequenceExists(ctx, deps.sequences, parsed.sequenceId)
-      await assertUniqueStepOrder(ctx, deps.sequenceSteps, parsed.sequenceId, parsed.stepOrder)
-      const now = new Date()
 
-      try {
-        return await deps.sequenceSteps.create(
-          ctx,
-          sequenceStepRecordSchema.parse({
-            id: generateId('sequenceStep'),
-            organizationId: ctx.orgId,
-            sequenceId: parsed.sequenceId,
-            stepOrder: parsed.stepOrder,
-            actionType: parsed.actionType,
-            delayMinutes: parsed.delayMinutes ?? 0,
-            templateSubject: parsed.templateSubject ?? null,
-            templateBody: parsed.templateBody ?? null,
-            taskTitle: parsed.taskTitle ?? null,
-            taskDescription: parsed.taskDescription ?? null,
-            metadata: parsed.metadata ?? {},
-            createdAt: now,
-            updatedAt: now,
-          }),
-        )
-      } catch (error) {
-        coerceSequenceStepConflict(error, parsed.sequenceId, parsed.stepOrder)
-      }
+      const now = new Date()
+      // Wrap the (sequence_id, step_order) uniqueness check + insert in
+      // one transaction. `sequence_steps_order_idx` is the race-decider.
+      return deps.tx.run(ctx, async (txDb) => {
+        const txSequenceSteps = deps.sequenceSteps.withDatabase(txDb)
+        await assertUniqueStepOrder(ctx, txSequenceSteps, parsed.sequenceId, parsed.stepOrder)
+
+        try {
+          return await txSequenceSteps.create(
+            ctx,
+            sequenceStepRecordSchema.parse({
+              id: generateId('sequenceStep'),
+              organizationId: ctx.orgId,
+              sequenceId: parsed.sequenceId,
+              stepOrder: parsed.stepOrder,
+              actionType: parsed.actionType,
+              delayMinutes: parsed.delayMinutes ?? 0,
+              templateSubject: parsed.templateSubject ?? null,
+              templateBody: parsed.templateBody ?? null,
+              taskTitle: parsed.taskTitle ?? null,
+              taskDescription: parsed.taskDescription ?? null,
+              metadata: parsed.metadata ?? {},
+              createdAt: now,
+              updatedAt: now,
+            }),
+          )
+        } catch (error) {
+          coerceSequenceStepConflict(error, parsed.sequenceId, parsed.stepOrder)
+        }
+      })
     },
     async get(ctx, id) {
       return deps.sequenceSteps.get(ctx, id)
@@ -147,27 +157,31 @@ export function createSequenceStepService(deps: {
         }
         await assertSequenceExists(ctx, deps.sequences, parsed.sequenceId)
       }
-      await assertUniqueStepOrder(ctx, deps.sequenceSteps, nextSequenceId, nextStepOrder, id)
 
-      const patch: Partial<SequenceStepRecord> = {
-        updatedAt: new Date(),
-      }
+      return deps.tx.run(ctx, async (txDb) => {
+        const txSequenceSteps = deps.sequenceSteps.withDatabase(txDb)
+        await assertUniqueStepOrder(ctx, txSequenceSteps, nextSequenceId, nextStepOrder, id)
 
-      if (parsed.sequenceId !== undefined) patch.sequenceId = parsed.sequenceId
-      if (parsed.stepOrder !== undefined) patch.stepOrder = parsed.stepOrder
-      if (parsed.actionType !== undefined) patch.actionType = parsed.actionType
-      if (parsed.delayMinutes !== undefined) patch.delayMinutes = parsed.delayMinutes
-      if (parsed.templateSubject !== undefined) patch.templateSubject = parsed.templateSubject ?? null
-      if (parsed.templateBody !== undefined) patch.templateBody = parsed.templateBody ?? null
-      if (parsed.taskTitle !== undefined) patch.taskTitle = parsed.taskTitle ?? null
-      if (parsed.taskDescription !== undefined) patch.taskDescription = parsed.taskDescription ?? null
-      if (parsed.metadata !== undefined) patch.metadata = parsed.metadata
+        const patch: Partial<SequenceStepRecord> = {
+          updatedAt: new Date(),
+        }
 
-      try {
-        return assertFound(await deps.sequenceSteps.update(ctx, id, patch), `Sequence step ${id} not found`)
-      } catch (error) {
-        coerceSequenceStepConflict(error, nextSequenceId, nextStepOrder)
-      }
+        if (parsed.sequenceId !== undefined) patch.sequenceId = parsed.sequenceId
+        if (parsed.stepOrder !== undefined) patch.stepOrder = parsed.stepOrder
+        if (parsed.actionType !== undefined) patch.actionType = parsed.actionType
+        if (parsed.delayMinutes !== undefined) patch.delayMinutes = parsed.delayMinutes
+        if (parsed.templateSubject !== undefined) patch.templateSubject = parsed.templateSubject ?? null
+        if (parsed.templateBody !== undefined) patch.templateBody = parsed.templateBody ?? null
+        if (parsed.taskTitle !== undefined) patch.taskTitle = parsed.taskTitle ?? null
+        if (parsed.taskDescription !== undefined) patch.taskDescription = parsed.taskDescription ?? null
+        if (parsed.metadata !== undefined) patch.metadata = parsed.metadata
+
+        try {
+          return assertFound(await txSequenceSteps.update(ctx, id, patch), `Sequence step ${id} not found`)
+        } catch (error) {
+          coerceSequenceStepConflict(error, nextSequenceId, nextStepOrder)
+        }
+      })
     },
     async delete(ctx, id) {
       await assertStepHistoryMutable(ctx, deps.sequenceEvents, id, 'delete')
