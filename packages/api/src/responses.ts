@@ -260,11 +260,42 @@ const ORGANIZATION_PUBLIC_FIELDS = new Set([
   'updated_at',
 ])
 
+/**
+ * Scrub internal keys from the freeform `metadata` blob before returning it
+ * to clients. This is a seam for future callers: today it's a no-op identity
+ * function because no internal keys are known to be stored in metadata, but
+ * if the core service ever starts storing billing state, feature flags, or
+ * similar there, add them to INTERNAL_METADATA_KEYS below and they'll be
+ * stripped automatically. Identified by Fix Pass A security review (2026-04-08).
+ */
+const INTERNAL_METADATA_KEYS = new Set<string>([
+  // Add internal-only metadata keys here as they're discovered.
+  // Examples (for future reference): '_billing_state', '_feature_flags'
+])
+
+export function scrubInternalMetadataKeys(
+  metadata: unknown,
+): Record<string, unknown> | unknown {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return metadata
+  }
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(metadata as Record<string, unknown>)) {
+    if (!INTERNAL_METADATA_KEYS.has(k)) out[k] = v
+  }
+  return out
+}
+
 export function sanitizeOrganizationRead(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object') return {}
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (ORGANIZATION_PUBLIC_FIELDS.has(k)) out[k] = v
+    if (!ORGANIZATION_PUBLIC_FIELDS.has(k)) continue
+    if (k === 'metadata') {
+      out[k] = scrubInternalMetadataKeys(v)
+    } else {
+      out[k] = v
+    }
   }
   return out
 }
