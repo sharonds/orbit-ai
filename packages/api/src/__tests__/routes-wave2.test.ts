@@ -758,12 +758,12 @@ describe('Organization routes', () => {
 // =============================================================================
 
 describe('Workflow route sanitization', () => {
-  it('POST /v1/deals/:id/move runs result through sanitizePublicRead("deals", ...)', async () => {
+  it('POST /v1/deals/:id/move strips underscore-prefixed fields from response', async () => {
     const services = mockWave2CoreServices()
     ;(services.deals as any).move = vi.fn(async () => ({
       id: 'deal_01',
       title: 'Big Deal',
-      _internal_flag: true, // should be passed through (not stripped by sanitizePublicRead unless entity-specific)
+      _internal_flag: true, // internal field — must be stripped by sanitizePublicRead
       stage_id: 'stg_02',
     }))
 
@@ -776,9 +776,40 @@ describe('Workflow route sanitization', () => {
       body: JSON.stringify({ stage_id: 'stg_02' }),
     })
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { data: { id: string } }
-    // sanitizePublicRead for 'deals' (non-special entity) is a pass-through — just verify shape
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    // Public fields must be present
     expect(body.data.id).toBe('deal_01')
+    expect(body.data.title).toBe('Big Deal')
+    expect(body.data.stage_id).toBe('stg_02')
+    // Internal underscore-prefixed field must be stripped
+    expect(body.data).not.toHaveProperty('_internal_flag')
+  })
+
+  it('POST /v1/sequences/:id/enroll strips underscore-prefixed fields from response', async () => {
+    const services = mockWave2CoreServices()
+    ;(services.sequences as any).enroll = vi.fn(async () => ({
+      id: 'enr_01',
+      sequence_id: 'seq_01',
+      contact_id: 'con_01',
+      status: 'active',
+      _billing_state: 'trial', // internal field — must be stripped
+    }))
+
+    const app = createRouteTestApp()
+    registerWorkflowRoutes(app, services)
+
+    const res = await app.request('/v1/sequences/seq_01/enroll', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ contact_id: 'con_01' }),
+    })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    // Public fields must be present
+    expect(body.data.id).toBe('enr_01')
+    expect(body.data.status).toBe('active')
+    // Internal underscore-prefixed field must be stripped
+    expect(body.data).not.toHaveProperty('_billing_state')
   })
 })
 
