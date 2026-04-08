@@ -168,9 +168,12 @@ describe('SearchService', () => {
     expect(usersRepo.search).not.toHaveBeenCalled()
   })
 
-  it('caps merged search at MAX_SEARCH_ROWS_PER_TYPE per entity (T9/L11)', async () => {
+  it('refuses merged search past MAX_SEARCH_ROWS_PER_TYPE per entity (T9/L11)', async () => {
     // Construct a paginated repo that always reports another page exists.
     // Without the cap, fetchAllPages would loop forever (test would hang).
+    // After the Phase 2 gate fix, hitting the cap throws SEARCH_RESULT_TOO_LARGE
+    // instead of silently truncating + console.warn — that prevents the API
+    // from returning incomplete data dressed up as a complete page.
     let pageCount = 0
     const companiesRepo = {
       search: vi.fn(async (q: { limit?: number }) => {
@@ -191,33 +194,29 @@ describe('SearchService', () => {
         }
       }),
     }
-    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    try {
-      const service = createSearchService({
-        companies: companiesRepo as any,
-        contacts: mockRepo([]) as any,
-        deals: mockRepo([]) as any,
-        pipelines: mockRepo([]) as any,
-        stages: mockRepo([]) as any,
-        users: mockRepo([]) as any,
-      })
+    const service = createSearchService({
+      companies: companiesRepo as any,
+      contacts: mockRepo([]) as any,
+      deals: mockRepo([]) as any,
+      pipelines: mockRepo([]) as any,
+      stages: mockRepo([]) as any,
+      users: mockRepo([]) as any,
+    })
 
-      const result = await service.search(
+    await expect(
+      service.search(
         { orgId: 'org_test', apiKeyId: 'key_test', scopes: ['*'] },
         { query: '', limit: MAX_SEARCH_ROWS_PER_TYPE },
-      )
+      ),
+    ).rejects.toMatchObject({
+      code: 'SEARCH_RESULT_TOO_LARGE',
+    })
 
-      // Result should be capped — total returned rows must not exceed
-      // MAX_SEARCH_ROWS_PER_TYPE (the merged-pass `limit` will further
-      // page-slice it).
-      expect(result.data.length).toBeLessThanOrEqual(MAX_SEARCH_ROWS_PER_TYPE)
-      // The repo's search should have been called a bounded number of
-      // times — not indefinitely.
-      expect(companiesRepo.search.mock.calls.length).toBeLessThan(100)
-      // The cap is loud — operators should see a console warning.
-      expect(consoleSpy).toHaveBeenCalled()
-    } finally {
-      consoleSpy.mockRestore()
-    }
+    // The repo's search should have been called a bounded number of
+    // times — not indefinitely. With MAX_SEARCH_ROWS_PER_TYPE = 5000 and
+    // a per-page limit of MAX_LIST_LIMIT (100), the cap is hit after 50
+    // pages. Allow some slack for off-by-one but assert we never enter
+    // the runaway regime.
+    expect(companiesRepo.search.mock.calls.length).toBeLessThanOrEqual(60)
   })
 })
