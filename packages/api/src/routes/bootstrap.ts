@@ -2,7 +2,7 @@ import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
 import { isOrbitId } from '@orbit-ai/core'
 import { requireScope } from '../scopes.js'
-import { toEnvelope, toError } from '../responses.js'
+import { toEnvelope, toError, sanitizeOrganizationRead, sanitizeApiKeyRead } from '../responses.js'
 import { z } from 'zod'
 
 const CreateOrganizationSchema = z.object({
@@ -38,7 +38,7 @@ export function registerBootstrapRoutes(app: Hono, services: CoreServices) {
     }
 
     const result = await service.create(c.get('orbit'), parsed.data)
-    return c.json(toEnvelope(c, result), 201)
+    return c.json(toEnvelope(c, sanitizeOrganizationRead(result)), 201)
   })
 
   // POST /v1/bootstrap/api-keys
@@ -57,6 +57,6 @@ export function registerBootstrapRoutes(app: Hono, services: CoreServices) {
     }
 
     const result = await service.create(c.get('orbit'), parsed.data)
-    return c.json(toEnvelope(c, result), 201)
+    return c.json(toEnvelope(c, sanitizeApiKeyRead(result)), 201)
   })
 }

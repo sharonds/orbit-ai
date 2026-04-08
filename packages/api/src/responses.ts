@@ -230,3 +230,41 @@ export function sanitizeAdminPage(
 ): unknown[] {
   return rows.map((row) => sanitizeAdminRead(entity, row))
 }
+
+const ORGANIZATION_PUBLIC_FIELDS = new Set([
+  'id',
+  'name',
+  'slug',
+  'metadata',
+  'created_at',
+  'updated_at',
+])
+
+export function sanitizeOrganizationRead(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (ORGANIZATION_PUBLIC_FIELDS.has(k)) out[k] = v
+  }
+  return out
+}
+
+const API_KEY_PUBLIC_FIELDS = new Set([
+  'id',
+  'name',
+  'scopes',
+  'api_key', // raw key is intentionally returned ONCE on creation
+  'expires_at',
+  'organization_id',
+  'created_at',
+  'updated_at',
+])
+
+export function sanitizeApiKeyRead(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (API_KEY_PUBLIC_FIELDS.has(k)) out[k] = v
+  }
+  return out
+}

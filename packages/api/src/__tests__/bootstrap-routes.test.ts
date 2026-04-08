@@ -44,7 +44,7 @@ function mockCoreServicesForBootstrap(opts?: {
   if (opts?.apiKeyCreateExists !== false) {
     apiKeyService.create = vi.fn(async (_ctx: any, input: any) => ({
       id: 'key_new',
-      key: 'sk_test_full_key',
+      api_key: 'sk_test_full_key',
       ...input,
     }))
   }
@@ -250,9 +250,9 @@ describe('Bootstrap routes — success', () => {
       }),
     })
     expect(res.status).toBe(201)
-    const body = (await res.json()) as { data: { id: string; key: string } }
+    const body = (await res.json()) as { data: { id: string; api_key: string } }
     expect(body.data.id).toBe('key_new')
-    expect(body.data.key).toBe('sk_test_full_key')
+    expect(body.data.api_key).toBe('sk_test_full_key')
   })
 })
 
@@ -271,5 +271,92 @@ describe('Bootstrap routes — malformed JSON', () => {
     const body = (await res.json()) as { error: { code: string; hint: string } }
     expect(body.error.code).toBe('VALIDATION_FAILED')
     expect(body.error.hint).toBeDefined()
+  })
+})
+
+describe('Bootstrap routes — response sanitization', () => {
+  it('POST /v1/bootstrap/organizations strips internal fields from the response', async () => {
+    const services = {
+      system: {
+        organizations: {
+          list: vi.fn(async () => ({ data: [], nextCursor: null, hasMore: false })),
+          get: vi.fn(async () => null),
+          create: vi.fn(async () => ({
+            id: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
+            name: 'Acme',
+            slug: 'acme',
+            created_at: '2026-04-08T00:00:00Z',
+            // internal fields that must NOT leak
+            _internal_billing_state: 'trial',
+            _row_version: 42,
+            stripe_customer_id: 'cus_secret',
+          })),
+        },
+        apiKeys: {
+          list: vi.fn(async () => ({ data: [], nextCursor: null, hasMore: false })),
+          get: vi.fn(async () => null),
+        },
+      },
+    } as unknown as CoreServices
+
+    const app = createRouteTestApp()
+    registerBootstrapRoutes(app, services)
+
+    const res = await app.request('/v1/bootstrap/organizations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Acme' }),
+    })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    expect(body.data).toHaveProperty('id')
+    expect(body.data).toHaveProperty('name', 'Acme')
+    expect(body.data).not.toHaveProperty('_internal_billing_state')
+    expect(body.data).not.toHaveProperty('_row_version')
+    expect(body.data).not.toHaveProperty('stripe_customer_id')
+  })
+
+  it('POST /v1/bootstrap/api-keys strips internal fields from the response', async () => {
+    const services = {
+      system: {
+        organizations: {
+          list: vi.fn(async () => ({ data: [], nextCursor: null, hasMore: false })),
+          get: vi.fn(async () => null),
+        },
+        apiKeys: {
+          list: vi.fn(async () => ({ data: [], nextCursor: null, hasMore: false })),
+          get: vi.fn(async () => null),
+          create: vi.fn(async () => ({
+            id: 'ak_01ARYZ6S41YYYYYYYYYYYYYYYY',
+            name: 'Test Key',
+            scopes: ['contacts:read'],
+            api_key: 'sk_test_the_raw_key',
+            created_at: '2026-04-08T00:00:00Z',
+            // internal fields that must NOT leak
+            _hashed_key: 'abc123hash',
+            _salt: 'saltsalt',
+          })),
+        },
+      },
+    } as unknown as CoreServices
+
+    const app = createRouteTestApp()
+    registerBootstrapRoutes(app, services)
+
+    const res = await app.request('/v1/bootstrap/api-keys', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        organization_id: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
+        name: 'Test Key',
+        scopes: ['contacts:read'],
+      }),
+    })
+    expect(res.status).toBe(201)
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    expect(body.data).toHaveProperty('id')
+    expect(body.data).toHaveProperty('api_key') // the raw key IS intentionally returned once on creation
+    expect(body.data).not.toHaveProperty('_hashed_key')
+    expect(body.data).not.toHaveProperty('_salt')
   })
 })
