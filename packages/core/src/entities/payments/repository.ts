@@ -1,6 +1,7 @@
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
-import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import type { OrbitAuthContext, OrbitDatabase, StorageAdapter } from '../../adapters/interface.js'
+import { createTxBoundAdapter } from '../../adapters/tx-bound-adapter.js'
 import {
   createTenantSqliteRepository,
   fromSqliteDate,
@@ -20,6 +21,8 @@ export interface PaymentRepository {
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
   list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<PaymentRecord>>
   search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<PaymentRecord>>
+  /** See `SequenceRepository.withDatabase` — same contract. */
+  withDatabase(txDb: OrbitDatabase): PaymentRepository
 }
 
 export function createInMemoryPaymentRepository(seed: PaymentRecord[] = []): PaymentRepository {
@@ -50,7 +53,7 @@ export function createInMemoryPaymentRepository(seed: PaymentRecord[] = []): Pay
     ],
   }
 
-  return {
+  const repo: PaymentRepository = {
     async create(ctx, record) {
       const orgId = assertOrgContext(ctx)
       if (record.organizationId !== orgId) {
@@ -97,11 +100,15 @@ export function createInMemoryPaymentRepository(seed: PaymentRecord[] = []): Pay
     async search(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, queryOptions)
     },
+    withDatabase() {
+      return repo
+    },
   }
+  return repo
 }
 
 export function createSqlitePaymentRepository(adapter: StorageAdapter): PaymentRepository {
-  return createTenantSqliteRepository<PaymentRecord>(adapter, {
+  const base = createTenantSqliteRepository<PaymentRecord>(adapter, {
     tableName: 'payments',
     columns: [
       'id',
@@ -173,10 +180,16 @@ export function createSqlitePaymentRepository(adapter: StorageAdapter): PaymentR
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createSqlitePaymentRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }
 
 export function createPostgresPaymentRepository(adapter: StorageAdapter): PaymentRepository {
-  return createTenantPostgresRepository<PaymentRecord>(adapter, {
+  const base = createTenantPostgresRepository<PaymentRecord>(adapter, {
     tableName: 'payments',
     columns: [
       'id',
@@ -248,4 +261,10 @@ export function createPostgresPaymentRepository(adapter: StorageAdapter): Paymen
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createPostgresPaymentRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }

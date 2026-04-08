@@ -797,6 +797,7 @@ export function createCoreServices(
     },
     get payments() {
       paymentsService ??= createPaymentService({
+        tx,
         payments: getPaymentsRepository(),
         contacts,
         deals,
