@@ -3,30 +3,7 @@ import type { CoreServices } from '@orbit-ai/core'
 import { toEnvelope, toError, sanitizePublicRead, sanitizePublicPage } from '../responses.js'
 import { requireScope } from '../scopes.js'
 import { paginationParams } from '../utils/pagination.js'
-
-const PUBLIC_ENTITY_CAPABILITIES = {
-  contacts: { read: true, write: true, batch: true },
-  companies: { read: true, write: true, batch: true },
-  deals: { read: true, write: true, batch: true },
-  pipelines: { read: true, write: true, batch: false },
-  stages: { read: true, write: true, batch: false },
-  users: { read: true, write: true, batch: false },
-  // Wave 2 entities
-  activities: { read: true, write: true, batch: true },
-  tasks: { read: true, write: true, batch: true },
-  notes: { read: true, write: true, batch: true },
-  products: { read: true, write: true, batch: true },
-  payments: { read: true, write: true, batch: true },
-  contracts: { read: true, write: true, batch: true },
-  sequences: { read: true, write: true, batch: true },
-  sequence_steps: { read: true, write: true, batch: false },
-  sequence_enrollments: { read: true, write: true, batch: false },
-  sequence_events: { read: true, write: false, batch: false },
-  tags: { read: true, write: true, batch: true },
-  // imports: dedicated routes in imports.ts (not in generic entity loop)
-} as const
-
-type PublicEntityName = keyof typeof PUBLIC_ENTITY_CAPABILITIES
+import { PUBLIC_ENTITY_CAPABILITIES, type PublicEntityName } from './entity-capabilities.js'
 
 const ENTITY_SERVICE_MAP: Record<string, string> = {
   sequence_steps: 'sequenceSteps',

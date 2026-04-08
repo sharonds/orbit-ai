@@ -397,6 +397,15 @@ describe('SDK parity matrix — read-only resources', () => {
     expect((events as any).update).toBeUndefined()
     expect((events as any).delete).toBeUndefined()
   })
+
+  it('sequence_events.response().list uses rawRequest', async () => {
+    const transport = createMockTransport()
+    const { SequenceEventResource } = await import('../resources/sequence-events.js')
+    const events = new SequenceEventResource(transport)
+    const result = await events.response().list()
+    expect(result.meta).toBeDefined()
+    expect(transport.rawRequest).toHaveBeenCalled()
+  })
 })
 
 // ---------------------------------------------------------------------------

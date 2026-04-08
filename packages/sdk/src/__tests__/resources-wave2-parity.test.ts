@@ -296,4 +296,15 @@ describe('SDK Wave 2 parity — sequence_events (read-only)', () => {
     expect(result.meta).toBeDefined()
     expect(transport.rawRequest).toHaveBeenCalled()
   })
+
+  it('sequence_events.response().list uses rawRequest', async () => {
+    const transport = createMockTransport()
+    const { SequenceEventResource } = await import('../resources/sequence-events.js')
+    const events = new SequenceEventResource(transport)
+    const result = await events.response().list({ limit: 10 })
+    expect(result.meta).toBeDefined()
+    expect(transport.rawRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'GET', path: '/v1/sequence_events' }),
+    )
+  })
 })
