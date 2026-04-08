@@ -1,4 +1,4 @@
-import type { ListQuery } from '@orbit-ai/core'
+import type { ListQuery, OrbitEnvelope } from '@orbit-ai/core'
 import type { OrbitTransport } from '../transport/index.js'
 import { AutoPager } from '../pagination.js'
 
@@ -43,7 +43,27 @@ export class BaseResource<TRecord, TCreate, TUpdate> {
     return response.data
   }
 
-  list(query: ListQuery = {}): AutoPager<TRecord> {
+  /**
+   * Fetch the first page of results. Returns a Promise of the full envelope
+   * (data, meta, links). This is the default for most use cases.
+   *
+   * For multi-page iteration or cursor control, use `.pages()` to get an
+   * `AutoPager` with `.firstPage()` and `.autoPaginate()` helpers.
+   */
+  async list(query: ListQuery = {}): Promise<OrbitEnvelope<TRecord[]>> {
+    return new AutoPager<TRecord>(this.transport, this.basePath, query).firstPage()
+  }
+
+  /**
+   * Get an AutoPager for cursor-based multi-page iteration.
+   *
+   * ```ts
+   * for await (const row of client.contacts.pages({ limit: 50 }).autoPaginate()) {
+   *   console.log(row.id)
+   * }
+   * ```
+   */
+  pages(query: ListQuery = {}): AutoPager<TRecord> {
     return new AutoPager<TRecord>(this.transport, this.basePath, query)
   }
 
@@ -78,6 +98,12 @@ export class BaseResource<TRecord, TCreate, TUpdate> {
           method: 'GET',
           path: `${this.basePath}/${id}`,
           ...(include?.length ? { query: { include: include.join(',') } } : {}),
+        }),
+      list: (query: ListQuery = {}) =>
+        this.transport.rawRequest<TRecord[]>({
+          method: 'GET',
+          path: this.basePath,
+          query: query as unknown as Record<string, unknown>,
         }),
       update: (id: string, input: TUpdate) =>
         this.transport.rawRequest<TRecord>({
