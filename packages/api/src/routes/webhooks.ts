@@ -2,6 +2,7 @@ import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
 import { toEnvelope, toError, toWebhookRead, toWebhookDeliveryRead } from '../responses.js'
 import { requireScope } from '../scopes.js'
+import { paginationParams } from '../utils/pagination.js'
 
 /**
  * Deny-list of hostnames and IP patterns that must not be used as webhook targets.
@@ -86,8 +87,7 @@ function validateWebhookUrl(url: string): string | null {
 export function registerWebhookRoutes(app: Hono, services: CoreServices) {
   // GET /v1/webhooks — list
   app.get('/v1/webhooks', requireScope('webhooks:read'), async (c) => {
-    const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined
-    const cursor = c.req.query('cursor') ?? undefined
+    const { limit, cursor } = paginationParams(c)
     const service = services.webhooks as any
     const result = await service.list(c.get('orbit'), { limit, cursor })
     const sanitized = result.data.map((r: Record<string, unknown>) => toWebhookRead(r))
@@ -163,8 +163,7 @@ export function registerWebhookRoutes(app: Hono, services: CoreServices) {
     if (typeof deliveriesService.list !== 'function') {
       return c.json(toError(c, 'INTERNAL_ERROR', 'Webhook deliveries not implemented'), 501)
     }
-    const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined
-    const cursor = c.req.query('cursor') ?? undefined
+    const { limit, cursor } = paginationParams(c)
     const result = await deliveriesService.list(c.get('orbit'), {
       limit,
       cursor,

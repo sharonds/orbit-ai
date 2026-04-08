@@ -2,6 +2,7 @@ import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
 import { requireScope } from '../scopes.js'
 import { toEnvelope, toError, sanitizeAdminRead, sanitizeAdminPage } from '../responses.js'
+import { paginationParams } from '../utils/pagination.js'
 
 const ADMIN_ENTITIES = {
   organization_memberships: 'organizationMemberships',
@@ -30,8 +31,7 @@ export function registerAdminRoutes(app: Hono, services: CoreServices) {
 
     // GET /v1/admin/<entity> — list
     app.get(`/v1/admin/${route}`, requireScope('admin:*'), async (c) => {
-      const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined
-      const cursor = c.req.query('cursor') ?? undefined
+      const { limit, cursor } = paginationParams(c)
       const service = resolveAdminService(services, serviceKey)
       const result = await service.list(c.get('orbit'), { limit, cursor })
       return c.json(toEnvelope(c, sanitizeAdminPage(typedRoute, result.data), result))
