@@ -10,6 +10,20 @@ import { MAX_LIST_LIMIT } from '../query/list-query.js'
 import type { SearchQuery } from '../types/api.js'
 import type { InternalPaginatedResult } from '../types/pagination.js'
 
+/**
+ * L11: Hard cap on the number of rows we will pull into memory per entity
+ * type when assembling a merged search response. The merged-search code
+ * path uses `fetchAllPages` to flatten every page into a single array
+ * before sorting/slicing, which is OOM-prone on large tenants.
+ *
+ * This is an INTERIM safety net — T10's registry-driven search rebuild
+ * is expected to push pagination down to the repositories and eliminate
+ * the need for `fetchAllPages` entirely. When that lands, this cap and
+ * its test should be removed in the same commit so we don't leave
+ * dead defensive code.
+ */
+export const MAX_SEARCH_ROWS_PER_TYPE = 5000
+
 type SearchRecordSummary = Record<string, string | number | boolean | null>
 
 export interface SearchResultRecord extends Record<string, unknown> {
@@ -49,6 +63,19 @@ export function createSearchService(deps: {
 
       rows.push(...page.data)
       cursor = page.hasMore ? page.nextCursor : null
+
+      // L11 OOM cap: stop pulling pages once we hit MAX_SEARCH_ROWS_PER_TYPE
+      // and warn so operators see the truncation. The merged sort/slice
+      // downstream still produces a valid (truncated) result.
+      if (rows.length >= MAX_SEARCH_ROWS_PER_TYPE) {
+        if (cursor !== null) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[orbit] search-service: hit MAX_SEARCH_ROWS_PER_TYPE (${MAX_SEARCH_ROWS_PER_TYPE}) — additional pages discarded`,
+          )
+        }
+        return rows.slice(0, MAX_SEARCH_ROWS_PER_TYPE)
+      }
     } while (cursor)
 
     return rows
