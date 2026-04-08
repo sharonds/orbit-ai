@@ -1,18 +1,13 @@
 import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
+import { resolvePublicEntityServiceKey } from '@orbit-ai/core'
 import { toEnvelope, toError, sanitizePublicRead, sanitizePublicPage } from '../responses.js'
 import { requireScope } from '../scopes.js'
 import { paginationParams } from '../utils/pagination.js'
 import { PUBLIC_ENTITY_CAPABILITIES, type PublicEntityName } from './entity-capabilities.js'
 
-const ENTITY_SERVICE_MAP: Record<string, string> = {
-  sequence_steps: 'sequenceSteps',
-  sequence_enrollments: 'sequenceEnrollments',
-  sequence_events: 'sequenceEvents',
-}
-
 function resolveService(services: CoreServices, entity: PublicEntityName) {
-  const serviceKey = ENTITY_SERVICE_MAP[entity] ?? entity
+  const serviceKey = resolvePublicEntityServiceKey(entity)
   return services[serviceKey as keyof CoreServices] as any
 }
 

@@ -1,4 +1,4 @@
-import { createCoreServices, type OrbitEnvelope, type OrbitAuthContext } from '@orbit-ai/core'
+import { createCoreServices, resolvePublicEntityServiceKey, type OrbitEnvelope, type OrbitAuthContext } from '@orbit-ai/core'
 import type { OrbitClientOptions } from '../config.js'
 import type { OrbitTransport, TransportRequest } from './index.js'
 import { OrbitApiError } from '../errors.js'
@@ -40,20 +40,9 @@ import { OrbitApiError } from '../errors.js'
  * from `@orbit-ai/api` into a shared layer both transports can call.
  */
 
-/**
- * Map URL path segments (snake_case) to service keys (camelCase).
- * Only entries where the URL segment differs from the service key are listed.
- * Keys verified against `createCoreServices()` return shape in
- * `packages/core/src/services/index.ts`.
- */
-const ENTITY_SERVICE_MAP: Record<string, string> = {
-  sequence_steps: 'sequenceSteps',
-  sequence_enrollments: 'sequenceEnrollments',
-  sequence_events: 'sequenceEvents',
-}
-
+/** @deprecated Use `resolvePublicEntityServiceKey` from `@orbit-ai/core` directly. */
 export function resolveServiceKey(entity: string): string {
-  return ENTITY_SERVICE_MAP[entity] ?? entity
+  return resolvePublicEntityServiceKey(entity)
 }
 
 export class DirectTransport implements OrbitTransport {
@@ -126,7 +115,7 @@ export class DirectTransport implements OrbitTransport {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const serviceKey = resolveServiceKey(entity)
+    const serviceKey = resolvePublicEntityServiceKey(entity)
     const service = (this.services as any)[serviceKey] as
       | { list?: Function; create?: Function; get?: Function; update?: Function; delete?: Function; search?: Function; batch?: Function }
       | undefined
