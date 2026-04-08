@@ -182,4 +182,33 @@ describe('task service', () => {
       code: 'RELATION_NOT_FOUND',
     })
   })
+
+  it('preserves completedAt across non-completion updates on already-completed tasks (T9/L9)', async () => {
+    const taskService = createTaskService({
+      tasks: createInMemoryTaskRepository(),
+      contacts: createInMemoryContactRepository(),
+      companies: createInMemoryCompanyRepository(),
+      deals: createInMemoryDealRepository(),
+      users: createInMemoryUserRepository(),
+    })
+
+    const created = await taskService.create(ctx, { title: 'Initial title' })
+    expect(created.isCompleted).toBe(false)
+    expect(created.completedAt).toBeNull()
+
+    const completedAt = new Date('2026-04-05T10:00:00.000Z')
+    const completed = await taskService.update(ctx, created.id, {
+      isCompleted: true,
+      completedAt,
+    })
+    expect(completed.isCompleted).toBe(true)
+    expect(completed.completedAt?.toISOString()).toBe(completedAt.toISOString())
+
+    // Update the title only — completedAt must NOT be reset to a new value
+    // and must remain the original completion timestamp.
+    const renamed = await taskService.update(ctx, created.id, { title: 'New title' })
+    expect(renamed.title).toBe('New title')
+    expect(renamed.isCompleted).toBe(true)
+    expect(renamed.completedAt?.toISOString()).toBe(completedAt.toISOString())
+  })
 })
