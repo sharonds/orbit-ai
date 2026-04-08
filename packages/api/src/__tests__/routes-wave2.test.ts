@@ -726,4 +726,85 @@ describe('Organization routes', () => {
     })
     expect(res.status).toBe(501)
   })
+
+  it('GET /v1/organizations/current strips internal fields like stripe_customer_id', async () => {
+    const services = mockWave2CoreServices()
+    ;(services.system.organizations as any).get.mockResolvedValueOnce({
+      id: 'org_test',
+      name: 'Test Org',
+      slug: 'test-org',
+      stripe_customer_id: 'cus_secret123', // internal field — must be stripped
+      _billing_state: 'active',            // underscore-prefixed internal field
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+
+    const app = createRouteTestApp()
+    registerOrganizationRoutes(app, services)
+
+    const res = await app.request('/v1/organizations/current')
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    expect(body.data).toHaveProperty('id')
+    expect(body.data).toHaveProperty('name')
+    // Internal fields must not be present in the response
+    expect(body.data).not.toHaveProperty('stripe_customer_id')
+    expect(body.data).not.toHaveProperty('_billing_state')
+  })
+})
+
+// =============================================================================
+// Sanitization tests (H-SEC-1)
+// =============================================================================
+
+describe('Workflow route sanitization', () => {
+  it('POST /v1/deals/:id/move runs result through sanitizePublicRead("deals", ...)', async () => {
+    const services = mockWave2CoreServices()
+    ;(services.deals as any).move = vi.fn(async () => ({
+      id: 'deal_01',
+      title: 'Big Deal',
+      _internal_flag: true, // should be passed through (not stripped by sanitizePublicRead unless entity-specific)
+      stage_id: 'stg_02',
+    }))
+
+    const app = createRouteTestApp()
+    registerWorkflowRoutes(app, services)
+
+    const res = await app.request('/v1/deals/deal_01/move', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ stage_id: 'stg_02' }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: { id: string } }
+    // sanitizePublicRead for 'deals' (non-special entity) is a pass-through — just verify shape
+    expect(body.data.id).toBe('deal_01')
+  })
+})
+
+describe('Schema route sanitization', () => {
+  it('POST /v1/schema/migrations/preview strips underscore-prefixed fields', async () => {
+    const services = mockWave2CoreServices()
+    ;(services.schema as any).preview = vi.fn(async () => ({
+      migration_id: 'mig_01',
+      sql_statements: ['ALTER TABLE contacts ADD COLUMN x TEXT'],
+      _internal_plan_id: 'plan_secret', // internal field — must be stripped
+      estimated_rows: 100,
+    }))
+
+    const app = createRouteTestApp()
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/schema/migrations/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ entity_type: 'contacts', operation: 'add_field' }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    expect(body.data).toHaveProperty('migration_id')
+    expect(body.data).toHaveProperty('estimated_rows')
+    // underscore-prefixed field must be stripped
+    expect(body.data).not.toHaveProperty('_internal_plan_id')
+  })
 })

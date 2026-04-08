@@ -311,6 +311,23 @@ const API_KEY_PUBLIC_FIELDS = new Set([
   'updated_at',
 ])
 
+/**
+ * Strips underscore-prefixed fields from schema introspection results.
+ * A conservative default for routes that return schema metadata (object
+ * type definitions, column metadata, migration plans) where there is no
+ * fixed public-field allowlist. Underscore-prefixed keys are reserved for
+ * internal use by convention.
+ */
+export function sanitizeSchemaRead(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (k.startsWith('_')) continue // strip internal-only fields by convention
+    out[k] = v
+  }
+  return out
+}
+
 export function sanitizeApiKeyRead(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object') return {}
   const out: Record<string, unknown> = {}
