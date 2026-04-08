@@ -1,4 +1,5 @@
-import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import type { OrbitAuthContext, OrbitDatabase, StorageAdapter } from '../../adapters/interface.js'
+import { createTxBoundAdapter } from '../../adapters/tx-bound-adapter.js'
 import { createTenantPostgresRepository, fromPostgresDate, fromPostgresJson } from '../../repositories/postgres/shared.js'
 import { createTenantSqliteRepository, fromSqliteDate, fromSqliteJson, toSqliteDate, toSqliteJson } from '../../repositories/sqlite/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
@@ -11,6 +12,8 @@ export interface SequenceEventRepository {
   get(ctx: OrbitAuthContext, id: string): Promise<SequenceEventRecord | null>
   list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<SequenceEventRecord>>
   search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<SequenceEventRecord>>
+  /** See `SequenceRepository.withDatabase` — same contract. */
+  withDatabase(txDb: OrbitDatabase): SequenceEventRepository
 }
 
 const SEQUENCE_EVENT_SEARCHABLE_FIELDS = ['event_type', 'payload']
@@ -28,7 +31,7 @@ export function createInMemorySequenceEventRepository(seed: SequenceEventRecord[
     return [...rows.values()].filter((record) => record.organizationId === orgId)
   }
 
-  return {
+  const repo: SequenceEventRepository = {
     async create(ctx, record) {
       const orgId = assertOrgContext(ctx)
       if (record.organizationId !== orgId) {
@@ -58,11 +61,15 @@ export function createInMemorySequenceEventRepository(seed: SequenceEventRecord[
         defaultSort: SEQUENCE_EVENT_DEFAULT_SORT,
       })
     },
+    withDatabase() {
+      return repo
+    },
   }
+  return repo
 }
 
 export function createSqliteSequenceEventRepository(adapter: StorageAdapter): SequenceEventRepository {
-  return createTenantSqliteRepository<SequenceEventRecord>(adapter, {
+  const base = createTenantSqliteRepository<SequenceEventRecord>(adapter, {
     tableName: 'sequence_events',
     columns: [
       'id',
@@ -105,10 +112,16 @@ export function createSqliteSequenceEventRepository(adapter: StorageAdapter): Se
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createSqliteSequenceEventRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }
 
 export function createPostgresSequenceEventRepository(adapter: StorageAdapter): SequenceEventRepository {
-  return createTenantPostgresRepository<SequenceEventRecord>(adapter, {
+  const base = createTenantPostgresRepository<SequenceEventRecord>(adapter, {
     tableName: 'sequence_events',
     columns: [
       'id',
@@ -151,4 +164,10 @@ export function createPostgresSequenceEventRepository(adapter: StorageAdapter): 
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createPostgresSequenceEventRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }
