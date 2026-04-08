@@ -608,7 +608,7 @@ It returns active users for the current organization to help agents assign work 
 ```typescript
 // packages/mcp/src/resources/team-members.ts
 export async function readTeamMembers(client: import('@orbit-ai/sdk').OrbitClient) {
-  const result = await client.users.list({ limit: 100 }).firstPage()
+  const result = await client.users.list({ limit: 100 })
   return {
     contents: [
       {

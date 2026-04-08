@@ -348,7 +348,7 @@ function requiredConfig(path: string): never {
 
 CLI JSON mode must use SDK response-aware helpers directly:
 
-- list commands call `resource.list(query).firstPage()`
+- list commands call `resource.list(query)` (returns the first page directly)
 - CRUD, search, and action commands call `resource.response().<method>()`
 - custom dossier commands such as `orbit context` call the resource-specific `.response()` helper
 - the CLI must never fabricate `meta`, `links`, cursors, or `request_id`
@@ -358,7 +358,7 @@ CLI JSON mode must use SDK response-aware helpers directly:
 ### 7.1 JSON
 
 - emit the real Orbit envelope returned by the SDK
-- list commands use `resource.list(query).firstPage()`
+- list commands use `resource.list(query)` (first page is the direct return value)
 - CRUD, search, and action commands use `resource.response().<method>()`
 - errors printed as JSON and exit with code `1`
 

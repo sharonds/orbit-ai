@@ -300,7 +300,7 @@ const crm = new OrbitClient({ apiKey: process.env.ORBIT_API_KEY })
 await crm.contacts.create({ name: 'Jane', email: 'jane@acme.com' })
 await crm.deals.move(dealId, { stage: 'negotiation' })
 await crm.schema.addField('contacts', { name: 'wedding_date', type: 'date' })
-for await (const contact of crm.contacts.list().autoPaginate()) { ... }
+for await (const contact of crm.contacts.pages().autoPaginate()) { ... }
 ```
 
 ### 2.7 Competitive Positioning
@@ -419,7 +419,7 @@ Scope:
 - `OrbitClient` — main client class, configurable (API key OR direct DB URL)
 - Resource classes: `contacts`, `companies`, `deals`, `activities`, `tasks`, `notes`, `products`, `payments`, `contracts`, `sequences`, `pipelines`, `schema`, `webhooks`
 - Each resource: `create()`, `get()`, `update()`, `delete()`, `list()`, `search()`
-- Auto-pagination: `list().autoPaginate()` returns async iterator
+- Auto-pagination: `pages().autoPaginate()` returns async iterator; `list()` returns the first page directly as `Promise<OrbitEnvelope<TRecord[]>>`
 - Type-safe: types auto-generated from core schema, includes custom fields
 - Error handling: typed errors with `code`, `message`, `recovery`
 - Idempotency: auto-generated keys on all writes
