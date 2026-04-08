@@ -2,6 +2,7 @@ import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
 import { toEnvelope, toError, sanitizePublicRead, sanitizePublicPage } from '../responses.js'
 import { requireScope } from '../scopes.js'
+import { paginationParams } from '../utils/pagination.js'
 
 const PUBLIC_ENTITY_CAPABILITIES = {
   contacts: { read: true, write: true, batch: true },
@@ -44,8 +45,7 @@ export function registerPublicEntityRoutes(app: Hono, services: CoreServices) {
 
     // GET /v1/<entity> — list
     app.get(`/v1/${entity}`, requireScope(`${entity}:read`), async (c) => {
-      const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined
-      const cursor = c.req.query('cursor') ?? undefined
+      const { limit, cursor } = paginationParams(c)
       const include = c.req.query('include')?.split(',').filter(Boolean)
       const service = resolveService(services, typedEntity)
       const result = await service.list(c.get('orbit'), { limit, cursor, include })
