@@ -752,7 +752,7 @@ export function createCoreServices(
   return {
     companies: createCompanyService(companies),
     contacts: createContactService({ contacts, companies }),
-    pipelines: createPipelineService(pipelines),
+    pipelines: createPipelineService({ pipelines, tx }),
     stages: createStageService({ stages, pipelines }),
     deals: createDealService({ deals, pipelines, stages, contacts, companies, tx }),
     get activities() {
