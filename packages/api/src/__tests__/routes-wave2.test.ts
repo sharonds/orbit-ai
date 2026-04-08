@@ -372,9 +372,51 @@ describe('Import dedicated routes', () => {
     const res = await app.request('/v1/imports', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ entity_type: 'contacts', data: [] }),
+      body: JSON.stringify({ source: 'csv', entity: 'contacts', rows: [] }),
     })
     expect(res.status).toBe(201)
+  })
+
+  it('POST /v1/imports rejects a body with no fields at all as VALIDATION_FAILED', async () => {
+    const services = mockWave2CoreServices()
+    ;(services as any).imports = {
+      list: vi.fn(async () => ({ data: [], nextCursor: null, hasMore: false })),
+      get: vi.fn(async () => null),
+      create: vi.fn(async (_ctx: any, input: any) => ({ id: 'imp_01', ...input })),
+    }
+    const app = createRouteTestApp()
+    app.onError(orbitErrorHandler)
+    registerImportRoutes(app, services)
+
+    const res = await app.request('/v1/imports', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
+  })
+
+  it('POST /v1/imports rejects an unknown source type as VALIDATION_FAILED', async () => {
+    const services = mockWave2CoreServices()
+    ;(services as any).imports = {
+      list: vi.fn(async () => ({ data: [], nextCursor: null, hasMore: false })),
+      get: vi.fn(async () => null),
+      create: vi.fn(async (_ctx: any, input: any) => ({ id: 'imp_01', ...input })),
+    }
+    const app = createRouteTestApp()
+    app.onError(orbitErrorHandler)
+    registerImportRoutes(app, services)
+
+    const res = await app.request('/v1/imports', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ source: 'martian-csv', entity: 'contacts', rows: [] }),
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
   })
 
   it('GET /v1/imports/:id returns 404 when not found', async () => {
