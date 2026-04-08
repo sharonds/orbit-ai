@@ -1,3 +1,4 @@
+import type { TransactionScope } from '../../adapters/interface.js'
 import { generateId } from '../../ids/generate-id.js'
 import type { EntityService } from '../../services/entity-service.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
@@ -93,56 +94,68 @@ export function createSequenceService(deps: {
   sequences: SequenceRepository
   sequenceSteps: SequenceStepRepository
   sequenceEnrollments: SequenceEnrollmentRepository
+  tx: TransactionScope
 }): EntityService<SequenceCreateInput, SequenceUpdateInput, SequenceRecord> {
   return {
     async create(ctx, input) {
       const parsed = sequenceCreateInputSchema.parse(input)
       const now = new Date()
-      await assertUniqueSequenceName(ctx, deps.sequences, parsed.name)
+      // Wrap the uniqueness check + insert in one transaction so a concurrent
+      // create cannot slip in between the check and the write. The DB unique
+      // index `sequences_org_name_idx` is the source of truth and will fire if
+      // a true race makes it past the application-level guard; we then coerce
+      // its error into the typed CONFLICT response.
+      return deps.tx.run(ctx, async (txDb) => {
+        const txSequences = deps.sequences.withDatabase(txDb)
+        await assertUniqueSequenceName(ctx, txSequences, parsed.name)
 
-      try {
-        return await deps.sequences.create(
-          ctx,
-          sequenceRecordSchema.parse({
-            id: generateId('sequence'),
-            organizationId: ctx.orgId,
-            name: parsed.name,
-            description: parsed.description ?? null,
-            triggerEvent: parsed.triggerEvent ?? null,
-            status: parsed.status ?? 'draft',
-            customFields: parsed.customFields ?? {},
-            createdAt: now,
-            updatedAt: now,
-          }),
-        )
-      } catch (error) {
-        coerceSequenceConflict(error, parsed.name)
-      }
+        try {
+          return await txSequences.create(
+            ctx,
+            sequenceRecordSchema.parse({
+              id: generateId('sequence'),
+              organizationId: ctx.orgId,
+              name: parsed.name,
+              description: parsed.description ?? null,
+              triggerEvent: parsed.triggerEvent ?? null,
+              status: parsed.status ?? 'draft',
+              customFields: parsed.customFields ?? {},
+              createdAt: now,
+              updatedAt: now,
+            }),
+          )
+        } catch (error) {
+          coerceSequenceConflict(error, parsed.name)
+        }
+      })
     },
     async get(ctx, id) {
       return deps.sequences.get(ctx, id)
     },
     async update(ctx, id, input) {
       const parsed = sequenceUpdateInputSchema.parse(input)
-      const current = assertFound(await deps.sequences.get(ctx, id), `Sequence ${id} not found`)
-      const nextName = parsed.name ?? current.name
-      await assertUniqueSequenceName(ctx, deps.sequences, nextName, id)
+      return deps.tx.run(ctx, async (txDb) => {
+        const txSequences = deps.sequences.withDatabase(txDb)
+        const current = assertFound(await txSequences.get(ctx, id), `Sequence ${id} not found`)
+        const nextName = parsed.name ?? current.name
+        await assertUniqueSequenceName(ctx, txSequences, nextName, id)
 
-      const patch: Partial<SequenceRecord> = {
-        updatedAt: new Date(),
-      }
+        const patch: Partial<SequenceRecord> = {
+          updatedAt: new Date(),
+        }
 
-      if (parsed.name !== undefined) patch.name = parsed.name
-      if (parsed.description !== undefined) patch.description = parsed.description ?? null
-      if (parsed.triggerEvent !== undefined) patch.triggerEvent = parsed.triggerEvent ?? null
-      if (parsed.status !== undefined) patch.status = parsed.status
-      if (parsed.customFields !== undefined) patch.customFields = parsed.customFields
+        if (parsed.name !== undefined) patch.name = parsed.name
+        if (parsed.description !== undefined) patch.description = parsed.description ?? null
+        if (parsed.triggerEvent !== undefined) patch.triggerEvent = parsed.triggerEvent ?? null
+        if (parsed.status !== undefined) patch.status = parsed.status
+        if (parsed.customFields !== undefined) patch.customFields = parsed.customFields
 
-      try {
-        return assertFound(await deps.sequences.update(ctx, id, patch), `Sequence ${id} not found`)
-      } catch (error) {
-        coerceSequenceConflict(error, nextName)
-      }
+        try {
+          return assertFound(await txSequences.update(ctx, id, patch), `Sequence ${id} not found`)
+        } catch (error) {
+          coerceSequenceConflict(error, nextName)
+        }
+      })
     },
     async delete(ctx, id) {
       await assertSequenceDeleteAllowed(ctx, deps, id)

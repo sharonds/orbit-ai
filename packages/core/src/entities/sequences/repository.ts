@@ -1,4 +1,5 @@
-import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import type { OrbitAuthContext, OrbitDatabase, StorageAdapter } from '../../adapters/interface.js'
+import { createTxBoundAdapter } from '../../adapters/tx-bound-adapter.js'
 import { createTenantPostgresRepository, fromPostgresDate, fromPostgresJson } from '../../repositories/postgres/shared.js'
 import { createTenantSqliteRepository, fromSqliteDate, fromSqliteJson, toSqliteDate, toSqliteJson } from '../../repositories/sqlite/shared.js'
 import { assertTenantPatchOrganizationInvariant } from '../../repositories/tenant-guards.js'
@@ -14,6 +15,13 @@ export interface SequenceRepository {
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
   list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<SequenceRecord>>
   search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<SequenceRecord>>
+  /**
+   * Return a copy of this repository whose queries run against the supplied
+   * transaction-scoped database handle. Used by services that wrap a multi-step
+   * read-then-write in `TransactionScope.run()` so the inner reads and writes
+   * share a single transaction. In-memory repositories return `this` (no-op).
+   */
+  withDatabase(txDb: OrbitDatabase): SequenceRepository
 }
 
 const SEQUENCE_SEARCHABLE_FIELDS = ['name', 'description', 'trigger_event', 'status']
@@ -28,7 +36,7 @@ export function createInMemorySequenceRepository(seed: SequenceRecord[] = []): S
     return [...rows.values()].filter((record) => record.organizationId === orgId)
   }
 
-  return {
+  const repo: SequenceRepository = {
     async create(ctx, record) {
       const orgId = assertOrgContext(ctx)
       if (record.organizationId !== orgId) {
@@ -83,11 +91,18 @@ export function createInMemorySequenceRepository(seed: SequenceRecord[] = []): S
         defaultSort: SEQUENCE_DEFAULT_SORT,
       })
     },
+    withDatabase() {
+      // In-memory repository has no database handle to swap — every method
+      // already operates on the same in-process Map. Returning the same
+      // instance keeps `tx.run()` correctly scoped to a single shared store.
+      return repo
+    },
   }
+  return repo
 }
 
 export function createSqliteSequenceRepository(adapter: StorageAdapter): SequenceRepository {
-  return createTenantSqliteRepository<SequenceRecord>(adapter, {
+  const base = createTenantSqliteRepository<SequenceRecord>(adapter, {
     tableName: 'sequences',
     columns: [
       'id',
@@ -130,10 +145,16 @@ export function createSqliteSequenceRepository(adapter: StorageAdapter): Sequenc
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createSqliteSequenceRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }
 
 export function createPostgresSequenceRepository(adapter: StorageAdapter): SequenceRepository {
-  return createTenantPostgresRepository<SequenceRecord>(adapter, {
+  const base = createTenantPostgresRepository<SequenceRecord>(adapter, {
     tableName: 'sequences',
     columns: [
       'id',
@@ -176,4 +197,10 @@ export function createPostgresSequenceRepository(adapter: StorageAdapter): Seque
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createPostgresSequenceRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }

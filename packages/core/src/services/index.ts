@@ -267,6 +267,11 @@ export function createCoreServices(
   adapter: StorageAdapter,
   overrides: CoreRepositoryOverrides = {},
 ) {
+  // One transaction scope per service container — services capture this in
+  // their deps and use it for any operation that must wrap a read-then-write
+  // (uniqueness checks, multi-step graph mutations) in a real transaction.
+  const tx = adapter.beginTransaction()
+
   const organizations = resolveCoreRepository({
     adapter,
     override: overrides.organizations,
@@ -814,6 +819,7 @@ export function createCoreServices(
         sequences: getSequencesRepository(),
         sequenceSteps: getSequenceStepsRepository(),
         sequenceEnrollments: getSequenceEnrollmentsRepository(),
+        tx,
       })
 
       return sequencesService
