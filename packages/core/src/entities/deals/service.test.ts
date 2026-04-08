@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { createNoopTransactionScope } from '../../adapters/noop-transaction-scope.js'
+import { generateId } from '../../ids/generate-id.js'
 import { createInMemoryCompanyRepository } from '../companies/repository.js'
 import { createInMemoryContactRepository } from '../contacts/repository.js'
 import { createInMemoryDealRepository } from './repository.js'
@@ -254,6 +255,114 @@ describe('deal service', () => {
       withDatabaseSpy.mockClear()
       await dealService.update(ctx, created.id, { title: 'Renamed' })
       expect(withDatabaseSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('rebinds stages/pipelines/contacts/companies for graph validation (Codex follow-up)', async () => {
+      // If graph validation ran through the unbound repos, the stage-
+      // belongs-to-pipeline check would see a pre-transaction snapshot.
+      // This test asserts that deals.update() calls `withDatabase` on
+      // EVERY graph repo during an update that touches the graph
+      // (stage + pipeline + contact + company).
+      const pipelines = createInMemoryPipelineRepository()
+      const stages = createInMemoryStageRepository()
+      const contacts = createInMemoryContactRepository()
+      const companies = createInMemoryCompanyRepository()
+      const deals = createInMemoryDealRepository()
+
+      const pipelinesSpy = vi.spyOn(pipelines, 'withDatabase')
+      const stagesSpy = vi.spyOn(stages, 'withDatabase')
+      const contactsSpy = vi.spyOn(contacts, 'withDatabase')
+      const companiesSpy = vi.spyOn(companies, 'withDatabase')
+
+      const dealService = createDealService({
+        deals,
+        pipelines,
+        stages,
+        contacts,
+        companies,
+        tx: createNoopTransactionScope(),
+      })
+
+      // Build a real graph so the update succeeds.
+      const pipeline = await pipelines.create(ctx, {
+        id: generateId('pipeline'),
+        organizationId: ctx.orgId,
+        name: 'Sales',
+        description: null,
+        isDefault: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      const stage = await stages.create(ctx, {
+        id: generateId('stage'),
+        organizationId: ctx.orgId,
+        pipelineId: pipeline.id,
+        name: 'Qualified',
+        stageOrder: 1,
+        probability: 25,
+        color: null,
+        isWon: false,
+        isLost: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      const company = await companies.create(ctx, {
+        id: generateId('company'),
+        organizationId: ctx.orgId,
+        name: 'Acme',
+        domain: null,
+        industry: null,
+        size: null,
+        website: null,
+        notes: null,
+        assignedToUserId: null,
+        customFields: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+      const contact = await contacts.create(ctx, {
+        id: generateId('contact'),
+        organizationId: ctx.orgId,
+        name: 'Ada',
+        email: null,
+        phone: null,
+        title: null,
+        sourceChannel: null,
+        status: 'active',
+        assignedToUserId: null,
+        companyId: company.id,
+        leadScore: 0,
+        isHot: false,
+        lastContactedAt: null,
+        customFields: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      })
+
+      const deal = await dealService.create(ctx, {
+        title: 'Initial',
+        stageId: stage.id,
+      })
+
+      // Clear all spies — the T7 scope is the update call, not create.
+      pipelinesSpy.mockClear()
+      stagesSpy.mockClear()
+      contactsSpy.mockClear()
+      companiesSpy.mockClear()
+
+      await dealService.update(ctx, deal.id, {
+        stageId: stage.id,
+        pipelineId: pipeline.id,
+        contactId: contact.id,
+        companyId: company.id,
+      })
+
+      // The update must rebind every graph repo at least once so the
+      // graph check sees the transaction-scoped view.
+      expect(stagesSpy).toHaveBeenCalled()
+      expect(pipelinesSpy).toHaveBeenCalled()
+      expect(contactsSpy).toHaveBeenCalled()
+      expect(companiesSpy).toHaveBeenCalled()
     })
   })
 })
