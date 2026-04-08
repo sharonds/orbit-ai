@@ -60,6 +60,23 @@ export const orbitErrorHandler: ErrorHandler = (err, c) => {
       400,
     )
   }
+  // Unexpected error — log it before returning an opaque 500.
+  // We log to stderr here because the api package has no opinion on which
+  // structured logger to use; whatever log drain the host uses will pick up
+  // stderr (Vercel, Cloudflare, Fly, Docker, etc.). Structured shape so log
+  // processors can parse.
+  console.error({
+    msg: 'unhandled error in orbitErrorHandler',
+    err: {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+    },
+    request_id: c.get('requestId'),
+    method: c.req.method,
+    path: c.req.path,
+  })
+
   return c.json(
     {
       error: {
