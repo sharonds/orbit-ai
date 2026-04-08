@@ -34,6 +34,17 @@ export function idempotencyMiddleware(): MiddlewareHandler {
       return
     }
 
+    // Bootstrap routes run before tenant-context middleware, so the orbit
+    // context is not yet populated. Without an orgId, the idempotency store
+    // key falls back to 'unknown', causing cross-operator collisions between
+    // independent platform admins. Skip idempotency entirely on these paths;
+    // bootstrap endpoints are expected to be idempotent by design at the
+    // core service layer (duplicate orgs by slug, etc.).
+    if (c.req.path.startsWith('/v1/bootstrap/')) {
+      await next()
+      return
+    }
+
     const key = c.req.header('idempotency-key')
     if (!key) {
       await next()

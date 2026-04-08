@@ -124,4 +124,49 @@ describe('idempotency middleware', () => {
       Date.now = originalNow
     }
   })
+
+  it('bootstrap paths are exempt from idempotency (no cross-operator collision on unknown orgId)', async () => {
+    const app = new Hono()
+    app.onError(orbitErrorHandler)
+    app.use('*', requestIdMiddleware())
+    app.use('*', idempotencyMiddleware())
+
+    let callCount = 0
+    app.post('/v1/bootstrap/organizations', async (c) => {
+      callCount += 1
+      const body = await c.req.json()
+      return c.json({ id: `org_${callCount}`, name: body.name }, 201)
+    })
+
+    // Two calls with the SAME idempotency key but DIFFERENT bodies must both
+    // succeed (bootstrap is exempt). Without the exemption the second would
+    // 409 IDEMPOTENCY_CONFLICT because they'd share the 'unknown' orgId bucket.
+    const headers = {
+      'idempotency-key': 'idem_bootstrap_001',
+      'content-type': 'application/json',
+    }
+
+    const res1 = await app.request('/v1/bootstrap/organizations', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'OrgA' }),
+      headers,
+    })
+    expect(res1.status).toBe(201)
+    const body1 = (await res1.json()) as { id: string }
+    expect(body1.id).toBe('org_1')
+
+    const res2 = await app.request('/v1/bootstrap/organizations', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'OrgB' }),
+      headers,
+    })
+    expect(res2.status).toBe(201)
+    const body2 = (await res2.json()) as { id: string }
+    expect(body2.id).toBe('org_2')
+
+    // Neither response should claim to be a replay.
+    expect(res1.headers.get('x-idempotent-replayed')).toBeNull()
+    expect(res2.headers.get('x-idempotent-replayed')).toBeNull()
+    expect(callCount).toBe(2)
+  })
 })
