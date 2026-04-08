@@ -26,6 +26,8 @@ const ERROR_STATUS_MAP: Partial<Record<OrbitErrorCode, number>> = {
   // 413 Payload Too Large — the search query would return more than the
   // per-entity-type row cap and must be refined before retrying.
   SEARCH_RESULT_TOO_LARGE: 413,
+  // 413 Payload Too Large — the HTTP request body exceeds the configured limit.
+  PAYLOAD_TOO_LARGE: 413,
   INTERNAL_ERROR: 500,
 }
 
