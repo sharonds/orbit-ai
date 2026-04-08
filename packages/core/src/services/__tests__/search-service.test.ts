@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createSearchService } from '../search-service.js'
+import { createSearchService, MAX_SEARCH_ROWS_PER_TYPE } from '../search-service.js'
 
 function mockRepo(records: any[]) {
   return {
@@ -166,5 +166,58 @@ describe('SearchService', () => {
     expect(pipelinesRepo.search).not.toHaveBeenCalled()
     expect(stagesRepo.search).not.toHaveBeenCalled()
     expect(usersRepo.search).not.toHaveBeenCalled()
+  })
+
+  it('caps merged search at MAX_SEARCH_ROWS_PER_TYPE per entity (T9/L11)', async () => {
+    // Construct a paginated repo that always reports another page exists.
+    // Without the cap, fetchAllPages would loop forever (test would hang).
+    let pageCount = 0
+    const companiesRepo = {
+      search: vi.fn(async (q: { limit?: number }) => {
+        pageCount += 1
+        const limit = q.limit ?? 100
+        const data = Array.from({ length: limit }, (_v, i) => ({
+          id: `company_${pageCount}_${i}`,
+          name: `Org ${pageCount}-${i}`,
+          domain: null,
+          industry: null,
+          website: null,
+          updatedAt: new Date(2026, 0, 1, pageCount, i),
+        }))
+        return {
+          data,
+          hasMore: true,
+          nextCursor: `cursor_page_${pageCount + 1}`,
+        }
+      }),
+    }
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      const service = createSearchService({
+        companies: companiesRepo as any,
+        contacts: mockRepo([]) as any,
+        deals: mockRepo([]) as any,
+        pipelines: mockRepo([]) as any,
+        stages: mockRepo([]) as any,
+        users: mockRepo([]) as any,
+      })
+
+      const result = await service.search(
+        { orgId: 'org_test', apiKeyId: 'key_test', scopes: ['*'] },
+        { query: '', limit: MAX_SEARCH_ROWS_PER_TYPE },
+      )
+
+      // Result should be capped — total returned rows must not exceed
+      // MAX_SEARCH_ROWS_PER_TYPE (the merged-pass `limit` will further
+      // page-slice it).
+      expect(result.data.length).toBeLessThanOrEqual(MAX_SEARCH_ROWS_PER_TYPE)
+      // The repo's search should have been called a bounded number of
+      // times — not indefinitely.
+      expect(companiesRepo.search.mock.calls.length).toBeLessThan(100)
+      // The cap is loud — operators should see a console warning.
+      expect(consoleSpy).toHaveBeenCalled()
+    } finally {
+      consoleSpy.mockRestore()
+    }
   })
 })
