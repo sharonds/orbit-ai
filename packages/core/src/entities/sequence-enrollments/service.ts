@@ -219,32 +219,50 @@ export function createSequenceEnrollmentService(deps: {
     },
     async update(ctx, id, input) {
       const parsed = sequenceEnrollmentUpdateInputSchema.parse(input)
-      const current = assertFound(await deps.sequenceEnrollments.get(ctx, id), `Sequence enrollment ${id} not found`)
-      const nextSequenceId = parsed.sequenceId ?? current.sequenceId
-      const nextContactId = parsed.contactId ?? current.contactId
-      const nextStatus = parsed.status ?? current.status
-      const nextExitedAt = parsed.exitedAt !== undefined ? parsed.exitedAt ?? null : current.exitedAt
-      const nextExitReason = parsed.exitReason !== undefined ? parsed.exitReason ?? null : current.exitReason
 
-      if (
-        (parsed.sequenceId !== undefined && parsed.sequenceId !== current.sequenceId) ||
-        (parsed.contactId !== undefined && parsed.contactId !== current.contactId)
-      ) {
-        await assertEnrollmentHistoryMutable(ctx, deps.sequenceEvents, id, 'reparent')
-      }
-
-      await assertEnrollmentRelations(ctx, deps, {
-        sequenceId: parsed.sequenceId,
-        contactId: parsed.contactId,
-      })
-      assertEnrollmentState({
-        status: nextStatus,
-        exitedAt: nextExitedAt,
-        exitReason: nextExitReason,
-      })
-
+      // Phase 2 gate fix: the `current` get, the
+      // assertEnrollmentHistoryMutable check (which reads sequence_events
+      // to enforce "no reparent after history exists"), the relation
+      // check, and the state check all run inside the rebound view.
+      // Reading current outside the tx let two concurrent updates both
+      // pass the history-mutability guard against the same stale event
+      // count, then both insert events and reparent silently. Order
+      // matches the pre-fix code so existing tests still see the same
+      // error precedence (history-mutable > relation-not-found).
       return deps.tx.run(ctx, async (txDb) => {
         const txEnrollments = deps.sequenceEnrollments.withDatabase(txDb)
+        const current = assertFound(
+          await txEnrollments.get(ctx, id),
+          `Sequence enrollment ${id} not found`,
+        )
+        const nextSequenceId = parsed.sequenceId ?? current.sequenceId
+        const nextContactId = parsed.contactId ?? current.contactId
+        const nextStatus = parsed.status ?? current.status
+        const nextExitedAt = parsed.exitedAt !== undefined ? parsed.exitedAt ?? null : current.exitedAt
+        const nextExitReason = parsed.exitReason !== undefined ? parsed.exitReason ?? null : current.exitReason
+
+        if (
+          (parsed.sequenceId !== undefined && parsed.sequenceId !== current.sequenceId) ||
+          (parsed.contactId !== undefined && parsed.contactId !== current.contactId)
+        ) {
+          await assertEnrollmentHistoryMutable(ctx, deps.sequenceEvents, id, 'reparent')
+        }
+
+        // Relation reads run on the unbound deps — FK constraints at
+        // insert time catch deletion races. Inside the tx body so the
+        // error precedence (history-mutable > relation) matches the
+        // existing test expectations.
+        await assertEnrollmentRelations(ctx, deps, {
+          sequenceId: parsed.sequenceId,
+          contactId: parsed.contactId,
+        })
+
+        assertEnrollmentState({
+          status: nextStatus,
+          exitedAt: nextExitedAt,
+          exitReason: nextExitReason,
+        })
+
         await assertUniqueEnrollmentShape(
           ctx,
           txEnrollments,

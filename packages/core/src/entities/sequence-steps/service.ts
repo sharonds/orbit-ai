@@ -147,19 +147,31 @@ export function createSequenceStepService(deps: {
     },
     async update(ctx, id, input) {
       const parsed = sequenceStepUpdateInputSchema.parse(input)
-      const current = assertFound(await deps.sequenceSteps.get(ctx, id), `Sequence step ${id} not found`)
-      const nextSequenceId = parsed.sequenceId ?? current.sequenceId
-      const nextStepOrder = parsed.stepOrder ?? current.stepOrder
-
+      // Sequence existence read stays outside the rebound view —
+      // FK on sequence_steps.sequence_id catches deletion races at update.
       if (parsed.sequenceId !== undefined) {
-        if (parsed.sequenceId !== current.sequenceId) {
-          await assertStepHistoryMutable(ctx, deps.sequenceEvents, id, 'reparent')
-        }
         await assertSequenceExists(ctx, deps.sequences, parsed.sequenceId)
       }
 
+      // Phase 2 gate fix: the `current` get and the
+      // assertStepHistoryMutable check (which decides whether a step
+      // can be reparented based on whether any history events exist)
+      // both run inside the rebound view. Reading current outside the
+      // tx let two concurrent updates both pass the history-mutability
+      // guard against the same stale event count.
       return deps.tx.run(ctx, async (txDb) => {
         const txSequenceSteps = deps.sequenceSteps.withDatabase(txDb)
+        const current = assertFound(
+          await txSequenceSteps.get(ctx, id),
+          `Sequence step ${id} not found`,
+        )
+        const nextSequenceId = parsed.sequenceId ?? current.sequenceId
+        const nextStepOrder = parsed.stepOrder ?? current.stepOrder
+
+        if (parsed.sequenceId !== undefined && parsed.sequenceId !== current.sequenceId) {
+          await assertStepHistoryMutable(ctx, deps.sequenceEvents, id, 'reparent')
+        }
+
         await assertUniqueStepOrder(ctx, txSequenceSteps, nextSequenceId, nextStepOrder, id)
 
         const patch: Partial<SequenceStepRecord> = {
