@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import { createNoopTransactionScope } from '../../adapters/noop-transaction-scope.js'
 import { generateId } from '../../ids/generate-id.js'
 import { createInMemoryPaymentRepository, type PaymentRepository } from './repository.js'
 import { createPaymentService } from './service.js'
@@ -37,7 +38,7 @@ async function createLinkedDealGraph() {
   const pipelineService = createPipelineService(pipelines)
   const stageService = createStageService({ stages, pipelines })
   const dealService = createDealService({ deals, pipelines, stages, contacts, companies })
-  const paymentService = createPaymentService({ payments, contacts, deals })
+  const paymentService = createPaymentService({ payments, contacts, deals, tx: createNoopTransactionScope() })
 
   const company = await companyService.create(ctx, { name: 'Orbit Labs' })
   const contact = await contactService.create(ctx, {
@@ -84,6 +85,7 @@ describe('payment service', () => {
       payments: createInMemoryPaymentRepository(),
       contacts: createInMemoryContactRepository(),
       deals: createInMemoryDealRepository(),
+      tx: createNoopTransactionScope(),
     })
 
     await expect(
@@ -102,6 +104,7 @@ describe('payment service', () => {
       payments: createInMemoryPaymentRepository(),
       contacts: createInMemoryContactRepository(),
       deals: createInMemoryDealRepository(),
+      tx: createNoopTransactionScope(),
     })
 
     await paymentService.create(ctx, {
@@ -236,11 +239,15 @@ describe('payment service', () => {
           totalCount: 0,
         }
       },
+      withDatabase() {
+        return repository
+      },
     }
     const paymentService = createPaymentService({
       payments: repository,
       contacts: createInMemoryContactRepository(),
       deals: createInMemoryDealRepository(),
+      tx: createNoopTransactionScope(),
     })
 
     await expect(
@@ -290,5 +297,51 @@ describe('payment service', () => {
         organizationId: otherCtx.orgId,
       }),
     ).rejects.toThrow('Tenant record organization mismatch')
+  })
+
+  describe('transactional safety', () => {
+    it('runs create inside a single transaction.run() call', async () => {
+      const { paymentService: _service, contact, deal } = await createLinkedDealGraph()
+      // Re-build with a spy scope
+      const noop = createNoopTransactionScope()
+      const runSpy = vi.fn(noop.run.bind(noop))
+      const paymentService = createPaymentService({
+        payments: createInMemoryPaymentRepository(),
+        contacts: createInMemoryContactRepository(),
+        deals: createInMemoryDealRepository(),
+        tx: { run: runSpy },
+      })
+
+      // Use a payment with no relations so we don't need to set up the
+      // full graph for this spy test (relation reads are outside the
+      // transaction body anyway).
+      await paymentService.create(ctx, {
+        amount: '10.00',
+        status: 'pending',
+      })
+      void contact
+      void deal
+
+      expect(runSpy).toHaveBeenCalledTimes(1)
+      expect(runSpy).toHaveBeenCalledWith(ctx, expect.any(Function))
+    })
+
+    it('rebinds the payments repository to the transaction-scoped db handle', async () => {
+      const base = createInMemoryPaymentRepository()
+      const withDatabaseSpy = vi.fn<(db: never) => PaymentRepository>(() => base)
+      const payments: PaymentRepository = {
+        ...base,
+        withDatabase: withDatabaseSpy,
+      }
+      const paymentService = createPaymentService({
+        payments,
+        contacts: createInMemoryContactRepository(),
+        deals: createInMemoryDealRepository(),
+        tx: createNoopTransactionScope(),
+      })
+
+      await paymentService.create(ctx, { amount: '5.00', status: 'pending' })
+      expect(withDatabaseSpy).toHaveBeenCalledTimes(1)
+    })
   })
 })

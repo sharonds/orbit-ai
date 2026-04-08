@@ -1,3 +1,4 @@
+import type { TransactionScope } from '../../adapters/interface.js'
 import { generateId } from '../../ids/generate-id.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { EntityService } from '../../services/entity-service.js'
@@ -191,15 +192,17 @@ export function createPaymentService(deps: {
   payments: PaymentRepository
   contacts: ContactRepository
   deals: DealRepository
+  tx: TransactionScope
 }): EntityService<PaymentCreateInput, PaymentUpdateInput, PaymentRecord> {
   return {
     async create(ctx, input) {
       const parsed = paymentCreateInputSchema.parse(input)
+      // Relation reads (`contacts`, `deals`) stay outside the rebound view —
+      // FK constraints catch any deletion races at insert time.
       await assertPaymentRelations(ctx, deps, {
         contactId: parsed.contactId,
         dealId: parsed.dealId,
       })
-      await assertUniqueExternalId(ctx, deps.payments, parsed.externalId ?? null)
 
       const now = new Date()
       const status = parsed.status
@@ -214,29 +217,36 @@ export function createPaymentService(deps: {
         paidAt,
       })
 
-      try {
-        return await deps.payments.create(
-          ctx,
-          paymentRecordSchema.parse({
-            id: generateId('payment'),
-            organizationId: ctx.orgId,
-            amount: parsed.amount,
-            currency: parsed.currency ?? 'USD',
-            status,
-            method: parsed.method ?? null,
-            dealId: parsed.dealId ?? null,
-            contactId: parsed.contactId ?? null,
-            externalId: parsed.externalId ?? null,
-            paidAt,
-            metadata: parsed.metadata ?? {},
-            customFields: parsed.customFields ?? {},
-            createdAt: now,
-            updatedAt: now,
-          }),
-        )
-      } catch (error) {
-        coercePaymentConflict(error, parsed.externalId ?? null)
-      }
+      // Wrap external_id uniqueness check + insert in one transaction so
+      // `payments_external_id_idx` is the race-decider.
+      return deps.tx.run(ctx, async (txDb) => {
+        const txPayments = deps.payments.withDatabase(txDb)
+        await assertUniqueExternalId(ctx, txPayments, parsed.externalId ?? null)
+
+        try {
+          return await txPayments.create(
+            ctx,
+            paymentRecordSchema.parse({
+              id: generateId('payment'),
+              organizationId: ctx.orgId,
+              amount: parsed.amount,
+              currency: parsed.currency ?? 'USD',
+              status,
+              method: parsed.method ?? null,
+              dealId: parsed.dealId ?? null,
+              contactId: parsed.contactId ?? null,
+              externalId: parsed.externalId ?? null,
+              paidAt,
+              metadata: parsed.metadata ?? {},
+              customFields: parsed.customFields ?? {},
+              createdAt: now,
+              updatedAt: now,
+            }),
+          )
+        } catch (error) {
+          coercePaymentConflict(error, parsed.externalId ?? null)
+        }
+      })
     },
     async get(ctx, id) {
       return deps.payments.get(ctx, id)
@@ -248,7 +258,6 @@ export function createPaymentService(deps: {
         contactId: parsed.contactId,
         dealId: parsed.dealId,
       })
-      await assertUniqueExternalId(ctx, deps.payments, parsed.externalId ?? current.externalId, id)
 
       const nextStatus = parsed.status ?? current.status
       assertPaymentTransition(current.status, nextStatus)
@@ -264,26 +273,31 @@ export function createPaymentService(deps: {
         paidAt: nextPaidAt,
       })
 
-      const patch: Partial<PaymentRecord> = {
-        updatedAt: new Date(),
-      }
+      return deps.tx.run(ctx, async (txDb) => {
+        const txPayments = deps.payments.withDatabase(txDb)
+        await assertUniqueExternalId(ctx, txPayments, parsed.externalId ?? current.externalId, id)
 
-      if (parsed.amount !== undefined) patch.amount = parsed.amount
-      if (parsed.currency !== undefined) patch.currency = parsed.currency
-      if (parsed.status !== undefined) patch.status = parsed.status
-      if (parsed.method !== undefined) patch.method = parsed.method ?? null
-      if (parsed.dealId !== undefined) patch.dealId = parsed.dealId ?? null
-      if (parsed.contactId !== undefined) patch.contactId = parsed.contactId ?? null
-      if (parsed.externalId !== undefined) patch.externalId = parsed.externalId ?? null
-      if (parsed.paidAt !== undefined || nextPaidAt !== current.paidAt) patch.paidAt = nextPaidAt
-      if (parsed.metadata !== undefined) patch.metadata = parsed.metadata
-      if (parsed.customFields !== undefined) patch.customFields = parsed.customFields
+        const patch: Partial<PaymentRecord> = {
+          updatedAt: new Date(),
+        }
 
-      try {
-        return assertFound(await deps.payments.update(ctx, id, patch), `Payment ${id} not found`)
-      } catch (error) {
-        coercePaymentConflict(error, parsed.externalId ?? current.externalId)
-      }
+        if (parsed.amount !== undefined) patch.amount = parsed.amount
+        if (parsed.currency !== undefined) patch.currency = parsed.currency
+        if (parsed.status !== undefined) patch.status = parsed.status
+        if (parsed.method !== undefined) patch.method = parsed.method ?? null
+        if (parsed.dealId !== undefined) patch.dealId = parsed.dealId ?? null
+        if (parsed.contactId !== undefined) patch.contactId = parsed.contactId ?? null
+        if (parsed.externalId !== undefined) patch.externalId = parsed.externalId ?? null
+        if (parsed.paidAt !== undefined || nextPaidAt !== current.paidAt) patch.paidAt = nextPaidAt
+        if (parsed.metadata !== undefined) patch.metadata = parsed.metadata
+        if (parsed.customFields !== undefined) patch.customFields = parsed.customFields
+
+        try {
+          return assertFound(await txPayments.update(ctx, id, patch), `Payment ${id} not found`)
+        } catch (error) {
+          coercePaymentConflict(error, parsed.externalId ?? current.externalId)
+        }
+      })
     },
     async delete(ctx, id) {
       assertDeleted(await deps.payments.delete(ctx, id), `Payment ${id} not found`)
