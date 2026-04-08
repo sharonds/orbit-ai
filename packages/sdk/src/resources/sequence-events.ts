@@ -1,4 +1,4 @@
-import type { ListQuery } from '@orbit-ai/core'
+import type { ListQuery, OrbitEnvelope } from '@orbit-ai/core'
 import type { OrbitTransport } from '../transport/index.js'
 import { AutoPager } from '../pagination.js'
 
@@ -36,7 +36,18 @@ export class SequenceEventResource {
     return response.data
   }
 
-  list(query: ListQuery = {}): AutoPager<SequenceEventRecord> {
+  /**
+   * Fetch the first page of sequence events. Returns a Promise of the full
+   * envelope. For multi-page iteration, use `.pages()` instead.
+   */
+  async list(query: ListQuery = {}): Promise<OrbitEnvelope<SequenceEventRecord[]>> {
+    return new AutoPager<SequenceEventRecord>(this.transport, this.basePath, query).firstPage()
+  }
+
+  /**
+   * Get an AutoPager for cursor-based multi-page iteration over sequence events.
+   */
+  pages(query: ListQuery = {}): AutoPager<SequenceEventRecord> {
     return new AutoPager<SequenceEventRecord>(this.transport, this.basePath, query)
   }
 

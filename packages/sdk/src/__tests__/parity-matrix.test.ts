@@ -126,7 +126,7 @@ describe('SDK parity matrix — .response() raw envelope', () => {
 // ---------------------------------------------------------------------------
 
 describe('SDK parity matrix — pagination', () => {
-  it('list().firstPage() preserves cursor metadata', async () => {
+  it('await list() returns first-page envelope with cursor metadata', async () => {
     const transport = createMockTransport()
     ;(transport.request as ReturnType<typeof vi.fn>).mockResolvedValue({
       data: [{ id: '1' }],
@@ -135,12 +135,13 @@ describe('SDK parity matrix — pagination', () => {
     })
     const { ContactResource } = await import('../resources/contacts.js')
     const contacts = new ContactResource(transport)
-    const page = await contacts.list().firstPage()
+    const page = await contacts.list()
     expect(page.meta.next_cursor).toBe('abc')
     expect(page.meta.has_more).toBe(true)
+    expect(Array.isArray(page.data)).toBe(true)
   })
 
-  it('list().autoPaginate() yields records across pages', async () => {
+  it('pages().autoPaginate() yields records across pages', async () => {
     const transport = createMockTransport()
     let callCount = 0
     ;(transport.request as ReturnType<typeof vi.fn>).mockImplementation(async () => {
@@ -161,18 +162,18 @@ describe('SDK parity matrix — pagination', () => {
     const { ContactResource } = await import('../resources/contacts.js')
     const contacts = new ContactResource(transport)
     const records: unknown[] = []
-    for await (const record of contacts.list().autoPaginate()) {
+    for await (const record of contacts.pages().autoPaginate()) {
       records.push(record)
     }
     expect(records).toHaveLength(3)
     expect(records).toEqual([{ id: '1' }, { id: '2' }, { id: '3' }])
   })
 
-  it('list() returns an AutoPager with firstPage and autoPaginate', async () => {
+  it('pages() returns an AutoPager with firstPage and autoPaginate', async () => {
     const transport = createMockTransport()
     const { ContactResource } = await import('../resources/contacts.js')
     const contacts = new ContactResource(transport)
-    const pager = contacts.list()
+    const pager = contacts.pages()
     expect(pager.firstPage).toBeTypeOf('function')
     expect(pager.autoPaginate).toBeTypeOf('function')
   })
@@ -380,11 +381,11 @@ describe('SDK parity matrix — read-only resources', () => {
     })
   })
 
-  it('sequence_events.list returns AutoPager', async () => {
+  it('sequence_events.pages() returns AutoPager', async () => {
     const transport = createMockTransport()
     const { SequenceEventResource } = await import('../resources/sequence-events.js')
     const events = new SequenceEventResource(transport)
-    const pager = events.list()
+    const pager = events.pages()
     expect(pager.firstPage).toBeTypeOf('function')
     expect(pager.autoPaginate).toBeTypeOf('function')
   })

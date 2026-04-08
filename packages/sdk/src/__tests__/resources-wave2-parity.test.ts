@@ -247,11 +247,11 @@ describe('SDK Wave 2 parity — imports', () => {
     })
   })
 
-  it('imports.list returns AutoPager', async () => {
+  it('imports.pages() returns AutoPager', async () => {
     const transport = createMockTransport()
     const { ImportResource } = await import('../resources/imports.js')
     const imports = new ImportResource(transport)
-    const pager = imports.list()
+    const pager = imports.pages()
     expect(pager.firstPage).toBeTypeOf('function')
     expect(pager.autoPaginate).toBeTypeOf('function')
   })
@@ -270,11 +270,11 @@ describe('SDK Wave 2 parity — sequence_events (read-only)', () => {
     expect(result).toEqual({ id: 'test_01' })
   })
 
-  it('sequence_events.list returns AutoPager', async () => {
+  it('sequence_events.pages() returns AutoPager', async () => {
     const transport = createMockTransport()
     const { SequenceEventResource } = await import('../resources/sequence-events.js')
     const events = new SequenceEventResource(transport)
-    const pager = events.list()
+    const pager = events.pages()
     expect(pager.firstPage).toBeTypeOf('function')
     expect(pager.autoPaginate).toBeTypeOf('function')
   })
