@@ -40,6 +40,7 @@ async function createEventGraph() {
     sequences,
     contacts,
     sequenceEvents,
+    tx: createNoopTransactionScope(),
   })
   const sequenceEventService = createSequenceEventService({
     sequenceEvents,

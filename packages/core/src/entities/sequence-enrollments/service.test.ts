@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createNoopTransactionScope } from '../../adapters/noop-transaction-scope.js'
 import { generateId } from '../../ids/generate-id.js'
@@ -6,6 +6,7 @@ import { createInMemoryCompanyRepository } from '../companies/repository.js'
 import { createCompanyService } from '../companies/service.js'
 import { createInMemoryContactRepository } from '../contacts/repository.js'
 import { createContactService } from '../contacts/service.js'
+import type { SequenceEnrollmentRepository } from './repository.js'
 import { createInMemorySequenceEnrollmentRepository } from './repository.js'
 import { createSequenceEnrollmentService } from './service.js'
 import { createInMemorySequenceEventRepository } from '../sequence-events/repository.js'
@@ -49,6 +50,7 @@ async function createEnrollmentGraph() {
     sequences,
     contacts,
     sequenceEvents,
+    tx: createNoopTransactionScope(),
   })
   const sequenceEventService = createSequenceEventService({
     sequenceEvents,
@@ -71,6 +73,9 @@ async function createEnrollmentGraph() {
     sequence,
     sequenceEnrollmentService,
     sequenceEnrollments,
+    sequences,
+    contacts,
+    sequenceEvents,
     sequenceStepService,
     sequenceEventService,
   }
@@ -246,6 +251,62 @@ describe('sequence enrollment service', () => {
     await expect(sequenceEnrollmentService.delete(ctx, enrollment.id)).rejects.toMatchObject({
       code: 'CONFLICT',
       field: 'id',
+    })
+  })
+
+  describe('transactional safety', () => {
+    it('runs create inside a single transaction.run() call', async () => {
+      const graph = await createEnrollmentGraph()
+      const noop = createNoopTransactionScope()
+      const runSpy = vi.fn(noop.run.bind(noop))
+      const sequenceEnrollmentService = createSequenceEnrollmentService({
+        sequenceEnrollments: graph.sequenceEnrollments,
+        sequences: graph.sequences,
+        contacts: graph.contacts,
+        sequenceEvents: graph.sequenceEvents,
+        tx: { run: runSpy },
+      })
+
+      await sequenceEnrollmentService.create(ctx, {
+        sequenceId: graph.sequence.id,
+        contactId: graph.contact.id,
+      })
+
+      expect(runSpy).toHaveBeenCalledTimes(1)
+      expect(runSpy).toHaveBeenCalledWith(ctx, expect.any(Function))
+    })
+
+    it('coerces a repository unique-index error into a typed CONFLICT', async () => {
+      const graph = await createEnrollmentGraph()
+      const indexError = new Error(
+        'duplicate key value violates unique constraint "sequence_enrollments_active_idx" on sequence_id, contact_id and status',
+      )
+      const enrollments: SequenceEnrollmentRepository = {
+        ...graph.sequenceEnrollments,
+        async create() {
+          throw indexError
+        },
+        withDatabase() {
+          return enrollments
+        },
+      }
+      const sequenceEnrollmentService = createSequenceEnrollmentService({
+        sequenceEnrollments: enrollments,
+        sequences: graph.sequences,
+        contacts: graph.contacts,
+        sequenceEvents: graph.sequenceEvents,
+        tx: createNoopTransactionScope(),
+      })
+
+      await expect(
+        sequenceEnrollmentService.create(ctx, {
+          sequenceId: graph.sequence.id,
+          contactId: graph.contact.id,
+        }),
+      ).rejects.toMatchObject({
+        code: 'CONFLICT',
+        field: 'status',
+      })
     })
   })
 })

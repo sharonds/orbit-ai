@@ -68,6 +68,7 @@ async function createGraphWithHistory() {
     sequences,
     contacts,
     sequenceEvents,
+    tx: createNoopTransactionScope(),
   })
   const sequenceEventService = createSequenceEventService({
     sequenceEvents,
