@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import { createNoopTransactionScope } from '../../adapters/noop-transaction-scope.js'
 import { generateId } from '../../ids/generate-id.js'
+import type { TagRepository } from './repository.js'
 import { createInMemoryTagRepository } from './repository.js'
 import { createTagService } from './service.js'
 
@@ -14,7 +16,7 @@ const ctxB = {
 
 describe('tag service', () => {
   it('creates tags with name and optional color', async () => {
-    const tagService = createTagService({ tags: createInMemoryTagRepository() })
+    const tagService = createTagService({ tags: createInMemoryTagRepository(), tx: createNoopTransactionScope() })
     const tag = await tagService.create(ctx, { name: 'VIP', color: '#ff0000' })
 
     expect(tag.name).toBe('VIP')
@@ -23,7 +25,7 @@ describe('tag service', () => {
   })
 
   it('enforces unique name per org', async () => {
-    const tagService = createTagService({ tags: createInMemoryTagRepository() })
+    const tagService = createTagService({ tags: createInMemoryTagRepository(), tx: createNoopTransactionScope() })
     await tagService.create(ctx, { name: 'VIP' })
 
     await expect(tagService.create(ctx, { name: 'VIP' })).rejects.toMatchObject({
@@ -33,7 +35,7 @@ describe('tag service', () => {
   })
 
   it('allows same tag name across different orgs', async () => {
-    const tagService = createTagService({ tags: createInMemoryTagRepository() })
+    const tagService = createTagService({ tags: createInMemoryTagRepository(), tx: createNoopTransactionScope() })
     const tagA = await tagService.create(ctx, { name: 'VIP' })
     const tagB = await tagService.create(ctxB, { name: 'VIP' })
 
@@ -43,7 +45,7 @@ describe('tag service', () => {
   })
 
   it('searches tags by name and color', async () => {
-    const tagService = createTagService({ tags: createInMemoryTagRepository() })
+    const tagService = createTagService({ tags: createInMemoryTagRepository(), tx: createNoopTransactionScope() })
     await tagService.create(ctx, { name: 'VIP', color: '#gold' })
     await tagService.create(ctx, { name: 'Prospect', color: '#blue' })
 
@@ -53,7 +55,7 @@ describe('tag service', () => {
   })
 
   it('supports get, update, and delete lifecycle', async () => {
-    const tagService = createTagService({ tags: createInMemoryTagRepository() })
+    const tagService = createTagService({ tags: createInMemoryTagRepository(), tx: createNoopTransactionScope() })
     const tag = await tagService.create(ctx, { name: 'VIP' })
 
     expect(await tagService.get(ctx, tag.id)).toMatchObject({ id: tag.id, name: 'VIP' })
@@ -66,7 +68,7 @@ describe('tag service', () => {
   })
 
   it('rejects update to a name that already exists on a different tag', async () => {
-    const tagService = createTagService({ tags: createInMemoryTagRepository() })
+    const tagService = createTagService({ tags: createInMemoryTagRepository(), tx: createNoopTransactionScope() })
     await tagService.create(ctx, { name: 'VIP' })
     const other = await tagService.create(ctx, { name: 'Prospect' })
 
@@ -77,7 +79,7 @@ describe('tag service', () => {
   })
 
   it('allows updating a tag name to the same value', async () => {
-    const tagService = createTagService({ tags: createInMemoryTagRepository() })
+    const tagService = createTagService({ tags: createInMemoryTagRepository(), tx: createNoopTransactionScope() })
     const tag = await tagService.create(ctx, { name: 'VIP' })
 
     const updated = await tagService.update(ctx, tag.id, { name: 'VIP', color: '#red' })
@@ -86,7 +88,7 @@ describe('tag service', () => {
   })
 
   it('tenant isolation: org B cannot see org A tags', async () => {
-    const tagService = createTagService({ tags: createInMemoryTagRepository() })
+    const tagService = createTagService({ tags: createInMemoryTagRepository(), tx: createNoopTransactionScope() })
     const tag = await tagService.create(ctx, { name: 'VIP' })
 
     expect(await tagService.get(ctxB, tag.id)).toBeNull()
@@ -108,5 +110,72 @@ describe('tag service', () => {
         organizationId: 'org_01ARYZ6S41ZZZZZZZZZZZZZZZZ',
       }),
     ).rejects.toThrow('Tenant record organization mismatch')
+  })
+
+  describe('transactional safety', () => {
+    it('runs create inside a single transaction.run() call', async () => {
+      const noop = createNoopTransactionScope()
+      const runSpy = vi.fn(noop.run.bind(noop))
+      const tagService = createTagService({
+        tags: createInMemoryTagRepository(),
+        tx: { run: runSpy },
+      })
+
+      await tagService.create(ctx, { name: 'Atomic' })
+      expect(runSpy).toHaveBeenCalledTimes(1)
+      expect(runSpy).toHaveBeenCalledWith(ctx, expect.any(Function))
+    })
+
+    it('runs update inside a single transaction.run() call', async () => {
+      const noop = createNoopTransactionScope()
+      const runSpy = vi.fn(noop.run.bind(noop))
+      const tagService = createTagService({
+        tags: createInMemoryTagRepository(),
+        tx: { run: runSpy },
+      })
+      const tag = await tagService.create(ctx, { name: 'Atomic' })
+      runSpy.mockClear()
+
+      await tagService.update(ctx, tag.id, { name: 'Renamed' })
+      expect(runSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('rebinds the tags repository to the transaction-scoped db handle', async () => {
+      const base = createInMemoryTagRepository()
+      const withDatabaseSpy = vi.fn<(db: never) => TagRepository>(() => base)
+      const tags: TagRepository = {
+        ...base,
+        withDatabase: withDatabaseSpy,
+      }
+      const tagService = createTagService({ tags, tx: createNoopTransactionScope() })
+
+      await tagService.create(ctx, { name: 'Rebound' })
+      expect(withDatabaseSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('coerces a repository unique-index error into a typed CONFLICT', async () => {
+      const base = createInMemoryTagRepository()
+      const indexError = new Error(
+        'duplicate key value violates unique constraint "tags_org_name_idx" on organization_id and name',
+      )
+      const tags: TagRepository = {
+        ...base,
+        async create() {
+          throw indexError
+        },
+        async update() {
+          throw indexError
+        },
+        withDatabase() {
+          return tags
+        },
+      }
+      const tagService = createTagService({ tags, tx: createNoopTransactionScope() })
+
+      await expect(tagService.create(ctx, { name: 'Race' })).rejects.toMatchObject({
+        code: 'CONFLICT',
+        field: 'name',
+      })
+    })
   })
 })

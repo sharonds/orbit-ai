@@ -855,6 +855,7 @@ export function createCoreServices(
     get tags() {
       tagsService ??= createTagService({
         tags: getTagsRepository(),
+        tx,
       })
 
       return tagsService
