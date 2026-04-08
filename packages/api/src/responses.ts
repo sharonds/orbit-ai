@@ -174,13 +174,34 @@ export function toWebhookDeliveryRead(
   }
 }
 
+/**
+ * Sanitize a single entity record before returning it to clients.
+ *
+ * For `webhooks`, delegates to `toWebhookRead` which applies a specific
+ * allowlist. For all other entities, strips any field whose key starts
+ * with an underscore — a conservative convention for marking
+ * internal-only columns (billing state, row versions, internal flags).
+ *
+ * This is a stopgap until per-entity allowlists land as part of the
+ * Phase 3 type-contract work. Consumers writing internal fields into
+ * records SHOULD prefix them with `_`; this function then strips them.
+ */
 export function sanitizePublicRead(
   entity: string,
   record: unknown,
 ): unknown {
-  if (entity === 'webhooks')
+  if (entity === 'webhooks') {
     return toWebhookRead(record as Record<string, unknown>)
-  return record
+  }
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    return record
+  }
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(record as Record<string, unknown>)) {
+    if (k.startsWith('_')) continue
+    out[k] = v
+  }
+  return out
 }
 
 export function sanitizePublicPage(
