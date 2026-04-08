@@ -9,4 +9,9 @@ export interface CreateApiOptions {
    *  createCoreServices(adapter) internally. Useful for testing or when
    *  the caller already has a services instance. */
   services?: CoreServices
+  /**
+   * Maximum HTTP request body size in bytes. Defaults to 1 MB (1_048_576).
+   * Exceeding this returns 413 Payload Too Large before any parsing.
+   */
+  maxRequestBodySize?: number
 }

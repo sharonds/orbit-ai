@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import { createCoreServices, type StorageAdapter } from '@orbit-ai/core'
 import type { CreateApiOptions } from './config.js'
 import { requestIdMiddleware } from './middleware/request-id.js'
@@ -37,6 +38,24 @@ export function createApi(options: CreateApiOptions) {
 
   // /v1/* middleware
   app.use('/v1/*', versionMiddleware(options.version))
+  app.use('/v1/*', bodyLimit({
+    maxSize: options.maxRequestBodySize ?? 1_048_576,
+    onError: (c) => {
+      return c.json(
+        {
+          error: {
+            code: 'PAYLOAD_TOO_LARGE',
+            message: 'Request body exceeds the maximum allowed size',
+            request_id: c.get('requestId'),
+            doc_url: 'https://orbit-ai.dev/docs/errors#payload_too_large',
+            hint: `Maximum body size is ${options.maxRequestBodySize ?? 1_048_576} bytes`,
+            retryable: false,
+          },
+        },
+        413,
+      )
+    },
+  }))
   app.use('/v1/*', authMiddleware(options.adapter))
   app.use('/v1/*', tenantContextMiddleware(options.adapter))
   app.use('/v1/*', rateLimitMiddleware())
