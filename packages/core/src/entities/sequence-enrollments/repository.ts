@@ -1,4 +1,5 @@
-import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import type { OrbitAuthContext, OrbitDatabase, StorageAdapter } from '../../adapters/interface.js'
+import { createTxBoundAdapter } from '../../adapters/tx-bound-adapter.js'
 import { createTenantPostgresRepository, fromPostgresDate } from '../../repositories/postgres/shared.js'
 import { createTenantSqliteRepository, fromSqliteDate, toSqliteDate } from '../../repositories/sqlite/shared.js'
 import { assertTenantPatchOrganizationInvariant } from '../../repositories/tenant-guards.js'
@@ -14,6 +15,8 @@ export interface SequenceEnrollmentRepository {
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
   list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<SequenceEnrollmentRecord>>
   search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<SequenceEnrollmentRecord>>
+  /** See `SequenceRepository.withDatabase` — same contract. */
+  withDatabase(txDb: OrbitDatabase): SequenceEnrollmentRepository
 }
 
 const SEQUENCE_ENROLLMENT_SEARCHABLE_FIELDS = ['status', 'exit_reason']
@@ -40,7 +43,7 @@ export function createInMemorySequenceEnrollmentRepository(
     return [...rows.values()].filter((record) => record.organizationId === orgId)
   }
 
-  return {
+  const repo: SequenceEnrollmentRepository = {
     async create(ctx, record) {
       const orgId = assertOrgContext(ctx)
       if (record.organizationId !== orgId) {
@@ -95,11 +98,15 @@ export function createInMemorySequenceEnrollmentRepository(
         defaultSort: SEQUENCE_ENROLLMENT_DEFAULT_SORT,
       })
     },
+    withDatabase() {
+      return repo
+    },
   }
+  return repo
 }
 
 export function createSqliteSequenceEnrollmentRepository(adapter: StorageAdapter): SequenceEnrollmentRepository {
-  return createTenantSqliteRepository<SequenceEnrollmentRecord>(adapter, {
+  const base = createTenantSqliteRepository<SequenceEnrollmentRecord>(adapter, {
     tableName: 'sequence_enrollments',
     columns: [
       'id',
@@ -148,10 +155,16 @@ export function createSqliteSequenceEnrollmentRepository(adapter: StorageAdapter
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createSqliteSequenceEnrollmentRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }
 
 export function createPostgresSequenceEnrollmentRepository(adapter: StorageAdapter): SequenceEnrollmentRepository {
-  return createTenantPostgresRepository<SequenceEnrollmentRecord>(adapter, {
+  const base = createTenantPostgresRepository<SequenceEnrollmentRecord>(adapter, {
     tableName: 'sequence_enrollments',
     columns: [
       'id',
@@ -200,4 +213,10 @@ export function createPostgresSequenceEnrollmentRepository(adapter: StorageAdapt
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createPostgresSequenceEnrollmentRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }

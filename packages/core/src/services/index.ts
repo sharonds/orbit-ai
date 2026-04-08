@@ -839,6 +839,7 @@ export function createCoreServices(
         sequences: getSequencesRepository(),
         contacts,
         sequenceEvents: getSequenceEventsRepository(),
+        tx,
       })
 
       return sequenceEnrollmentsService

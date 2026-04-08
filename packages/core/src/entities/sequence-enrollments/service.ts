@@ -1,3 +1,4 @@
+import type { TransactionScope } from '../../adapters/interface.js'
 import { generateId } from '../../ids/generate-id.js'
 import type { EntityService } from '../../services/entity-service.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
@@ -160,10 +161,16 @@ export function createSequenceEnrollmentService(deps: {
   sequences: SequenceRepository
   contacts: ContactRepository
   sequenceEvents: SequenceEventRepository
+  tx: TransactionScope
 }): EntityService<SequenceEnrollmentCreateInput, SequenceEnrollmentUpdateInput, SequenceEnrollmentRecord> {
   return {
     async create(ctx, input) {
       const parsed = sequenceEnrollmentCreateInputSchema.parse(input)
+      // Relation validation reads `sequences` and `contacts` repos. Those
+      // repos are not rebound to the transaction handle in this commit
+      // (broader rebind is out of scope for T4); the FK constraints in the
+      // sequence_enrollments table provide the final integrity guarantee
+      // when we insert below.
       await assertEnrollmentRelations(ctx, deps, {
         sequenceId: parsed.sequenceId,
         contactId: parsed.contactId,
@@ -177,28 +184,35 @@ export function createSequenceEnrollmentService(deps: {
         exitedAt,
         exitReason,
       })
-      await assertUniqueEnrollmentShape(ctx, deps.sequenceEnrollments, parsed.sequenceId, parsed.contactId, status)
 
-      try {
-        return await deps.sequenceEnrollments.create(
-          ctx,
-          sequenceEnrollmentRecordSchema.parse({
-            id: generateId('sequenceEnrollment'),
-            organizationId: ctx.orgId,
-            sequenceId: parsed.sequenceId,
-            contactId: parsed.contactId,
-            status,
-            currentStepOrder: parsed.currentStepOrder ?? 0,
-            enrolledAt: parsed.enrolledAt ?? now,
-            exitedAt,
-            exitReason,
-            createdAt: now,
-            updatedAt: now,
-          }),
-        )
-      } catch (error) {
-        coerceSequenceEnrollmentConflict(error, parsed.sequenceId, parsed.contactId, status)
-      }
+      // Wrap the uniqueness check + insert in one transaction so the
+      // `sequence_enrollments_active_idx` index on
+      // (sequence_id, contact_id, status) is the race-decider.
+      return deps.tx.run(ctx, async (txDb) => {
+        const txEnrollments = deps.sequenceEnrollments.withDatabase(txDb)
+        await assertUniqueEnrollmentShape(ctx, txEnrollments, parsed.sequenceId, parsed.contactId, status)
+
+        try {
+          return await txEnrollments.create(
+            ctx,
+            sequenceEnrollmentRecordSchema.parse({
+              id: generateId('sequenceEnrollment'),
+              organizationId: ctx.orgId,
+              sequenceId: parsed.sequenceId,
+              contactId: parsed.contactId,
+              status,
+              currentStepOrder: parsed.currentStepOrder ?? 0,
+              enrolledAt: parsed.enrolledAt ?? now,
+              exitedAt,
+              exitReason,
+              createdAt: now,
+              updatedAt: now,
+            }),
+          )
+        } catch (error) {
+          coerceSequenceEnrollmentConflict(error, parsed.sequenceId, parsed.contactId, status)
+        }
+      })
     },
     async get(ctx, id) {
       return deps.sequenceEnrollments.get(ctx, id)
@@ -228,25 +242,36 @@ export function createSequenceEnrollmentService(deps: {
         exitedAt: nextExitedAt,
         exitReason: nextExitReason,
       })
-      await assertUniqueEnrollmentShape(ctx, deps.sequenceEnrollments, nextSequenceId, nextContactId, nextStatus, id)
 
-      const patch: Partial<SequenceEnrollmentRecord> = {
-        updatedAt: new Date(),
-      }
+      return deps.tx.run(ctx, async (txDb) => {
+        const txEnrollments = deps.sequenceEnrollments.withDatabase(txDb)
+        await assertUniqueEnrollmentShape(
+          ctx,
+          txEnrollments,
+          nextSequenceId,
+          nextContactId,
+          nextStatus,
+          id,
+        )
 
-      if (parsed.sequenceId !== undefined) patch.sequenceId = parsed.sequenceId
-      if (parsed.contactId !== undefined) patch.contactId = parsed.contactId
-      if (parsed.status !== undefined) patch.status = parsed.status
-      if (parsed.currentStepOrder !== undefined) patch.currentStepOrder = parsed.currentStepOrder
-      if (parsed.enrolledAt !== undefined) patch.enrolledAt = parsed.enrolledAt
-      if (parsed.exitedAt !== undefined) patch.exitedAt = parsed.exitedAt ?? null
-      if (parsed.exitReason !== undefined) patch.exitReason = parsed.exitReason ?? null
+        const patch: Partial<SequenceEnrollmentRecord> = {
+          updatedAt: new Date(),
+        }
 
-      try {
-        return assertFound(await deps.sequenceEnrollments.update(ctx, id, patch), `Sequence enrollment ${id} not found`)
-      } catch (error) {
-        coerceSequenceEnrollmentConflict(error, nextSequenceId, nextContactId, nextStatus)
-      }
+        if (parsed.sequenceId !== undefined) patch.sequenceId = parsed.sequenceId
+        if (parsed.contactId !== undefined) patch.contactId = parsed.contactId
+        if (parsed.status !== undefined) patch.status = parsed.status
+        if (parsed.currentStepOrder !== undefined) patch.currentStepOrder = parsed.currentStepOrder
+        if (parsed.enrolledAt !== undefined) patch.enrolledAt = parsed.enrolledAt
+        if (parsed.exitedAt !== undefined) patch.exitedAt = parsed.exitedAt ?? null
+        if (parsed.exitReason !== undefined) patch.exitReason = parsed.exitReason ?? null
+
+        try {
+          return assertFound(await txEnrollments.update(ctx, id, patch), `Sequence enrollment ${id} not found`)
+        } catch (error) {
+          coerceSequenceEnrollmentConflict(error, nextSequenceId, nextContactId, nextStatus)
+        }
+      })
     },
     async delete(ctx, id) {
       await assertEnrollmentHistoryMutable(ctx, deps.sequenceEvents, id, 'delete')
