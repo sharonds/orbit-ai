@@ -268,7 +268,7 @@ Scope:
 - direct transport
 - resource classes
 - retries, idempotency, and version headers
-- explicit `.response()` and `firstPage()` behavior
+- explicit `.response()` and `list()` / `pages()` behavior
 
 Threat-model focus:
 

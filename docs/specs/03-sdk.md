@@ -17,7 +17,7 @@ Public SDK contract:
 
 - resource methods are record-first, not envelope-first
 - low-level response metadata is available through explicit `.response()` helpers; transport internals are package-private and not part of the public SDK contract
-- `autoPaginate()` yields records, while `list().firstPage()` preserves cursor metadata for callers that need the raw envelope
+- `list()` returns a Promise of the first-page envelope directly (with cursor metadata); `pages().autoPaginate()` yields records across pages for callers that want multi-page iteration
 
 ## 2. Package Structure
 
@@ -215,8 +215,8 @@ Transport contract rules:
 
 - `request()` returns an Orbit envelope to internal SDK callers and is the default path used by record-first resource methods
 - public resource methods unwrap `.data` before returning records to application code
-- `.response()` helpers and `list().firstPage()` are the only public SDK affordances that expose raw envelopes intentionally
-- CLI `--json` mode must use `.response()` helpers or `list().firstPage()` and must never reconstruct `meta`, `links`, or `request_id` client-side
+- `.response()` helpers and `list()` are the only public SDK affordances that expose raw envelopes intentionally (`list()` returns the first-page envelope directly; `pages()` returns the AutoPager for cursor-driven iteration)
+- CLI `--json` mode must use `.response()` helpers or `list()` and must never reconstruct `meta`, `links`, or `request_id` client-side
 
 ### 4.1 HTTP Transport
 
@@ -679,9 +679,9 @@ export class AutoPager<T> {
 
 Pagination contract:
 
-- `list().autoPaginate()` is the ergonomic record iterator for application code
-- `list().firstPage()` is the response-aware accessor and returns the server envelope unchanged
-- CLI `--json` mode must use `firstPage()` for list commands so pagination metadata comes from the SDK transport, not CLI reconstruction
+- `pages().autoPaginate()` is the ergonomic record iterator for application code
+- `list()` is the response-aware accessor and returns the server envelope (first page) unchanged
+- CLI `--json` mode must use `list()` for list commands so pagination metadata comes from the SDK transport, not CLI reconstruction
 
 ## 8. Errors
 
@@ -796,9 +796,9 @@ The emitter is local-only. It mirrors client-side actions and does not replace w
 
 1. One `OrbitClient` works unchanged in API and direct modes.
 2. Contacts, companies, deals, activities, tasks, notes, products, payments, contracts, sequences, pipelines, schema, webhooks, and users each expose resource classes.
-3. `list().autoPaginate()` works across both transports.
+3. `pages().autoPaginate()` works across both transports.
 4. Errors surface as typed `OrbitApiError` with shared Orbit error codes.
 5. A single logical write request reuses one idempotency key across all retry attempts.
-6. Public resource methods return records, while `.response()` and `list().firstPage()` expose raw envelopes.
+6. Public resource methods return records, while `.response()` and `list()` expose raw envelopes.
 7. Retries, idempotency, and version headers are applied automatically.
 8. Resource interfaces use real TypeScript types, not `any`.
