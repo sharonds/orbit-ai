@@ -1,3 +1,4 @@
+import type { TransactionScope } from '../../adapters/interface.js'
 import { generateId } from '../../ids/generate-id.js'
 import type { EntityService } from '../../services/entity-service.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
@@ -57,50 +58,61 @@ function coerceTagConflict(error: unknown, name: string): never {
 
 export function createTagService(deps: {
   tags: TagRepository
+  tx: TransactionScope
 }): EntityService<TagCreateInput, TagUpdateInput, TagRecord> {
   return {
     async create(ctx, input) {
       const parsed = tagCreateInputSchema.parse(input)
       const now = new Date()
-      await assertUniqueTagName(ctx, deps.tags, parsed.name)
+      // See sequences/service.ts for the transaction-wrap rationale.
+      // Tag uniqueness is `(organization_id, name)` enforced by
+      // `tags_org_name_idx`; we wrap the read+write so the DB constraint
+      // is the only race-decider.
+      return deps.tx.run(ctx, async (txDb) => {
+        const txTags = deps.tags.withDatabase(txDb)
+        await assertUniqueTagName(ctx, txTags, parsed.name)
 
-      try {
-        return await deps.tags.create(
-          ctx,
-          tagRecordSchema.parse({
-            id: generateId('tag'),
-            organizationId: ctx.orgId,
-            name: parsed.name,
-            color: parsed.color ?? null,
-            createdAt: now,
-            updatedAt: now,
-          }),
-        )
-      } catch (error) {
-        coerceTagConflict(error, parsed.name)
-      }
+        try {
+          return await txTags.create(
+            ctx,
+            tagRecordSchema.parse({
+              id: generateId('tag'),
+              organizationId: ctx.orgId,
+              name: parsed.name,
+              color: parsed.color ?? null,
+              createdAt: now,
+              updatedAt: now,
+            }),
+          )
+        } catch (error) {
+          coerceTagConflict(error, parsed.name)
+        }
+      })
     },
     async get(ctx, id) {
       return deps.tags.get(ctx, id)
     },
     async update(ctx, id, input) {
       const parsed = tagUpdateInputSchema.parse(input)
-      const current = assertFound(await deps.tags.get(ctx, id), `Tag ${id} not found`)
-      const nextName = parsed.name ?? current.name
-      await assertUniqueTagName(ctx, deps.tags, nextName, id)
+      return deps.tx.run(ctx, async (txDb) => {
+        const txTags = deps.tags.withDatabase(txDb)
+        const current = assertFound(await txTags.get(ctx, id), `Tag ${id} not found`)
+        const nextName = parsed.name ?? current.name
+        await assertUniqueTagName(ctx, txTags, nextName, id)
 
-      const patch: Partial<TagRecord> = {
-        updatedAt: new Date(),
-      }
+        const patch: Partial<TagRecord> = {
+          updatedAt: new Date(),
+        }
 
-      if (parsed.name !== undefined) patch.name = parsed.name
-      if (parsed.color !== undefined) patch.color = parsed.color ?? null
+        if (parsed.name !== undefined) patch.name = parsed.name
+        if (parsed.color !== undefined) patch.color = parsed.color ?? null
 
-      try {
-        return assertFound(await deps.tags.update(ctx, id, patch), `Tag ${id} not found`)
-      } catch (error) {
-        coerceTagConflict(error, nextName)
-      }
+        try {
+          return assertFound(await txTags.update(ctx, id, patch), `Tag ${id} not found`)
+        } catch (error) {
+          coerceTagConflict(error, nextName)
+        }
+      })
     },
     async delete(ctx, id) {
       assertDeleted(await deps.tags.delete(ctx, id), `Tag ${id} not found`)
