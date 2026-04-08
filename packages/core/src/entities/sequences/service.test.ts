@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import { createNoopTransactionScope } from '../../adapters/noop-transaction-scope.js'
 import { generateId } from '../../ids/generate-id.js'
 import { createInMemorySequenceEnrollmentRepository } from '../sequence-enrollments/repository.js'
 import { createInMemorySequenceStepRepository } from '../sequence-steps/repository.js'
@@ -17,6 +18,7 @@ describe('sequence service', () => {
       sequences: createInMemorySequenceRepository(),
       sequenceSteps: createInMemorySequenceStepRepository(),
       sequenceEnrollments: createInMemorySequenceEnrollmentRepository(),
+      tx: createNoopTransactionScope(),
     })
 
     const draft = await sequenceService.create(ctx, {
@@ -44,6 +46,7 @@ describe('sequence service', () => {
       sequences: createInMemorySequenceRepository(),
       sequenceSteps: createInMemorySequenceStepRepository(),
       sequenceEnrollments: createInMemorySequenceEnrollmentRepository(),
+      tx: createNoopTransactionScope(),
     })
 
     await sequenceService.create(ctx, {
@@ -65,6 +68,7 @@ describe('sequence service', () => {
       sequences: createInMemorySequenceRepository(),
       sequenceSteps: createInMemorySequenceStepRepository(),
       sequenceEnrollments: createInMemorySequenceEnrollmentRepository(),
+      tx: createNoopTransactionScope(),
     })
     const sequence = await sequenceService.create(ctx, {
       name: 'Expansion',
@@ -92,6 +96,7 @@ describe('sequence service', () => {
       sequences: createInMemorySequenceRepository(),
       sequenceSteps: createInMemorySequenceStepRepository(),
       sequenceEnrollments: createInMemorySequenceEnrollmentRepository(),
+      tx: createNoopTransactionScope(),
     })
     const first = await sequenceService.create(ctx, {
       name: 'Expansion',
@@ -137,11 +142,19 @@ describe('sequence service', () => {
       async update() {
         throw updateError
       },
+      // The service rebinds the repo to the txDb via `withDatabase` before
+      // calling `create`/`update`. Without this override, the spread above
+      // would be discarded (the inherited `withDatabase` returns the original
+      // base repo) and the throwing overrides would never run.
+      withDatabase() {
+        return sequences
+      },
     }
     const sequenceService = createSequenceService({
       sequences,
       sequenceSteps: createInMemorySequenceStepRepository(),
       sequenceEnrollments: createInMemorySequenceEnrollmentRepository(),
+      tx: createNoopTransactionScope(),
     })
 
     await expect(
@@ -207,6 +220,7 @@ describe('sequence service', () => {
       sequences,
       sequenceSteps,
       sequenceEnrollments: createInMemorySequenceEnrollmentRepository(),
+      tx: createNoopTransactionScope(),
     })
     const sequence = await sequences.create(ctx, {
       id: 'sequence_01ARYZ6S41YYYYYYYYYYYYYYYY',
@@ -247,6 +261,7 @@ describe('sequence service', () => {
       sequences,
       sequenceSteps: createInMemorySequenceStepRepository(),
       sequenceEnrollments,
+      tx: createNoopTransactionScope(),
     })
     const sequence = await sequences.create(ctx, {
       id: 'sequence_01ARYZ6S41YYYYYYYYYYYYYYYY',
@@ -263,6 +278,73 @@ describe('sequence service', () => {
     await expect(sequenceService.delete(ctx, sequence.id)).rejects.toMatchObject({
       code: 'CONFLICT',
       field: 'id',
+    })
+  })
+
+  describe('transactional safety', () => {
+    function createSpyTx() {
+      const tx = createNoopTransactionScope()
+      return {
+        scope: { run: vi.fn(tx.run.bind(tx)) },
+        get callCount() {
+          return this.scope.run.mock.calls.length
+        },
+      }
+    }
+
+    it('runs create inside a single transaction.run() call', async () => {
+      const spy = createSpyTx()
+      const sequenceService = createSequenceService({
+        sequences: createInMemorySequenceRepository(),
+        sequenceSteps: createInMemorySequenceStepRepository(),
+        sequenceEnrollments: createInMemorySequenceEnrollmentRepository(),
+        tx: spy.scope,
+      })
+
+      await sequenceService.create(ctx, { name: 'Atomic create' })
+
+      expect(spy.callCount).toBe(1)
+      expect(spy.scope.run).toHaveBeenCalledWith(ctx, expect.any(Function))
+    })
+
+    it('runs update inside a single transaction.run() call', async () => {
+      const spy = createSpyTx()
+      const sequences = createInMemorySequenceRepository()
+      const sequenceService = createSequenceService({
+        sequences,
+        sequenceSteps: createInMemorySequenceStepRepository(),
+        sequenceEnrollments: createInMemorySequenceEnrollmentRepository(),
+        tx: spy.scope,
+      })
+      const created = await sequenceService.create(ctx, { name: 'To rename' })
+      expect(spy.callCount).toBe(1)
+
+      await sequenceService.update(ctx, created.id, { name: 'Renamed' })
+
+      expect(spy.callCount).toBe(2)
+    })
+
+    it('rebinds the sequences repository to the transaction-scoped db handle', async () => {
+      // Spy on withDatabase to confirm the rebound repo is what gets used
+      // inside the transaction body — not the original outer-scope repo.
+      const baseRepo = createInMemorySequenceRepository()
+      const reboundRepo = createInMemorySequenceRepository()
+      const withDatabaseSpy = vi.fn(() => reboundRepo)
+      const sequences: SequenceRepository = {
+        ...baseRepo,
+        withDatabase: withDatabaseSpy,
+      }
+
+      const sequenceService = createSequenceService({
+        sequences,
+        sequenceSteps: createInMemorySequenceStepRepository(),
+        sequenceEnrollments: createInMemorySequenceEnrollmentRepository(),
+        tx: createNoopTransactionScope(),
+      })
+
+      await sequenceService.create(ctx, { name: 'Rebound' })
+
+      expect(withDatabaseSpy).toHaveBeenCalledTimes(1)
     })
   })
 })

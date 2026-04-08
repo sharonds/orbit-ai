@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { createNoopTransactionScope } from '../../adapters/noop-transaction-scope.js'
 import { createInMemoryCompanyRepository } from '../companies/repository.js'
 import { createCompanyService } from '../companies/service.js'
 import { createInMemoryContactRepository } from '../contacts/repository.js'
@@ -31,6 +32,7 @@ async function createEventGraph() {
     sequences,
     sequenceSteps,
     sequenceEnrollments,
+    tx: createNoopTransactionScope(),
   })
   const sequenceStepService = createSequenceStepService({ sequenceSteps, sequences, sequenceEvents })
   const sequenceEnrollmentService = createSequenceEnrollmentService({

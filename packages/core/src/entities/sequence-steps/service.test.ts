@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { createNoopTransactionScope } from '../../adapters/noop-transaction-scope.js'
 import { generateId } from '../../ids/generate-id.js'
 import { createInMemorySequenceEnrollmentRepository } from '../sequence-enrollments/repository.js'
 import { createSequenceEnrollmentService } from '../sequence-enrollments/service.js'
@@ -31,6 +32,7 @@ async function createSequenceGraph() {
     sequences,
     sequenceSteps,
     sequenceEnrollments,
+    tx: createNoopTransactionScope(),
   })
   const sequenceStepService = createSequenceStepService({ sequenceSteps, sequences, sequenceEvents })
 
@@ -58,6 +60,7 @@ async function createGraphWithHistory() {
     sequences,
     sequenceSteps,
     sequenceEnrollments,
+    tx: createNoopTransactionScope(),
   })
   const sequenceStepService = createSequenceStepService({ sequenceSteps, sequences, sequenceEvents })
   const sequenceEnrollmentService = createSequenceEnrollmentService({
