@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createSearchService, MAX_SEARCH_ROWS_PER_TYPE } from '../search-service.js'
+import { createSearchService, MAX_SEARCH_ROWS_PER_TYPE, MAX_SEARCH_TOTAL_ROWS } from '../search-service.js'
 
 function mockRepo(records: any[]) {
   return {
@@ -218,5 +218,26 @@ describe('SearchService', () => {
     // pages. Allow some slack for off-by-one but assert we never enter
     // the runaway regime.
     expect(companiesRepo.search.mock.calls.length).toBeLessThanOrEqual(60)
+  })
+
+  it('throws SEARCH_RESULT_TOO_LARGE when merged search total exceeds MAX_SEARCH_TOTAL_ROWS', async () => {
+    const makeRows = (prefix: string, n: number) =>
+      Array.from({ length: n }, (_, i) => ({ id: `${prefix}_${i}`, name: `${prefix} ${i}`, updatedAt: new Date(), status: 'active', email: null, title: null, domain: null, industry: null, website: null, currency: 'USD', value: null, stageId: null, pipelineId: null, contactId: null, companyId: null, description: null, isDefault: false, stageOrder: 0, probability: 0, color: null, isWon: false, isLost: false, role: 'member', isActive: true }))
+
+    const service = createSearchService({
+      contacts: { search: vi.fn(async () => ({ data: makeRows('cnt', 1000), hasMore: false, nextCursor: null })) } as any,
+      companies: { search: vi.fn(async () => ({ data: makeRows('cmp', 1000), hasMore: false, nextCursor: null })) } as any,
+      deals: { search: vi.fn(async () => ({ data: makeRows('deal', 1000), hasMore: false, nextCursor: null })) } as any,
+      pipelines: { search: vi.fn(async () => ({ data: makeRows('pip', 1000), hasMore: false, nextCursor: null })) } as any,
+      stages: { search: vi.fn(async () => ({ data: makeRows('stg', 1000), hasMore: false, nextCursor: null })) } as any,
+      users: { search: vi.fn(async () => ({ data: makeRows('usr', 1000), hasMore: false, nextCursor: null })) } as any,
+    })
+
+    await expect(
+      service.search(
+        { orgId: 'org_test', apiKeyId: 'key_test', scopes: ['*'] },
+        { query: 'test', limit: 100 },
+      ),
+    ).rejects.toMatchObject({ code: 'SEARCH_RESULT_TOO_LARGE' })
   })
 })
