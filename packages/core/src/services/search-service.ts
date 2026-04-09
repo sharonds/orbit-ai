@@ -121,17 +121,34 @@ export function createSearchService(deps: {
     }
   }
 
+  function shouldFetch(type: string, object_types: string[] | undefined): boolean {
+    if (!object_types?.length) return true
+    return object_types.includes(type)
+  }
+
   return {
     async search(ctx, query) {
-      const { cursor: _cursor, ...queryWithoutCursor } = query
+      const { cursor: _cursor, object_types, ...queryWithoutCursor } = query
 
       const [companies, contacts, deals, pipelines, stages, users] = await Promise.all([
-        fetchAllPages((page) => deps.companies.search(ctx, page), queryWithoutCursor),
-        fetchAllPages((page) => deps.contacts.search(ctx, page), queryWithoutCursor),
-        fetchAllPages((page) => deps.deals.search(ctx, page), queryWithoutCursor),
-        fetchAllPages((page) => deps.pipelines.search(ctx, page), queryWithoutCursor),
-        fetchAllPages((page) => deps.stages.search(ctx, page), queryWithoutCursor),
-        fetchAllPages((page) => deps.users.search(ctx, page), queryWithoutCursor),
+        shouldFetch('companies', object_types)
+          ? fetchAllPages((page) => deps.companies.search(ctx, page), queryWithoutCursor)
+          : Promise.resolve([]),
+        shouldFetch('contacts', object_types)
+          ? fetchAllPages((page) => deps.contacts.search(ctx, page), queryWithoutCursor)
+          : Promise.resolve([]),
+        shouldFetch('deals', object_types)
+          ? fetchAllPages((page) => deps.deals.search(ctx, page), queryWithoutCursor)
+          : Promise.resolve([]),
+        shouldFetch('pipelines', object_types)
+          ? fetchAllPages((page) => deps.pipelines.search(ctx, page), queryWithoutCursor)
+          : Promise.resolve([]),
+        shouldFetch('stages', object_types)
+          ? fetchAllPages((page) => deps.stages.search(ctx, page), queryWithoutCursor)
+          : Promise.resolve([]),
+        shouldFetch('users', object_types)
+          ? fetchAllPages((page) => deps.users.search(ctx, page), queryWithoutCursor)
+          : Promise.resolve([]),
       ])
 
       const rows: SearchResultRecord[] = [
@@ -185,7 +202,9 @@ export function createSearchService(deps: {
         })),
       ]
 
-      return runArrayQuery(rows, query, {
+      // Strip object_types before passing to runArrayQuery — it's not a ListQuery field
+      const { object_types: _ot, ...listQuery } = query
+      return runArrayQuery(rows, listQuery, {
         searchableFields: ['title', 'subtitle'],
         defaultSort: [{ field: 'updated_at', direction: 'desc' }],
       })
