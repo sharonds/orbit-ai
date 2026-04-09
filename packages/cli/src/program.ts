@@ -1,4 +1,4 @@
-import { Command, CommanderError } from 'commander'
+import { Command, CommanderError, Option } from 'commander'
 import { CliValidationError, CliConfigError, CliNotImplementedError } from './errors.js'
 import type { GlobalFlags } from './types.js'
 import { registerInitCommand } from './commands/init.js'
@@ -124,7 +124,7 @@ export function createProgram(): Command {
     .description('Orbit AI CRM terminal interface')
     .version('0.1.0-alpha.0')
     .option('--json', 'Output as JSON envelope')
-    .option('--format <format>', 'Output format: table|json|csv|tsv', 'table')
+    .addOption(new Option('--format <format>', 'Output format').choices(['table', 'json', 'csv', 'tsv']).default('table'))
     .option('--api-key <key>', 'Orbit API key (prefer ORBIT_API_KEY env var)')
     .option('--base-url <url>', 'Orbit API base URL')
     .option('--org-id <id>', 'Organization ID')

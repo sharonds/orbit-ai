@@ -109,7 +109,7 @@ export class SchemaResource {
     deleteField: (
       type: string,
       fieldName: string,
-    ) => Promise<OrbitEnvelope<{ id: string; deleted: true }>>
+    ) => Promise<OrbitEnvelope<{ deleted: true; field: string }>>
     previewMigration: (body: Record<string, unknown>) => Promise<OrbitEnvelope<SchemaMigrationResult>>
     applyMigration: (body: Record<string, unknown>) => Promise<OrbitEnvelope<SchemaMigrationResult>>
     rollbackMigration: (id: string) => Promise<OrbitEnvelope<SchemaMigrationResult>>
@@ -135,7 +135,7 @@ export class SchemaResource {
           body,
         }),
       deleteField: (type, fieldName) =>
-        this.transport.rawRequest<{ id: string; deleted: true }>({
+        this.transport.rawRequest<{ deleted: true; field: string }>({
           method: 'DELETE',
           path: `/v1/objects/${type}/fields/${fieldName}`,
         }),

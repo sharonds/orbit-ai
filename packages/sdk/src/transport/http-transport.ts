@@ -43,11 +43,23 @@ export class HttpTransport implements OrbitTransport {
         // AbortSignal.timeout (Node 17.3+, all modern browsers) so the
         // resulting fetch rejects with a DOMException-like AbortError once
         // the deadline elapses.
+        let timeoutId: ReturnType<typeof setTimeout> | undefined
         if (this.options.timeoutMs !== undefined) {
-          init.signal = AbortSignal.timeout(this.options.timeoutMs)
+          if (typeof AbortSignal.timeout === 'function') {
+            init.signal = AbortSignal.timeout(this.options.timeoutMs)
+          } else {
+            const controller = new AbortController()
+            timeoutId = setTimeout(() => controller.abort(), this.options.timeoutMs)
+            init.signal = controller.signal
+          }
         }
 
-        const response = await fetch(url, init)
+        let response: Response
+        try {
+          response = await fetch(url, init)
+        } finally {
+          if (timeoutId !== undefined) clearTimeout(timeoutId)
+        }
 
         if (!response.ok) {
           throw await OrbitApiError.fromResponse(response)

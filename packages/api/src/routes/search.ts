@@ -28,6 +28,6 @@ export function registerSearchRoutes(app: Hono, services: CoreServices) {
       ...(limit !== undefined ? { limit } : {}),
       ...(cursor !== undefined ? { cursor } : {}),
     })
-    return c.json(toEnvelope(c, result.data, result))
+    return c.json(toEnvelope(c, result.data, result, { omitNextLink: true }))
   })
 }

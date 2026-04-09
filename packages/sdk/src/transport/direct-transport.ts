@@ -76,7 +76,7 @@ export class DirectTransport implements OrbitTransport {
       const result = await this.options.adapter!.withTenantContext(this.ctx, async () => {
         return this.dispatch(input)
       })
-      return this.wrapEnvelope(input.path, input.query, result) as OrbitEnvelope<T>
+      return this.wrapEnvelope(input.method, input.path, input.query, result) as OrbitEnvelope<T>
     } catch (err: unknown) {
       if (err instanceof OrbitApiError) throw err
       const orbitErr = err as { code?: string; message?: string; field?: string; retryable?: boolean }
@@ -145,6 +145,7 @@ export class DirectTransport implements OrbitTransport {
   }
 
   private wrapEnvelope(
+    method: string,
     path: string,
     query: Record<string, unknown> | undefined,
     data: unknown,
@@ -158,7 +159,7 @@ export class DirectTransport implements OrbitTransport {
     ) {
       const nextCursor = paginated.nextCursor ?? null
       const links: { self: string; next?: string } = { self: path }
-      if (nextCursor !== null) {
+      if (nextCursor !== null && !this.shouldOmitNextLink(method, path)) {
         const params = new URLSearchParams()
         if (query?.limit !== undefined) params.set('limit', String(query.limit))
         if (query?.include !== undefined) params.set('include', String(query.include))
@@ -190,6 +191,15 @@ export class DirectTransport implements OrbitTransport {
     }
   }
 
+  private shouldOmitNextLink(method: string, path: string): boolean {
+    if (method !== 'POST') return false
+
+    const segments = path.split('/').filter(Boolean)
+    const startIdx = segments[0] === 'v1' ? 1 : 0
+
+    return segments[startIdx] === 'search' || segments[startIdx + 1] === 'search'
+  }
+
   private errorCodeToStatus(code: string): number {
     const map: Record<string, number> = {
       AUTH_INVALID_API_KEY: 401,
@@ -211,7 +221,8 @@ export class DirectTransport implements OrbitTransport {
       ADAPTER_TRANSACTION_FAILED: 500,
       RLS_GENERATION_FAILED: 500,
       WEBHOOK_DELIVERY_FAILED: 502,
-      SEARCH_RESULT_TOO_LARGE: 413,
+      SEARCH_RESULT_TOO_LARGE: 400,
+      PAYLOAD_TOO_LARGE: 413,
       INTERNAL_ERROR: 500,
     }
     return map[code] ?? 500

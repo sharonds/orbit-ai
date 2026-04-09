@@ -236,6 +236,92 @@ describe('PostgresStorageAdapter', () => {
     expect(migrationStatements.some((s) => s.includes('schema_migrations_org_idx'))).toBe(true)
   })
 
+  describe('beginTransaction().run', () => {
+    it('rejects before opening the pool transaction when orgId is an empty string', async () => {
+      const transaction = vi.fn()
+      const database = {
+        async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+          return transaction(fn)
+        },
+        async execute() {
+          return undefined
+        },
+        async query() {
+          return []
+        },
+      } satisfies OrbitDatabase
+      const adapter = createPostgresStorageAdapter({ database })
+      const scope = adapter.beginTransaction()
+
+      await expect(scope.run({ orgId: '' }, async () => 'ok')).rejects.toThrow(
+        'Expected organization ID with prefix "org_"',
+      )
+      expect(transaction).not.toHaveBeenCalled()
+    })
+
+    it('rejects before opening the pool transaction when orgId is not a valid ULID', async () => {
+      const transaction = vi.fn()
+      const database = {
+        async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+          return transaction(fn)
+        },
+        async execute() {
+          return undefined
+        },
+        async query() {
+          return []
+        },
+      } satisfies OrbitDatabase
+      const adapter = createPostgresStorageAdapter({ database })
+      const scope = adapter.beginTransaction()
+
+      await expect(scope.run({ orgId: 'not-a-valid-id' }, async () => 'ok')).rejects.toThrow()
+      expect(transaction).not.toHaveBeenCalled()
+    })
+
+    it('sets tenant context and invokes the callback for a valid orgId', async () => {
+      const state = { currentOrgId: null as string | null }
+      const database = {
+        async transaction<T>(fn: (tx: OrbitDatabase) => Promise<T>) {
+          const previous = state.currentOrgId
+          try {
+            return await fn(database as unknown as OrbitDatabase)
+          } finally {
+            state.currentOrgId = previous
+          }
+        },
+        async execute(statement: SQL) {
+          const query = render(statement)
+          if (query.sql.includes("set_config('app.current_org_id'")) {
+            state.currentOrgId = String(query.params[0] ?? null)
+          }
+          return undefined
+        },
+        async query<T extends Record<string, unknown>>(statement: SQL) {
+          const query = render(statement)
+          if (query.sql.includes("current_setting('app.current_org_id'")) {
+            return [{ current_org_id: state.currentOrgId }] as T[]
+          }
+          return [] as T[]
+        },
+      } satisfies OrbitDatabase
+      const adapter = createPostgresStorageAdapter({ database })
+      const scope = adapter.beginTransaction()
+
+      const result = await scope.run({ orgId: ctxA.orgId }, async (txDb) => {
+        const rows = await txDb.query<{ current_org_id: string | null }>(
+          sql`select current_setting('app.current_org_id', true) as current_org_id`,
+        )
+        expect(rows[0]?.current_org_id).toBe(ctxA.orgId)
+        return 'done'
+      })
+
+      expect(result).toBe('done')
+      // Tenant context must be cleaned up after the transaction
+      expect(state.currentOrgId).toBeNull()
+    })
+  })
+
   it('migrate() with no custom config runs all wave init functions and creates tables', async () => {
     // Track all SQL statements executed via the migration database.
     // The migration database is used by runWithMigrationAuthority, which the

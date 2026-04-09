@@ -120,6 +120,21 @@ describe('toEnvelope', () => {
       const body = (await res.json()) as OrbitEnvelope<{ id: string }[]>
       expect(body.links.next).toBeUndefined()
     })
+
+    it('omits links.next when pagination is driven by the request body', async () => {
+      const app = createTestApp()
+      app.post('/v1/search', (c) => {
+        const records = [{ id: 'c_003' }]
+        const page = { data: records, nextCursor: 'cursor_body', hasMore: true }
+        return c.json(toEnvelope(c, records, page, { omitNextLink: true }))
+      })
+
+      const res = await app.request('/v1/search', { method: 'POST' })
+      const body = (await res.json()) as OrbitEnvelope<{ id: string }[]>
+      expect(body.meta.has_more).toBe(true)
+      expect(body.meta.next_cursor).toBe('cursor_body')
+      expect(body.links.next).toBeUndefined()
+    })
   })
 })
 

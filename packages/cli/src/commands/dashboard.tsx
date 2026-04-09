@@ -9,7 +9,7 @@ export function registerDashboardCommand(program: Command): void {
   program
     .command('dashboard')
     .description('Interactive CRM dashboard')
-    .action(() => {
+    .action(async () => {
       // Guard: non-interactive or JSON mode — must be checked synchronously
       if (isJsonMode() || !process.stdout.isTTY) {
         if (isJsonMode()) {
@@ -26,6 +26,6 @@ export function registerDashboardCommand(program: Command): void {
         return
       }
 
-      render(<Dashboard />)
+      await render(<Dashboard />).waitUntilExit()
     })
 }

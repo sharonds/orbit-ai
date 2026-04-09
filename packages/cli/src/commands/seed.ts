@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { loadConfig } from '../config/files.js'
+import { applyProfile, loadConfig } from '../config/files.js'
 import { resolveClient } from '../config/resolve-context.js'
 import { CliValidationError } from '../errors.js'
 import { isJsonMode } from '../program.js'
@@ -23,11 +23,19 @@ export function registerSeedCommand(program: Command): void {
     })
 }
 
-async function runSeed(flags: GlobalFlags, count: number, cwd?: string): Promise<void> {
-  // Resolve effective mode: flag > config file > default 'api'
-  // Pass cwd so resolution matches what resolveClient will use (avoids divergence in tests)
+export function resolveSeedMode(
+  flags: GlobalFlags,
+  cwd?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): 'api' | 'direct' {
   const fileConfig = loadConfig(cwd)
-  const effectiveMode = flags.mode ?? fileConfig.mode ?? 'api'
+  const profileName = flags.profile ?? env['ORBIT_PROFILE'] ?? fileConfig.profile
+  const mergedFileConfig = profileName ? applyProfile(fileConfig, profileName) : fileConfig
+  return flags.mode ?? mergedFileConfig.mode ?? 'api'
+}
+
+async function runSeed(flags: GlobalFlags, count: number, cwd?: string): Promise<void> {
+  const effectiveMode = resolveSeedMode(flags, cwd)
 
   if (effectiveMode !== 'direct') {
     const msg = 'orbit seed requires direct mode (--mode direct with a local adapter)'
@@ -40,10 +48,10 @@ async function runSeed(flags: GlobalFlags, count: number, cwd?: string): Promise
     return
   }
 
-  const client = resolveClient({ flags })
   const created: unknown[] = []
 
   try {
+    const client = resolveClient({ flags })
     for (let i = 0; i < count; i++) {
       const contact = await client.contacts.create({ name: `Seed ${i + 1}`, email: `seed${i + 1}@example.com` })
       created.push(contact)
@@ -51,7 +59,11 @@ async function runSeed(flags: GlobalFlags, count: number, cwd?: string): Promise
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     if (isJsonMode()) {
-      process.stdout.write(JSON.stringify({ seeded: created.length, total: count, error: msg }) + '\n')
+      process.stdout.write(JSON.stringify({
+        seeded: created.length,
+        total: count,
+        error: { code: 'SEED_PARTIAL_FAILURE', message: msg },
+      }) + '\n')
     } else {
       process.stderr.write(`Seeded ${created.length}/${count} contacts before error: ${msg}\n`)
     }
