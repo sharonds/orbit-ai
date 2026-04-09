@@ -4,6 +4,12 @@ import type { OrbitIdKind } from './prefixes.js'
 
 const ULID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{26}$/
 
+export function isOrbitId(value: string, kind: OrbitIdKind): boolean {
+  const prefix = `${ID_PREFIXES[kind]}_`
+  if (!value.startsWith(prefix)) return false
+  return ULID_PATTERN.test(value.slice(prefix.length))
+}
+
 export function assertOrbitId(value: string, kind: OrbitIdKind): string {
   const prefix = `${ID_PREFIXES[kind]}_`
 
