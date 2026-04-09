@@ -1,4 +1,3 @@
-import { ZodError } from 'zod'
 import { OrbitApiError } from '@orbit-ai/sdk'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 
@@ -63,8 +62,8 @@ export class McpToolError extends Error {
   constructor(
     readonly code: McpToolErrorCode,
     message: string,
-    readonly hint?: string,
-    readonly recovery?: string,
+    readonly hint: string = DEFAULT_HINTS[code],
+    readonly recovery: string = DEFAULT_RECOVERY[code],
   ) {
     super(message)
     this.name = 'McpToolError'
@@ -135,10 +134,10 @@ export function normalizeToolError(error: unknown): Required<McpToolErrorShape> 
     )
   }
 
-  if (error instanceof ZodError) {
+  if (isZodError(error)) {
     return withDefaults({
       code: 'VALIDATION_FAILED',
-      message: redactSensitiveText(error.issues.map((issue) => issue.message).join('; ')),
+      message: redactSensitiveText((error as { issues: Array<{ message: string }> }).issues.map((issue) => issue.message).join('; ')),
     })
   }
 
@@ -189,9 +188,23 @@ function isOrbitApiError(error: unknown): error is OrbitApiError {
     (!!error &&
       typeof error === 'object' &&
       'error' in error &&
+      typeof (error as Record<string, unknown>).error === 'object' &&
+      (error as Record<string, unknown>).error !== null &&
       'status' in error &&
+      typeof (error as Record<string, unknown>).status === 'number' &&
       'code' in error &&
       'message' in error)
+  )
+}
+
+function isZodError(error: unknown): boolean {
+  return (
+    !!error &&
+    typeof error === 'object' &&
+    'name' in error &&
+    (error as Record<string, unknown>).name === 'ZodError' &&
+    'issues' in error &&
+    Array.isArray((error as Record<string, unknown>).issues)
   )
 }
 
