@@ -63,8 +63,8 @@ export class SchemaResource {
     return r.data
   }
 
-  async deleteField(type: string, fieldName: string): Promise<{ id: string; deleted: true }> {
-    const r = await this.transport.request<{ id: string; deleted: true }>({
+  async deleteField(type: string, fieldName: string): Promise<{ deleted: true; field: string }> {
+    const r = await this.transport.request<{ deleted: true; field: string }>({
       method: 'DELETE',
       path: `/v1/objects/${type}/fields/${fieldName}`,
     })
