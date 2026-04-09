@@ -9,7 +9,7 @@ import {
 } from '@orbit-ai/core'
 import { OrbitClient } from '@orbit-ai/sdk'
 import { CliValidationError, CliUnsupportedAdapterError } from '../errors.js'
-import { loadConfig, type OrbitConfig } from './files.js'
+import { loadConfig, applyProfile, type OrbitConfig } from './files.js'
 import type { GlobalFlags } from '../types.js'
 
 /**
@@ -121,26 +121,30 @@ export function resolveClient(options: ResolveContextOptions): OrbitClient {
   // Load config from files
   const fileConfig = loadConfig(cwd, overrideHome)
 
+  // Resolve profile: flag > env > config default
+  const profileName = flags.profile ?? env['ORBIT_PROFILE'] ?? fileConfig.profile
+  const mergedFileConfig = profileName ? applyProfile(fileConfig, profileName) : fileConfig
+
   // Resolve effective config: flags > env > project/user config file
   // Use Object.assign pattern to avoid assigning `undefined` to optional keys
   // (required by exactOptionalPropertyTypes)
   const resolvedConfig: OrbitConfig = {}
-  const mode = flags.mode ?? fileConfig.mode ?? 'api'
+  const mode = flags.mode ?? mergedFileConfig.mode ?? 'api'
   resolvedConfig.mode = mode
   const apiKeyFromEnvName =
-    fileConfig.apiKeyEnv ? env[fileConfig.apiKeyEnv] : undefined
+    mergedFileConfig.apiKeyEnv ? env[mergedFileConfig.apiKeyEnv] : undefined
   const apiKey =
-    flags.apiKey ?? env['ORBIT_API_KEY'] ?? fileConfig.apiKey ?? apiKeyFromEnvName
+    flags.apiKey ?? env['ORBIT_API_KEY'] ?? mergedFileConfig.apiKey ?? apiKeyFromEnvName
   if (apiKey !== undefined) resolvedConfig.apiKey = apiKey
-  const baseUrl = flags.baseUrl ?? env['ORBIT_BASE_URL'] ?? fileConfig.baseUrl
+  const baseUrl = flags.baseUrl ?? env['ORBIT_BASE_URL'] ?? mergedFileConfig.baseUrl
   if (baseUrl !== undefined) resolvedConfig.baseUrl = baseUrl
-  const orgId = flags.orgId ?? env['ORBIT_ORG_ID'] ?? fileConfig.orgId
+  const orgId = flags.orgId ?? env['ORBIT_ORG_ID'] ?? mergedFileConfig.orgId
   if (orgId !== undefined) resolvedConfig.orgId = orgId
-  const userId = flags.userId ?? env['ORBIT_USER_ID'] ?? fileConfig.userId
+  const userId = flags.userId ?? env['ORBIT_USER_ID'] ?? mergedFileConfig.userId
   if (userId !== undefined) resolvedConfig.userId = userId
-  const adapter = flags.adapter ?? env['ORBIT_ADAPTER'] ?? fileConfig.adapter
+  const adapter = flags.adapter ?? env['ORBIT_ADAPTER'] ?? mergedFileConfig.adapter
   if (adapter !== undefined) resolvedConfig.adapter = adapter
-  const databaseUrl = flags.databaseUrl ?? env['DATABASE_URL'] ?? fileConfig.databaseUrl
+  const databaseUrl = flags.databaseUrl ?? env['DATABASE_URL'] ?? mergedFileConfig.databaseUrl
   if (databaseUrl !== undefined) resolvedConfig.databaseUrl = databaseUrl
 
   if (mode === 'direct') {

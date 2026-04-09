@@ -130,6 +130,17 @@ function tryRealpath(p: string): string {
   }
 }
 
+/**
+ * Apply a named profile on top of a base config.
+ * Returns the base config unchanged if the profile doesn't exist.
+ */
+export function applyProfile(base: OrbitConfig, profileName: string): OrbitConfig {
+  const profile = base.profiles?.[profileName]
+  if (!profile) return base
+  const { profiles: _profiles, ...profileData } = profile as OrbitConfig
+  return { ...base, ...profileData }
+}
+
 /** Collect real paths of all ancestors of dir up to and including home (inclusive). */
 function ancestorRoots(dir: string, home: string): string[] {
   const roots: string[] = []
