@@ -77,6 +77,21 @@ function classifyError(error: unknown): { code: number; payload: Record<string, 
       },
     }
   }
+  // Commander parse/validation errors (exitOverride surfaces these as CommanderError)
+  if (
+    error instanceof Error &&
+    error.constructor.name === 'CommanderError' &&
+    'exitCode' in error
+  ) {
+    const ce = error as { exitCode: number; code?: string; message: string }
+    return {
+      code: ce.exitCode === 0 ? 0 : 2,
+      payload: {
+        code: ce.code ?? 'COMMANDER_ERROR',
+        message: ce.message,
+      },
+    }
+  }
   // OrbitApiError and HTTP errors → exit code 1
   if (
     error instanceof Error &&
@@ -178,6 +193,7 @@ export async function run(): Promise<void> {
 
   try {
     const program = createProgram()
+    program.exitOverride()
     await program.parseAsync(process.argv)
     process.exit(0)
   } catch (error) {
