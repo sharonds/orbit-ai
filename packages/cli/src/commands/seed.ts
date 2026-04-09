@@ -1,4 +1,5 @@
 import { Command } from 'commander'
+import { loadConfig } from '../config/files.js'
 import { resolveClient } from '../config/resolve-context.js'
 import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
@@ -15,7 +16,11 @@ export function registerSeedCommand(program: Command): void {
 }
 
 async function runSeed(flags: GlobalFlags, count: number): Promise<void> {
-  if (flags.mode !== 'direct') {
+  // Resolve effective mode: flag > config file > default 'api'
+  const fileConfig = loadConfig()
+  const effectiveMode = flags.mode ?? fileConfig.mode ?? 'api'
+
+  if (effectiveMode !== 'direct') {
     const msg = 'orbit seed requires direct mode (--mode direct with a local adapter)'
     if (isJsonMode()) {
       process.stdout.write(JSON.stringify({ error: { code: 'DIRECT_MODE_REQUIRED', message: msg } }) + '\n', () => {
