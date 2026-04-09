@@ -23,6 +23,26 @@ import { registerWebhookRoutes } from './routes/webhooks.js'
 import { registerImportRoutes } from './routes/imports.js'
 import './context.js'
 
+/**
+ * Create an Orbit AI Hono app with the full middleware chain:
+ * `requestId → version → bodyLimit → auth → tenantContext → rateLimit → idempotency → routes`.
+ *
+ * @security **Single-instance defaults**: by default this function uses
+ * in-memory stores for both idempotency (`MemoryIdempotencyStore`) and
+ * rate limiting. These are **single-instance only** — on multi-pod
+ * deployments (Vercel, Cloudflare Workers, horizontal Kubernetes pods)
+ * every instance has its own memory, which silently disables both
+ * guards.
+ *
+ * For multi-instance deployments you MUST:
+ * - Provide a custom `idempotencyStore` via `CreateApiOptions` (back it
+ *   with Redis, Upstash, or the `idempotency_keys` DB table)
+ * - Plan for a shared-store rate limiter (tracked as Phase 3 T12 —
+ *   the default in-memory limiter remains the only option until then)
+ *
+ * For single-pod / serverless-with-sticky-sessions / local-dev, the
+ * defaults are safe.
+ */
 export function createApi(options: CreateApiOptions) {
   const app = new Hono()
 
