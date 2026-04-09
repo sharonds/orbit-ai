@@ -51,7 +51,11 @@ async function runSeed(flags: GlobalFlags, count: number, cwd?: string): Promise
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     if (isJsonMode()) {
-      process.stdout.write(JSON.stringify({ seeded: created.length, total: count, error: msg }) + '\n')
+      process.stdout.write(JSON.stringify({
+        seeded: created.length,
+        total: count,
+        error: { code: 'SEED_PARTIAL_FAILURE', message: msg },
+      }) + '\n')
     } else {
       process.stderr.write(`Seeded ${created.length}/${count} contacts before error: ${msg}\n`)
     }
