@@ -33,8 +33,10 @@ async function runMigrate(
 ): Promise<void> {
   const isDestructive = opts.rollback || opts.apply
   const isTTY = process.stdout.isTTY
+  // --yes may be consumed by the global flag parser (parent opts) or the subcommand opts
+  const confirmed = opts.yes === true || flags.yes === true
 
-  if (isDestructive && !opts.yes) {
+  if (isDestructive && !confirmed) {
     if (isJsonMode() || !isTTY) {
       process.stdout.write(JSON.stringify(DESTRUCTIVE_ERROR) + '\n')
       process.exit(1)

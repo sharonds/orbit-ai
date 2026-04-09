@@ -14,6 +14,20 @@ import { registerPipelinesCommand } from './commands/pipelines.js'
 import { registerStagesCommand } from './commands/stages.js'
 import { registerContextCommand } from './commands/context.js'
 import { registerSearchCommand } from './commands/search.js'
+import { registerActivitiesCommand } from './commands/activities.js'
+import { registerTasksCommand } from './commands/tasks.js'
+import { registerNotesCommand } from './commands/notes.js'
+import { registerProductsCommand } from './commands/products.js'
+import { registerPaymentsCommand } from './commands/payments.js'
+import { registerContractsCommand } from './commands/contracts.js'
+import { registerSequencesCommand } from './commands/sequences.js'
+import { registerTagsCommand } from './commands/tags.js'
+import { registerWebhooksCommand } from './commands/webhooks.js'
+import { registerImportsCommand } from './commands/imports.js'
+import { registerLogCommand } from './commands/log.js'
+import { registerSchemaCommand } from './commands/schema.js'
+import { registerFieldsCommand } from './commands/fields.js'
+import { registerReportCommand } from './commands/report.js'
 
 let _jsonMode = false
 
@@ -123,13 +137,20 @@ export function createProgram(): Command {
   registerStagesCommand(program)
   registerContextCommand(program)
   registerSearchCommand(program)
-  registerStubCommand(program, 'log', 'Log an activity (call, email, meeting, note)')
-  registerStubCommand(program, 'tasks', 'Manage tasks')
-  registerStubCommand(program, 'notes', 'Manage notes')
-  registerStubCommand(program, 'sequences', 'Manage and enroll contacts in sequences')
-  registerStubCommand(program, 'fields', 'Manage custom fields')
-  registerStubCommand(program, 'schema', 'Manage CRM schema')
-  registerStubCommand(program, 'report', 'Generate reports')
+  registerActivitiesCommand(program)
+  registerTasksCommand(program)
+  registerNotesCommand(program)
+  registerProductsCommand(program)
+  registerPaymentsCommand(program)
+  registerContractsCommand(program)
+  registerSequencesCommand(program)
+  registerTagsCommand(program)
+  registerWebhooksCommand(program)
+  registerImportsCommand(program)
+  registerLogCommand(program)
+  registerSchemaCommand(program)
+  registerFieldsCommand(program)
+  registerReportCommand(program)
   registerStubCommand(program, 'dashboard', 'Interactive dashboard')
   registerStubCommand(program, 'mcp', 'MCP server commands')
   registerStubCommand(program, 'integrations', 'Integration commands')
