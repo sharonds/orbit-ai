@@ -12,8 +12,7 @@ import {
   type TransactionScope,
   type IUserResolver,
 } from '../interface.js'
-import { buildSetTenantContextStatement, withTenantContext } from './tenant-context.js'
-import { assertOrbitId } from '../../ids/parse-id.js'
+import { withTenantContext } from './tenant-context.js'
 import { fromPostgresDate, fromPostgresJson } from '../../repositories/postgres/shared.js'
 import { initializeAllPostgresSchemas } from './schema.js'
 
@@ -111,18 +110,9 @@ export class PostgresStorageAdapter implements StorageAdapter {
   }
 
   beginTransaction(): TransactionScope {
-    const adapter = this
     return {
-      async run<T>(ctx: OrbitAuthContext, fn: (txDb: OrbitDatabase) => Promise<T>): Promise<T> {
-        assertOrbitId(ctx.orgId, 'organization')
-        return adapter.unsafeRawDatabase.transaction(async (txDb) => {
-          // Set the tenant RLS context for the duration of this transaction
-          // (transaction-local — third arg `true` to set_config). All
-          // statements run on `txDb` see the same `app.current_org_id`.
-          await txDb.execute(buildSetTenantContextStatement(ctx.orgId))
-          return fn(txDb)
-        })
-      },
+      run: <T>(ctx: OrbitAuthContext, fn: (txDb: OrbitDatabase) => Promise<T>): Promise<T> =>
+        this.withTenantContext(ctx, fn),
     }
   }
 
