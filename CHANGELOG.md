@@ -67,6 +67,13 @@ architecture for `@orbit-ai/core`, `@orbit-ai/api`, and `@orbit-ai/sdk`.
 - `.env.example` — all environment variables documented
 - `docs/review/2026-04-08-post-stack-audit.md` — post-stack audit report
 
+### Changed
+
+- **`@orbit-ai/sdk`**: `SchemaResource.deleteField()` return type changed from
+  `{ id: string; deleted: true }` to `{ deleted: true; field: string }` to match
+  the actual API response shape. Consumers destructuring `{ id }` from the result
+  should switch to `{ field }`.
+
 ### Known limitations (alpha)
 
 - **In-memory idempotency and rate limiting** — not suitable for multi-instance

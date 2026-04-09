@@ -70,7 +70,12 @@ async function demoteOtherDefaults(
   } while (cursor !== undefined)
 
   for (const id of idsToUpdate) {
-    await repo.update(ctx, id, { isDefault: false, updatedAt: new Date() })
+    try {
+      await repo.update(ctx, id, { isDefault: false, updatedAt: new Date() })
+    } catch {
+      // Pipeline may have been deleted between collection and update.
+      // Skip it — a deleted pipeline can't be the default anyway.
+    }
   }
 }
 
