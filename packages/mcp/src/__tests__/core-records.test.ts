@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { executeTool } from '../tools/registry.js'
-import { createMcpServer, resolveDeleteConfirmation } from '../server.js'
+import { createMcpServer, resolveDeleteConfirmation, safeReadResource } from '../server.js'
 import { makeMockClient, parseTextResult } from './helpers.js'
 
 describe('core record tools', () => {
@@ -155,6 +155,26 @@ describe('core record tools', () => {
     expect(parseTextResult(result).error.code).toBe('VALIDATION_FAILED')
   })
 
+  it.each([
+    ['company_01', 'companies'],
+    ['deal_01', 'deals'],
+    ['task_01', 'tasks'],
+  ] as const)(
+    'relate_records tag path resolves %s source to correct entity type',
+    async (sourceId, expectedEntityType) => {
+      const client = makeMockClient()
+      await executeTool(client, 'relate_records', {
+        relationship_type: 'tag',
+        source_record_id: sourceId,
+        target_record_id: 'tag_01',
+      })
+      expect(client.tags.attach).toHaveBeenCalledWith(
+        'tag_01',
+        expect.objectContaining({ entity_type: expectedEntityType }),
+      )
+    },
+  )
+
   it('bulk_operation enforces confirm for delete actions', async () => {
     const client = makeMockClient()
     const result = await executeTool(client, 'bulk_operation', {
@@ -233,5 +253,19 @@ describe('core record tools', () => {
     await expect(resolveDeleteConfirmation(server, { object_type: 'contacts', record_id: 'contact_01' })).rejects.toMatchObject({
       code: 'DESTRUCTIVE_CONFIRM_REQUIRED',
     })
+  })
+})
+
+describe('safeReadResource', () => {
+  it('sanitizes sensitive content in thrown errors', async () => {
+    await expect(
+      safeReadResource(() => Promise.reject(new Error('Bearer ya29.LEAKED_TOKEN internal error'))),
+    ).rejects.toMatchObject({ name: 'McpToolError', code: 'INTERNAL_ERROR' })
+  })
+
+  it('wraps reader errors as McpToolError', async () => {
+    await expect(
+      safeReadResource(() => Promise.reject(new Error('db down'))),
+    ).rejects.toMatchObject({ name: 'McpToolError', code: 'INTERNAL_ERROR' })
   })
 })

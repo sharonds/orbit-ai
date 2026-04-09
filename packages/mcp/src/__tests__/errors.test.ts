@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { OrbitApiError } from '@orbit-ai/sdk'
-import { normalizeToolError, toToolError, toToolSuccess } from '../errors.js'
+import { McpToolError, normalizeToolError, toToolError, toToolSuccess } from '../errors.js'
 import { getTextContent, parseTextResult } from './helpers.js'
 
 describe('toToolError', () => {
@@ -31,7 +31,7 @@ describe('toToolError', () => {
     expect(result.content[0]?.type).toBe('text')
   })
 
-  it('normalizes zod errors into validation failures', () => {
+  it('normalizes McpToolErrorShape plain objects via isToolErrorShape', () => {
     const error = normalizeToolError({
       code: 'VALIDATION_FAILED',
       message: 'invalid field',
@@ -41,7 +41,20 @@ describe('toToolError', () => {
     expect(error.recovery).toBeTruthy()
   })
 
+  it('normalizes duck-typed ZodError into VALIDATION_FAILED', () => {
+    const zodLike = {
+      name: 'ZodError',
+      issues: [{ message: 'Required' }, { message: 'Too short' }],
+    }
+    const result = normalizeToolError(zodLike)
+    expect(result.code).toBe('VALIDATION_FAILED')
+    expect(result.message).toContain('Required')
+    expect(result.message).toContain('Too short')
+  })
+
   it('normalizes OrbitApiError paths with sanitized hint and recovery', () => {
+    // `requestId` is the wrong casing for the OrbitApiError shape (correct is `request_id`);
+    // `as never` suppresses the type error to keep the fixture minimal.
     const error = new OrbitApiError({
       code: 'AUTH_INVALID_API_KEY',
       message: 'Bearer leakedtoken',
@@ -54,6 +67,15 @@ describe('toToolError', () => {
     expect(normalized.message).not.toContain('leakedtoken')
     expect(normalized.hint).not.toContain('secret')
     expect(normalized.recovery).not.toContain('eyJabc.def.ghi')
+  })
+
+  it('preserves custom hint and recovery from McpToolError through normalizeToolError', () => {
+    // McpToolError is a class — import it
+    const error = new McpToolError('VALIDATION_FAILED', 'something went wrong', 'custom hint text', 'custom recovery text')
+    const normalized = normalizeToolError(error)
+    expect(normalized.code).toBe('VALIDATION_FAILED')
+    expect(normalized.hint).toContain('custom hint text')
+    expect(normalized.recovery).toContain('custom recovery text')
   })
 })
 
