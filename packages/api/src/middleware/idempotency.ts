@@ -63,9 +63,14 @@ export class MemoryIdempotencyStore implements IdempotencyStore {
     }
   }
 
-  /** Exposed for tests only. */
-  _reset(): void {
+  /** @internal Test-only. Not part of the public API. */
+  private _reset(): void {
     this.store.clear()
+  }
+
+  /** @internal Called by _resetIdempotencyStore(). */
+  static _resetInstance(instance: MemoryIdempotencyStore): void {
+    instance._reset()
   }
 }
 
@@ -74,7 +79,7 @@ const defaultStore = new MemoryIdempotencyStore()
 
 /** Exposed for tests only — resets the default shared store. */
 export function _resetIdempotencyStore(): void {
-  defaultStore._reset()
+  MemoryIdempotencyStore._resetInstance(defaultStore)
 }
 
 export interface IdempotencyMiddlewareOptions {
