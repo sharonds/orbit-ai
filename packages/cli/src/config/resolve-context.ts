@@ -127,7 +127,10 @@ export function resolveClient(options: ResolveContextOptions): OrbitClient {
   const resolvedConfig: OrbitConfig = {}
   const mode = flags.mode ?? fileConfig.mode ?? 'api'
   resolvedConfig.mode = mode
-  const apiKey = flags.apiKey ?? env['ORBIT_API_KEY'] ?? fileConfig.apiKey
+  const apiKeyFromEnvName =
+    fileConfig.apiKeyEnv ? env[fileConfig.apiKeyEnv] : undefined
+  const apiKey =
+    flags.apiKey ?? env['ORBIT_API_KEY'] ?? fileConfig.apiKey ?? apiKeyFromEnvName
   if (apiKey !== undefined) resolvedConfig.apiKey = apiKey
   const baseUrl = flags.baseUrl ?? env['ORBIT_BASE_URL'] ?? fileConfig.baseUrl
   if (baseUrl !== undefined) resolvedConfig.baseUrl = baseUrl
