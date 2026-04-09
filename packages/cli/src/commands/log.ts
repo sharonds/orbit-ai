@@ -26,11 +26,11 @@ export function registerLogCommand(program: Command): void {
       if (opts.subject) body.subject = opts.subject
       if (opts.occurredAt) body.occurred_at = opts.occurredAt
 
-      const result = await client.activities.log(body)
-
       if (flags.json) {
-        process.stdout.write(JSON.stringify({ data: result }, null, 2) + '\n')
+        const result = await client.activities.response().log(body)
+        process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
+        const result = await client.activities.log(body)
         process.stdout.write(formatOutput({ data: result }, { format: flags.format ?? 'table' }))
       }
     })
