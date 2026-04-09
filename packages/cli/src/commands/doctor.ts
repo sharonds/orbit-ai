@@ -18,8 +18,8 @@ async function runDoctor(): Promise<void> {
   const majorStr = nodeVersion.split('.')[0]
   const major = majorStr !== undefined ? Number(majorStr) : 0
   checks.push({
-    name: 'Node.js version >= 22',
-    pass: major >= 22,
+    name: 'Node.js version >= 20',
+    pass: major >= 20,
     detail: `v${nodeVersion}`,
   })
 
