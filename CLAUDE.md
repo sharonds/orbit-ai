@@ -2,14 +2,14 @@
 
 ## Project
 
-Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). Alpha release: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk` at `0.1.0-alpha.0` on main, 794 tests passing.
+Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). All 5 packages implemented: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`. 1,088 tests passing. Not yet published to npm.
 
 ## Commands
 
 ```bash
 pnpm install              # Install all workspace dependencies
 pnpm -r build             # Build all packages (core must build first)
-pnpm -r test              # Run all tests (vitest) — expect 794 passing
+pnpm -r test              # Run all tests (vitest) — expect 1088 passing
 pnpm -r typecheck         # TypeScript type checking
 pnpm -r lint              # Lint all packages
 
@@ -30,8 +30,6 @@ docs/             # Strategy, specs, security, review artifacts, implementation 
 ```
 
 **Not yet implemented** (separate plans, don't reference in code):
-- `packages/cli/` — `@orbit-ai/cli` (Commander.js + Ink)
-- `packages/mcp/` — `@orbit-ai/mcp` (MCP server)
 - `packages/integrations/` — Gmail, Google Calendar, Stripe connectors
 - `apps/docs/` — Documentation site
 
@@ -94,10 +92,105 @@ See `.env.example` at repo root for the full list with comments.
 | `ORBIT_API_PORT` | No | Server port (default: 3000) |
 | `ORBIT_API_VERSION` | No | API version header (default: 2026-04-01) |
 
+## How We Work
+
+### Development Cycle
+
+Every feature follows this pipeline — no skipping steps:
+
+```
+1. BRAINSTORM   superpowers:brainstorming
+                → Collaborative spec with explicit approval gate before any code
+                → Output: docs/superpowers/specs/YYYY-MM-DD-<name>.md
+
+2. PLAN         superpowers:writing-plans
+                → Converts spec into step-by-step impl plan with exact file paths,
+                  full code blocks, TDD steps, and expected command output
+                → Output: docs/superpowers/plans/YYYY-MM-DD-<name>.md
+
+3. WORKTREE     superpowers:using-git-worktrees
+                → Isolated branch; verifies baseline tests pass before any changes
+
+4. EXECUTE      superpowers:subagent-driven-development
+                → One sub-agent per task; ~100-line slices; commit after each slice
+                → After each task: superpowers:requesting-code-review
+                → At trigger points: run the orbit-specific skill (see below)
+
+5. WRAP-UP      orbit-plan-wrap-up
+                → Update test baseline in CLAUDE.md, memory, package READMEs,
+                  CHANGELOG.md; verify spec coverage
+                → Run BEFORE pr-review-toolkit
+
+6. PRE-PR       pr-review-toolkit:review-pr
+                → Run all 6 specialist agents before creating the PR
+                → Key agents for orbit: type-design-analyzer, silent-failure-hunter,
+                  pr-test-analyzer
+                → Also run the pre-PR checklist (see below)
+
+6. PR           superpowers:finishing-a-development-branch
+                → Creates PR via gh pr create with summary and test plan
+
+7. POST-PR      code-review:code-review
+                → Posts structured GitHub review comment after PR is open
+```
+
+### Orbit-Specific Review Triggers
+
+These skills are **mandatory** at their trigger points — run in addition to the general flow:
+
+| Trigger | Skill |
+|---------|-------|
+| Schema change (new table, column, index) | `orbit-schema-change` |
+| New REST route or route modification | `orbit-api-sdk-parity` |
+| New/modified SDK resource | `orbit-api-sdk-parity` |
+| Completing a core slice or milestone | `orbit-core-slice-review` |
+| Any service/repo/adapter touching tenant data | `orbit-tenant-safety-review` |
+
+### Pre-PR Checklist
+
+Run this before step 5 (pr-review-toolkit). Fix any failure before proceeding.
+
+```bash
+# If packages/core/src changed:
+pnpm --filter @orbit-ai/core build
+
+# Always:
+pnpm -r build
+pnpm -r typecheck
+pnpm -r test        # must be ≥ current baseline (update baseline below after merges)
+pnpm -r lint
+```
+
+**Test baseline**: 1088 tests (update this number after each merge to main)
+
+**Before any npm-publish branch**: verify `CHANGELOG.md` is updated and `files` field in each `package.json` is correct (`dist/`, `README.md`, `LICENSE` only).
+
+### PR Review Tool — Which to Use When
+
+| When | Tool | Purpose |
+|------|------|---------|
+| After each task, during execution | `superpowers:requesting-code-review` | Plan compliance + code quality per task |
+| End of all tasks, before PR | `pr-review-toolkit:review-pr` | 6 specialist agents, confidence ≥80 threshold |
+| After PR is open on GitHub | `code-review:code-review` | Posts structured comment to the PR |
+
+Do not substitute one for another — they serve different points in the pipeline.
+
+### Keeping This File Current
+
+Update this file when:
+- A new architectural rule is established (add to **Key Architecture Rules**)
+- A new entity or adapter pattern is added (update **Adding an Entity / Adapter**)
+- The test baseline changes after merges (update the number in **Pre-PR Checklist**)
+- The workflow itself changes based on what works / doesn't work
+
+When updating, keep sections concise. Prefer tables and numbered lists over prose.
+
+---
+
 ## Gotchas
 
 - This is NOT `smb-sale-crm-app` (the Next.js CRM app). This is the extracted infrastructure project.
-- All 3 packages are at `0.1.0-alpha.0` but NOT yet published to npm.
+- All 5 packages (`core`, `api`, `sdk`, `cli`, `mcp`) are implemented but NOT yet published to npm.
 - The `files` field in each package.json limits `pnpm pack` to `dist/`, `README.md`, `LICENSE`.
 - Core build script runs `rm -rf dist && tsc` to prevent stale test artifacts in tarballs.
 - SDK barrel does NOT export resource classes (ContactResource etc.) — only types. Consumers access resources via `client.contacts`, not by constructing classes.

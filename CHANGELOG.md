@@ -9,10 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0-alpha.0] — Unreleased
 
-First public pre-release of the Orbit AI monorepo. Establishes the full package
-architecture for `@orbit-ai/core`, `@orbit-ai/api`, and `@orbit-ai/sdk`.
+First public pre-release of the Orbit AI monorepo. All 5 packages: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`.
+
+### Fixed
+
+**`@orbit-ai/mcp`**
+- `ZodError` handling switched from `instanceof` to duck-type guard (`name === 'ZodError' && Array.isArray(issues)`) per project convention
+- `isOrbitApiError` duck-type guard tightened to require `typeof error.error === 'object'` and `typeof error.status === 'number'`, preventing misclassification of unrelated objects
+- `McpToolError` constructor now defaults `hint`/`recovery` from lookup tables so invariant holds at class construction, not only after normalization
+- `isSensitiveKey` regex expanded to cover `api_key` / `apiKey` fields
+- `McpIntegrationConnectionRead.object` made required (was incorrectly optional)
+- Dead unreachable code removed from HTTP transport error handler
+- `safeReadResource` now logs via `writeStderrWarning` before re-throwing, re-throws as `McpToolError` (preserving `code`/`hint`/`recovery`), and is exported for unit testing
 
 ### Added
+
+**`@orbit-ai/cli`**
+- 30 CLI commands via Commander.js covering contacts, companies, deals, users, activities, pipelines, and admin operations
+- JSON output contract (`--format json`) on all commands — machine-readable for scripting
+- Context system (`orbit init`, `orbit config`) for managing API endpoint and key
+- Destructive action guard — `--destructive` flag required for drop/rename operations
+
+**`@orbit-ai/mcp`**
+- MCP server with exactly 23 core tools across 8 tiers (Core Records, Pipelines, Activities, Schema, Imports, Sequences, Analytics, Team)
+- Attio-style universal record tools with `object_type` parameter: `search_records`, `get_record`, `create_record`, `update_record`, `delete_record`, `relate_records`, `list_related_records`, `bulk_operation`
+- Safety annotations on every tool: `readOnlyHint`, `destructiveHint`, `idempotentHint`
+- LLM-optimized descriptions — every tool includes "when to use" and "when not to use"
+- Structured error responses with `hint` and `recovery` on every failure
+- `stdio` transport (default, for local agents) and `HTTP` transport with bearer auth
+- `orbit://team-members` and `orbit://schema` MCP resources
+- Secret redaction: signing secrets, access tokens, refresh tokens, and API keys never emitted in tool output or errors
+- Truncation at 5,000-character limit on text fields
+- Gated stubs for `import_records`, `export_records`, `list_related_records`, `run_report`, `get_dashboard_summary` — return `FEATURE_NOT_AVAILABLE` with unlock hint
 
 **`@orbit-ai/core`**
 - Drizzle ORM schema definitions for all 12 base CRM entities: contacts, companies,
@@ -83,8 +111,7 @@ architecture for `@orbit-ai/core`, `@orbit-ai/api`, and `@orbit-ai/sdk`.
   filtering. Use Postgres for production multi-tenant deployments.
 - **Search and batch types** — type definitions exist but the implementations are
   incomplete. Do not rely on them for production data.
-- **No CLI or MCP server** — `@orbit-ai/cli` and `@orbit-ai/mcp` are planned for the
-  next release milestone.
+- **CLI and MCP are implemented** but not yet published to npm.
 - **Not yet published to npm** — clone and build from source to use.
 
 ---
