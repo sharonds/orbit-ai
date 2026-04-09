@@ -1,7 +1,7 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
-import { CliValidationError, CliNotImplementedError } from '../errors.js'
+import { CliNotImplementedError } from '../errors.js'
 import type { GlobalFlags } from '../types.js'
 import type { CreateContactInput, UpdateContactInput } from '@orbit-ai/sdk'
 
