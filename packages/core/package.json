@@ -1,8 +1,16 @@
 {
   "name": "@orbit-ai/core",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
   "description": "Schema engine, entities, adapters, and shared types for Orbit AI — a CRM infrastructure for AI agents",
-  "keywords": ["crm", "ai-agents", "orbit-ai", "typescript", "schema", "drizzle", "multi-tenant"],
+  "keywords": [
+    "crm",
+    "ai-agents",
+    "orbit-ai",
+    "typescript",
+    "schema",
+    "drizzle",
+    "multi-tenant"
+  ],
   "author": "Orbit AI Contributors",
   "license": "MIT",
   "repository": {
@@ -20,7 +28,11 @@
   "publishConfig": {
     "access": "public"
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
