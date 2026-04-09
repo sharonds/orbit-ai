@@ -1,3 +1,4 @@
+import * as path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { Pool } from 'pg'
 import {
@@ -32,13 +33,13 @@ export interface ResolveContextOptions {
   overrideHome?: string
 }
 
-function resolveAdapter(flags: GlobalFlags, config: OrbitConfig): StorageAdapter {
+function resolveAdapter(flags: GlobalFlags, config: OrbitConfig, cwd: string): StorageAdapter {
   const adapterName = flags.adapter ?? config.adapter ?? 'sqlite'
   const dbUrl = flags.databaseUrl ?? config.databaseUrl ?? ''
 
   if (adapterName === 'sqlite') {
-    // Validate URL scheme — reject http(s) and anything non-file
-    if (dbUrl && /^https?:\/\//i.test(dbUrl)) {
+    // Validate URL scheme — block any scheme except file:
+    if (dbUrl && /^[a-z][a-z0-9+\-.]*:\/\//i.test(dbUrl) && !/^file:\/\//i.test(dbUrl)) {
       let safeUrl = dbUrl
       try {
         const parsed = new URL(dbUrl)
@@ -47,7 +48,7 @@ function resolveAdapter(flags: GlobalFlags, config: OrbitConfig): StorageAdapter
         safeUrl = '[unparseable]'
       }
       throw new CliValidationError(
-        `SQLite database URL must be a file path or file: URI, not an HTTP URL. Scheme+host: '${safeUrl}'`,
+        `SQLite database URL must be a file path or file: URI, not a remote URL. Scheme+host: '${safeUrl}'`,
         { code: 'MISSING_REQUIRED_CONFIG', path: 'databaseUrl' },
       )
     }
@@ -57,7 +58,7 @@ function resolveAdapter(flags: GlobalFlags, config: OrbitConfig): StorageAdapter
     if (dbUrl.startsWith('file:')) {
       dbPath = dbUrl.slice(5)
     } else {
-      dbPath = dbUrl || ':memory:'
+      dbPath = dbUrl || path.join(cwd, '.orbit', 'orbit.db')
     }
 
     const database =
@@ -161,7 +162,7 @@ export function resolveClient(options: ResolveContextOptions): OrbitClient {
       )
     }
 
-    const resolvedAdapter = resolveAdapter(flags, resolvedConfig)
+    const resolvedAdapter = resolveAdapter(flags, resolvedConfig, cwd ?? process.cwd())
 
     return new OrbitClient({
       adapter: resolvedAdapter,
