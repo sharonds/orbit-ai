@@ -4,21 +4,10 @@ import type { CoreServices, InternalPaginatedResult } from '@orbit-ai/core'
 import { OrbitError } from '@orbit-ai/core'
 import { toEnvelope, toError } from '../responses.js'
 import { requireScope } from '../scopes.js'
+import { paginationParams } from '../utils/pagination.js'
 
 function notImplemented(c: Context, operation: string) {
   return c.json(toError(c, 'INTERNAL_ERROR', `${operation} not implemented`), 501)
-}
-
-function paginationParams(c: Context) {
-  const raw = c.req.query('limit')
-  if (raw !== undefined) {
-    const parsed = Number(raw)
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
-      throw new OrbitError({ code: 'VALIDATION_FAILED', message: 'limit must be an integer between 1 and 100' })
-    }
-    return { limit: parsed, cursor: c.req.query('cursor') ?? undefined }
-  }
-  return { limit: undefined, cursor: c.req.query('cursor') ?? undefined }
 }
 
 function assertPaginatedResult(result: unknown, operation: string): asserts result is InternalPaginatedResult<unknown> {

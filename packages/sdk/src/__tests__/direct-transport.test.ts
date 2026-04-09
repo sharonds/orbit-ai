@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { DirectTransport } from '../transport/direct-transport.js'
+import { DirectTransport, resolveServiceKey } from '../transport/direct-transport.js'
+import { SqliteStorageAdapter } from '@orbit-ai/core'
+import type { StorageAdapter } from '@orbit-ai/core'
+import type { OrbitClientOptions } from '../config.js'
 
 describe('DirectTransport', () => {
   it('requires adapter and context.orgId', () => {
@@ -65,5 +68,74 @@ describe('DirectTransport', () => {
     }
 
     expect(mockAdapter.runWithMigrationAuthority).not.toHaveBeenCalled()
+  })
+})
+
+function createTestAdapter(): StorageAdapter {
+  const runtimeDb = {
+    async transaction<T>(fn: (tx: typeof runtimeDb) => Promise<T>) {
+      return fn(runtimeDb)
+    },
+    async execute(_statement: unknown) {
+      return undefined
+    },
+    async query() {
+      return []
+    },
+  }
+
+  return new SqliteStorageAdapter({ database: runtimeDb })
+}
+
+function makeDirectOptions(): OrbitClientOptions {
+  return {
+    adapter: createTestAdapter(),
+    context: { orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY' },
+    version: '2026-04-01',
+  }
+}
+
+describe('resolveServiceKey', () => {
+  it('maps sequence_steps to sequenceSteps', () => {
+    expect(resolveServiceKey('sequence_steps')).toBe('sequenceSteps')
+  })
+
+  it('maps sequence_enrollments to sequenceEnrollments', () => {
+    expect(resolveServiceKey('sequence_enrollments')).toBe('sequenceEnrollments')
+  })
+
+  it('maps sequence_events to sequenceEvents', () => {
+    expect(resolveServiceKey('sequence_events')).toBe('sequenceEvents')
+  })
+
+  it('passes through non-underscored entities unchanged', () => {
+    expect(resolveServiceKey('contacts')).toBe('contacts')
+    expect(resolveServiceKey('deals')).toBe('deals')
+    expect(resolveServiceKey('companies')).toBe('companies')
+    expect(resolveServiceKey('pipelines')).toBe('pipelines')
+    expect(resolveServiceKey('tags')).toBe('tags')
+  })
+})
+
+describe('DirectTransport underscored entity dispatch', () => {
+  it('routes GET /v1/sequence_steps to the sequenceSteps service', async () => {
+    const transport = new DirectTransport(makeDirectOptions())
+    const result = await transport.request({ method: 'GET', path: '/v1/sequence_steps' })
+    expect(result.meta).toBeDefined()
+    expect(Array.isArray(result.data)).toBe(true)
+  })
+
+  it('routes GET /v1/sequence_enrollments to the sequenceEnrollments service', async () => {
+    const transport = new DirectTransport(makeDirectOptions())
+    const result = await transport.request({ method: 'GET', path: '/v1/sequence_enrollments' })
+    expect(result.meta).toBeDefined()
+    expect(Array.isArray(result.data)).toBe(true)
+  })
+
+  it('routes GET /v1/sequence_events to the sequenceEvents service', async () => {
+    const transport = new DirectTransport(makeDirectOptions())
+    const result = await transport.request({ method: 'GET', path: '/v1/sequence_events' })
+    expect(result.meta).toBeDefined()
+    expect(Array.isArray(result.data)).toBe(true)
   })
 })

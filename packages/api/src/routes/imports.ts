@@ -3,6 +3,7 @@ import type { CoreServices } from '@orbit-ai/core'
 import { z } from 'zod'
 import { toEnvelope, toError } from '../responses.js'
 import { requireScope } from '../scopes.js'
+import { paginationParams } from '../utils/pagination.js'
 
 // Conservative allowlist of import sources the HTTP API accepts.
 // The core service may support more, but we only expose vetted ones here.
@@ -22,8 +23,7 @@ const CreateImportSchema = z.object({
 export function registerImportRoutes(app: Hono, services: CoreServices) {
   // GET /v1/imports — list
   app.get('/v1/imports', requireScope('imports:read'), async (c) => {
-    const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined
-    const cursor = c.req.query('cursor') ?? undefined
+    const { limit, cursor } = paginationParams(c)
     const service = services.imports as any
     const result = await service.list(c.get('orbit'), { limit, cursor })
     return c.json(toEnvelope(c, result.data, result))

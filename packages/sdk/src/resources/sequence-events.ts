@@ -47,6 +47,12 @@ export class SequenceEventResource {
           method: 'GET',
           path: `${this.basePath}/${id}`,
         }),
+      list: (query: ListQuery = {}) =>
+        this.transport.rawRequest<SequenceEventRecord[]>({
+          method: 'GET',
+          path: this.basePath,
+          query: query as unknown as Record<string, unknown>,
+        }),
     }
   }
 }
