@@ -29,5 +29,6 @@ async function runStatus(flags: GlobalFlags): Promise<void> {
     } else {
       process.stderr.write(`Status: error — ${(e as Error).message}\n`)
     }
+    process.exit(1)
   }
 }

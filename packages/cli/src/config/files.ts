@@ -94,8 +94,10 @@ export function readConfigFile(filePath: string): OrbitConfig | null {
         `Warning: config file '${filePath}' has permissions ${mode.toString(8)} — recommend 0600 (readable only by owner).\n`,
       )
     }
-  } catch {
-    // stat failed — not a blocker
+  } catch (e) {
+    process.stderr.write(
+      `Warning: could not check permissions on config file '${filePath}': ${(e as Error).message}\n`,
+    )
   }
 
   let content: string

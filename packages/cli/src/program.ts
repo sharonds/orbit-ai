@@ -165,10 +165,16 @@ export function createProgram(): Command {
 }
 
 export async function run(): Promise<void> {
-  // Handle SIGINT
-  process.once('SIGINT', () => {
-    process.exit(130)
-  })
+  process.once('SIGINT', () => { process.exit(130) })
+
+  // Detect JSON mode from argv before preAction hook can fire
+  // (preAction only fires if Commander reaches the command — parse errors fire before it)
+  const argvHasJson =
+    process.argv.includes('--json') ||
+    process.argv.includes('--format=json') ||
+    (process.argv.includes('--format') &&
+      process.argv[process.argv.indexOf('--format') + 1] === 'json')
+  if (argvHasJson) _jsonMode = true
 
   try {
     const program = createProgram()

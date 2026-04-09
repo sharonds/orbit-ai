@@ -75,8 +75,8 @@ export function registerFieldsCommand(program: Command): void {
         if (isJsonMode() || !isTTY) {
           process.stdout.write(
             JSON.stringify(DESTRUCTIVE_FIELDS_DELETE_ERROR(entity, fieldName)) + '\n',
+            () => { process.exit(1) },
           )
-          process.exit(1)
           return
         }
         // TTY mode: prompt

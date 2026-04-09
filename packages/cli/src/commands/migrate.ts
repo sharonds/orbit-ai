@@ -38,8 +38,9 @@ async function runMigrate(
 
   if (isDestructive && !confirmed) {
     if (isJsonMode() || !isTTY) {
-      process.stdout.write(JSON.stringify(DESTRUCTIVE_ERROR) + '\n')
-      process.exit(1)
+      process.stdout.write(JSON.stringify(DESTRUCTIVE_ERROR) + '\n', () => {
+        process.exit(1)
+      })
       return
     }
     // TTY mode: prompt (basic readline prompt)
@@ -68,7 +69,7 @@ async function runMigrate(
     if (isJsonMode()) {
       process.stdout.write(JSON.stringify(result, null, 2) + '\n')
     } else {
-      process.stdout.write('Migration applied successfully.\n')
+      process.stdout.write(`Migration applied:\n${JSON.stringify(result, null, 2)}\n`)
     }
     return
   }
@@ -84,7 +85,7 @@ async function runMigrate(
     if (isJsonMode()) {
       process.stdout.write(JSON.stringify(result, null, 2) + '\n')
     } else {
-      process.stdout.write(`Migration ${opts.id} rolled back successfully.\n`)
+      process.stdout.write(`Migration ${opts.id} rolled back:\n${JSON.stringify(result, null, 2)}\n`)
     }
     return
   }

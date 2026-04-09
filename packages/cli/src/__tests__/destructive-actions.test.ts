@@ -59,8 +59,11 @@ function captureStdout(fn: () => Promise<unknown>): Promise<{ output: string; ex
   return new Promise((resolve) => {
     let output = ''
     const origWrite = process.stdout.write.bind(process.stdout)
-    process.stdout.write = (chunk: string | Uint8Array) => {
+    // Cast to any to accept optional callback parameter
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(process.stdout as any).write = (chunk: string | Uint8Array, cb?: () => void) => {
       output += typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString()
+      if (typeof cb === 'function') cb()
       return true
     }
     fn()

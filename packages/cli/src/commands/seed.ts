@@ -18,7 +18,10 @@ async function runSeed(flags: GlobalFlags, count: number): Promise<void> {
   if (flags.mode !== 'direct') {
     const msg = 'orbit seed requires direct mode (--mode direct with a local adapter)'
     if (isJsonMode()) {
-      process.stdout.write(JSON.stringify({ error: { code: 'DIRECT_MODE_REQUIRED', message: msg } }) + '\n')
+      process.stdout.write(JSON.stringify({ error: { code: 'DIRECT_MODE_REQUIRED', message: msg } }) + '\n', () => {
+        process.exit(2)
+      })
+      return
     } else {
       process.stderr.write(msg + '\n')
     }
@@ -28,12 +31,18 @@ async function runSeed(flags: GlobalFlags, count: number): Promise<void> {
   const client = resolveClient({ flags })
   const created: unknown[] = []
 
-  for (let i = 0; i < count; i++) {
-    const contact = await client.contacts.create({
-      name: `Seed${i + 1} Contact`,
-      email: `seed${i + 1}@example.com`,
-    })
-    created.push(contact)
+  try {
+    for (let i = 0; i < count; i++) {
+      const contact = await client.contacts.create({ name: `Seed ${i + 1}`, email: `seed${i + 1}@example.com` })
+      created.push(contact)
+    }
+  } catch (e) {
+    if (isJsonMode()) {
+      process.stdout.write(JSON.stringify({ seeded: created.length, total: count, error: (e as Error).message }) + '\n')
+    } else {
+      process.stderr.write(`Seeded ${created.length}/${count} contacts before error: ${(e as Error).message}\n`)
+    }
+    process.exit(1)
   }
 
   if (isJsonMode()) {
