@@ -1,6 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { DirectTransport, resolveServiceKey } from '../transport/direct-transport.js'
-import { SqliteStorageAdapter } from '@orbit-ai/core'
+import {
+  SqliteStorageAdapter,
+  createSqliteOrbitDatabase,
+  createSqliteStorageAdapter,
+  initializeSqliteWave2SliceESchema,
+  createSqliteOrganizationRepository,
+} from '@orbit-ai/core'
 import type { StorageAdapter } from '@orbit-ai/core'
 import type { OrbitClientOptions } from '../config.js'
 
@@ -137,5 +143,94 @@ describe('DirectTransport underscored entity dispatch', () => {
     const result = await transport.request({ method: 'GET', path: '/v1/sequence_events' })
     expect(result.meta).toBeDefined()
     expect(Array.isArray(result.data)).toBe(true)
+  })
+})
+
+const ORG_ID = 'org_01ARYZ6S41YYYYYYYYYYYYYYYY'
+
+async function createRealAdapter(): Promise<StorageAdapter> {
+  const database = createSqliteOrbitDatabase()
+  await initializeSqliteWave2SliceESchema(database)
+  const adapter = createSqliteStorageAdapter({
+    database,
+    getSchemaSnapshot: async () => ({
+      customFields: [],
+      tables: [
+        'organizations', 'users', 'organization_memberships', 'api_keys',
+        'companies', 'contacts', 'pipelines', 'stages', 'deals',
+        'activities', 'tasks', 'notes', 'products', 'payments', 'contracts',
+        'sequences', 'sequence_steps', 'sequence_enrollments', 'sequence_events',
+        'tags', 'entity_tags', 'imports', 'webhooks', 'webhook_deliveries',
+        'custom_field_definitions', 'audit_logs', 'schema_migrations', 'idempotency_keys',
+      ],
+    }),
+  })
+  const organizations = createSqliteOrganizationRepository(adapter)
+  await organizations.create({
+    id: ORG_ID,
+    name: 'Acme',
+    slug: 'acme',
+    plan: 'community',
+    isActive: true,
+    settings: {},
+    createdAt: new Date('2026-04-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+  })
+  return adapter
+}
+
+describe('DirectTransport wrapEnvelope links.next', () => {
+  it('populates links.next when hasMore is true', async () => {
+    const adapter = await createRealAdapter()
+    const transport = new DirectTransport({
+      adapter,
+      context: { orgId: ORG_ID },
+      version: '2026-04-01',
+    })
+    const ctx = { orgId: ORG_ID, scopes: ['*'] as const }
+
+    // Create 2 contacts so a limit=1 list will have has_more=true
+    await adapter.withTenantContext(ctx, async () => {
+      await transport.request({
+        method: 'POST',
+        path: '/v1/contacts',
+        body: { name: 'Alice', email: 'alice@example.com' },
+      })
+      await transport.request({
+        method: 'POST',
+        path: '/v1/contacts',
+        body: { name: 'Bob', email: 'bob@example.com' },
+      })
+    })
+
+    const result = await transport.request({
+      method: 'GET',
+      path: '/v1/contacts',
+      query: { limit: 1 },
+    })
+
+    expect(result.meta.has_more).toBe(true)
+    expect(result.links.next).toBeDefined()
+    expect(typeof result.links.next).toBe('string')
+    expect(result.links.next).toContain('cursor=')
+  })
+
+  it('leaves links.next undefined when there is no next page', async () => {
+    const adapter = await createRealAdapter()
+    const transport = new DirectTransport({
+      adapter,
+      context: { orgId: ORG_ID },
+      version: '2026-04-01',
+    })
+
+    // List with no contacts — has_more will be false
+    const result = await transport.request({
+      method: 'GET',
+      path: '/v1/contacts',
+      query: { limit: 10 },
+    })
+
+    expect(result.meta.has_more).toBe(false)
+    expect(result.links.next).toBeUndefined()
   })
 })
