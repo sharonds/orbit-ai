@@ -30,17 +30,31 @@ describe('secret redaction', () => {
       id: 'conn_01',
       provider: 'google',
       organization_id: 'org_01',
+      connection_type: 'oauth',
+      status: 'active',
+      failure_count: 0,
+      scopes: ['calendar.read'],
       access_token: 'ya29.REALTOKEN',
       refresh_token: 'rt_REALREFRESH',
+      client_secret: 'super-secret',
+      private_key: 'PRIVATE',
     })
     const text = JSON.stringify(dto)
     expect(text).not.toContain('REALTOKEN')
     expect(text).not.toContain('REALREFRESH')
+    expect(text).not.toContain('super-secret')
+    expect(text).not.toContain('PRIVATE')
+    expect(dto.object).toBe('integration_connection')
     expect(dto.credentials_redacted).toBe(true)
   })
 
   it('redacts token-like strings in tool errors', () => {
     const result = toToolError({ code: 'INTERNAL_ERROR', message: 'access_token: ya29.LEAKED' })
     expect(getTextContent(result)).not.toContain('ya29.LEAKED')
+  })
+
+  it('redacts jwt-like strings in tool errors', () => {
+    const result = toToolError({ code: 'INTERNAL_ERROR', message: 'jwt eyJabc.def.ghi' })
+    expect(getTextContent(result)).not.toContain('eyJabc.def.ghi')
   })
 })
