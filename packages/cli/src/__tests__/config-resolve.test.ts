@@ -291,23 +291,16 @@ describe('config resolution — resolveClient', () => {
     )
   })
 
-  // Test 14: Direct mode in TTY → warning emitted to stderr
-  it('14: direct mode in TTY → warning emitted to stderr listing missing middleware', () => {
+  // Test 14: Direct mode → warning emitted to stderr regardless of TTY state
+  it('14: direct mode → warning emitted to stderr listing missing middleware', () => {
     const cwd = makeTmpDir()
-    const origIsTTY = process.stdout.isTTY
-    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
-
-    try {
-      resolveClient({
-        flags: { mode: 'direct', adapter: 'sqlite', orgId: 'org_test123' },
-        env: {},
-        cwd,
-        overrideHome: cwd,
-      })
-      expect(stderrOutput).toContain('direct mode')
-    } finally {
-      Object.defineProperty(process.stdout, 'isTTY', { value: origIsTTY, configurable: true })
-    }
+    resolveClient({
+      flags: { mode: 'direct', adapter: 'sqlite', orgId: 'org_test123' },
+      env: {},
+      cwd,
+      overrideHome: cwd,
+    })
+    expect(stderrOutput).toContain('direct mode')
   })
 
   // Test 15: --api-key in argv (two-token form) → stderr warning + argv redaction

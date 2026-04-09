@@ -36,8 +36,15 @@ function resolveAdapter(flags: GlobalFlags, config: OrbitConfig): StorageAdapter
   if (adapterName === 'sqlite') {
     // Validate URL scheme — reject http(s) and anything non-file
     if (dbUrl && /^https?:\/\//i.test(dbUrl)) {
+      let safeUrl = dbUrl
+      try {
+        const parsed = new URL(dbUrl)
+        safeUrl = `${parsed.protocol}//${parsed.hostname}`
+      } catch {
+        safeUrl = '[unparseable]'
+      }
       throw new CliValidationError(
-        `SQLite database URL must be a file path or file: URI, not an HTTP URL: '${dbUrl}'`,
+        `SQLite database URL must be a file path or file: URI, not an HTTP URL. Scheme+host: '${safeUrl}'`,
         { code: 'MISSING_REQUIRED_CONFIG', path: 'databaseUrl' },
       )
     }
@@ -59,9 +66,15 @@ function resolveAdapter(flags: GlobalFlags, config: OrbitConfig): StorageAdapter
 
   if (adapterName === 'postgres') {
     if (!dbUrl || (!dbUrl.startsWith('postgresql://') && !dbUrl.startsWith('postgres://'))) {
+      let safeUrl = dbUrl
+      try {
+        safeUrl = new URL(dbUrl).hostname
+      } catch {
+        safeUrl = '[unparseable]'
+      }
       throw new CliValidationError(
-        `Postgres database URL must start with postgresql:// or postgres://. Got: '${dbUrl}'`,
-        { code: 'MISSING_REQUIRED_CONFIG', path: 'databaseUrl' },
+        `Postgres database URL must use postgresql:// or postgres:// scheme. Host: '${safeUrl}'`,
+        { code: 'INVALID_DATABASE_URL', adapter: 'postgres' },
       )
     }
 
@@ -125,8 +138,8 @@ export function resolveClient(options: ResolveContextOptions): OrbitClient {
   if (databaseUrl !== undefined) resolvedConfig.databaseUrl = databaseUrl
 
   if (mode === 'direct') {
-    // Warn on TTY unless quiet
-    if (process.stdout.isTTY && !flags.quiet) {
+    // Warn unless quiet (emit in all contexts including CI/piped)
+    if (!flags.quiet) {
       process.stderr.write(DIRECT_MODE_WARNING)
     }
 

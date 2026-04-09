@@ -21,12 +21,24 @@ export interface OrbitConfig {
  * Allowed roots: ancestors of cwd and os.homedir().
  */
 export function canonicalizePath(filePath: string, allowedRoots: string[]): string {
-  let resolved: string
+  let resolved = ''
   try {
     resolved = fs.realpathSync(filePath)
   } catch {
-    // File doesn't exist yet — resolve without realpathSync (for new files)
-    resolved = path.resolve(filePath)
+    // File doesn't exist yet — resolve symlinks in the deepest existing ancestor
+    let resolved2 = path.resolve(filePath)
+    let check = path.dirname(resolved2)
+    while (check !== path.dirname(check)) {
+      try {
+        const realParent = fs.realpathSync(check)
+        resolved2 = path.join(realParent, path.relative(check, resolved2))
+        resolved = resolved2
+        break
+      } catch {
+        check = path.dirname(check)
+      }
+    }
+    if (!resolved) resolved = resolved2
   }
   const isAllowed = allowedRoots.some(
     (root) => resolved === root || resolved.startsWith(root + path.sep),
