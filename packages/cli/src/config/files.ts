@@ -13,6 +13,7 @@ export interface OrbitConfig {
   adapter?: string
   databaseUrl?: string
   profile?: string
+  orgName?: string
   profiles?: Record<string, Omit<OrbitConfig, 'profiles' | 'profile'>>
 }
 
