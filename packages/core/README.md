@@ -34,57 +34,44 @@ Requires **Node.js 22+** (the SQLite adapter uses `node:sqlite`).
 
 ## Quick usage
 
-### Local development with SQLite
-
 ```typescript
 import {
   createSqliteOrbitDatabase,
   createSqliteStorageAdapter,
-  ContactService,
+  createCoreServices,
+  initializeAllSqliteSchemas,
 } from '@orbit-ai/core'
 
 // 1. Create an in-memory database (pass { filename: './dev.db' } for a file)
 const db = createSqliteOrbitDatabase()
+await initializeAllSqliteSchemas(db)
 
 // 2. Create the storage adapter
-const adapter = createSqliteStorageAdapter({
-  connect: () => db.connect(),
-  disconnect: () => db.disconnect(),
-  migrate: () => db.migrate(),
-  getSchemaSnapshot: () => db.getSchemaSnapshot(),
-})
+const adapter = createSqliteStorageAdapter({ database: db })
 
-await adapter.connect()
+// 3. Create services and use them
+const services = createCoreServices(adapter)
+const ctx = { orgId: 'org_demo', scopes: ['*'] as const }
 
-// 3. Use an entity service
-const ctx = { orgId: 'org_demo', userId: 'user_demo' }
-const contacts = new ContactService(adapter, ctx)
-
-const contact = await contacts.create({
+const contact = await services.contacts.create(ctx, {
   name: 'Ada Lovelace',
   email: 'ada@example.com',
 })
 
-const page = await contacts.list({ limit: 20 })
-console.log(page.data) // Contact[]
-console.log(page.meta) // { total, limit, nextCursor }
+const page = await services.contacts.list(ctx, { limit: 20 })
+console.log(page.data)       // Contact[]
+console.log(page.hasMore)    // boolean
+console.log(page.nextCursor) // string | null
 ```
 
-### Postgres (production)
-
-```typescript
-import { createPostgresOrbitDatabase, createPostgresStorageAdapter } from '@orbit-ai/core'
-
-const db = createPostgresOrbitDatabase({ connectionString: process.env.DATABASE_URL! })
-const adapter = createPostgresStorageAdapter({ db })
-await adapter.connect()
-```
+Most consumers will use `@orbit-ai/api` (REST server) or `@orbit-ai/sdk` (client)
+rather than importing core directly. Core is the foundation package that both depend on.
 
 ## Tenant isolation
 
-Every entity service method requires a tenant context (`orgId` + `userId`). All
-queries include an `orgId` filter at the application layer. For Postgres-family adapters,
-RLS policies provide a second enforcement layer.
+Every entity service method requires a tenant context (`orgId`). All queries include an
+`orgId` filter at the application layer. For Postgres-family adapters, RLS policies
+provide a second enforcement layer.
 
 SQLite has no RLS — application-layer filtering is the only mechanism. Do not use SQLite
 in multi-tenant production deployments.

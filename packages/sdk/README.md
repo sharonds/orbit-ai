@@ -54,8 +54,9 @@ await client.contacts.delete(contact.id)
 ```typescript
 // Single page — returns Promise<OrbitEnvelope<Contact[]>>
 const page = await client.contacts.list({ limit: 50 })
-console.log(page.data)      // Contact[]
-console.log(page.meta)      // { total, limit, nextCursor, ... }
+console.log(page.data)             // Contact[]
+console.log(page.meta.next_cursor) // string | null
+console.log(page.meta.has_more)    // boolean
 
 // Iterate all pages automatically
 for await (const contact of client.contacts.pages({ limit: 50 }).autoPaginate()) {
@@ -66,15 +67,17 @@ for await (const contact of client.contacts.pages({ limit: 50 }).autoPaginate())
 ### 4. Handle errors
 
 ```typescript
-import { OrbitApiError } from '@orbit-ai/sdk'
+import { OrbitClient, OrbitApiError } from '@orbit-ai/sdk'
 
 try {
   await client.contacts.get('nonexistent-id')
 } catch (err) {
   if (err instanceof OrbitApiError) {
-    console.error(err.error.code)    // e.g. 'NOT_FOUND'
-    console.error(err.error.message) // human-readable
-    console.error(err.status)        // HTTP status code (404)
+    console.error(err.code)       // e.g. 'RESOURCE_NOT_FOUND' (getter on .error.code)
+    console.error(err.message)    // human-readable (inherited from Error)
+    console.error(err.status)     // HTTP status code (404)
+    console.error(err.retryable)  // boolean
+    console.error(err.request_id) // correlation ID for server logs
   }
 }
 ```
@@ -118,13 +121,20 @@ Every resource except `search` and `schema` supports `create`, `get`, `update`,
 
 ```typescript
 import { OrbitClient } from '@orbit-ai/sdk'
-import { createSQLiteAdapter } from '@orbit-ai/core'
+import {
+  createSqliteStorageAdapter,
+  createSqliteOrbitDatabase,
+  initializeAllSqliteSchemas,
+} from '@orbit-ai/core'
 
-const adapter = await createSQLiteAdapter({ path: ':memory:' })
+const db = createSqliteOrbitDatabase() // :memory:
+await initializeAllSqliteSchemas(db)
+
+const adapter = createSqliteStorageAdapter({ database: db })
 
 const client = new OrbitClient({
   adapter,
-  context: { orgId: 'org_test', userId: 'user_test' },
+  context: { orgId: 'org_test' },
 })
 
 // All operations go directly to the adapter — no HTTP, no auth

@@ -12,12 +12,12 @@
   entity, plus search, context, admin, bootstrap, organization, workflow, and
   relationship routes
 - **Authentication middleware** — API-key auth with SHA-256 hashing; pluggable
-  `lookupApiKey` hook on the storage adapter
-- **Tenant context middleware** — injects `orgId` + `userId` into every request so
-  entity services are always correctly scoped
-- **Idempotency** — `Idempotency-Key` header support with an in-process store (swap
-  out for Redis-backed via the `IdempotencyStore` interface)
-- **Rate limiting** — per-API-key sliding window, configurable via `RateLimitOptions`
+  `lookupApiKeyForAuth` hook on the storage adapter
+- **Tenant context middleware** — injects `orgId` into every request so entity
+  services are always correctly scoped
+- **Idempotency** — `Idempotency-Key` header support with a pluggable
+  `IdempotencyStore` interface (in-memory default, swap for Redis/DB-backed)
+- **Rate limiting** — per-API-key sliding window (in-memory, single-instance)
 - **Body size limiting** — configurable `maxRequestBodySize` (default 1 MB)
 - **Request IDs** — every response carries a `X-Request-Id` header
 - **OpenAPI spec** — `GET /v1/openapi.json` auto-generated from the route definitions
@@ -25,42 +25,49 @@
 ## Installation
 
 ```bash
-pnpm add @orbit-ai/api
+pnpm add @orbit-ai/api @orbit-ai/core
 # or
-npm install @orbit-ai/api
+npm install @orbit-ai/api @orbit-ai/core
 ```
 
-Requires **Node.js 22+** and `@orbit-ai/core`.
+Requires **Node.js 22+**.
 
 ## Quick server setup
 
 ```typescript
-import { serve } from '@hono/node-server'
-import { createApi } from '@orbit-ai/api'
-import { createSqliteOrbitDatabase, createSqliteStorageAdapter } from '@orbit-ai/core'
+import { createApi } from '@orbit-ai/api/node'
+import {
+  createSqliteStorageAdapter,
+  createSqliteOrbitDatabase,
+  createCoreServices,
+  initializeAllSqliteSchemas,
+} from '@orbit-ai/core'
 
 // 1. Build a storage adapter (SQLite shown — use Postgres for production)
-const db = createSqliteOrbitDatabase({ filename: './dev.db' })
+const db = createSqliteOrbitDatabase()
+await initializeAllSqliteSchemas(db)
+
 const adapter = createSqliteStorageAdapter({
-  connect: () => db.connect(),
-  disconnect: () => db.disconnect(),
-  migrate: () => db.migrate(),
-  getSchemaSnapshot: () => db.getSchemaSnapshot(),
-  lookupApiKeyForAuth: async (hashedKey) => db.lookupApiKey(hashedKey),
+  database: db,
+  lookupApiKeyForAuth: async (keyHash) => {
+    // Look up the API key by its SHA-256 hash and return auth context
+    // In production, query your api_keys table
+    return { id: 'key_01', organizationId: 'org_01', scopes: ['*'], revokedAt: null, expiresAt: null }
+  },
 })
-await adapter.connect()
+
+const services = createCoreServices(adapter)
 
 // 2. Create the Hono app
 const app = createApi({
   adapter,
-  version: '0.1.0-alpha',
-  // maxRequestBodySize: 2_097_152, // 2 MB override (optional)
+  version: '2026-04-01',
+  services,
+  // idempotencyStore: myRedisStore,  // optional: for multi-instance deployments
+  // maxRequestBodySize: 2_097_152,   // optional: 2 MB override
 })
 
-// 3. Serve
-serve({ fetch: app.fetch, port: 3001 }, () => {
-  console.log('Orbit AI API running on http://localhost:3001')
-})
+// app is a Hono instance — serve it with any Node.js HTTP server
 ```
 
 ## Routes overview
@@ -80,13 +87,6 @@ DELETE /v1/contacts/:id
 # activities, tasks, notes, products, payments, contracts,
 # sequences, sequence-steps, sequence-enrollments, sequence-events,
 # tags, webhooks, imports
-
-GET    /v1/search
-GET    /v1/context
-POST   /v1/bootstrap
-GET    /v1/organizations
-POST   /v1/workflows/:entity/:id/transition
-GET    /v1/relationships/:entity/:id
 ```
 
 All responses follow the `OrbitEnvelope` shape:
@@ -94,7 +94,7 @@ All responses follow the `OrbitEnvelope` shape:
 ```json
 {
   "data": { ... },
-  "meta": { "requestId": "...", "version": "0.1.0-alpha" }
+  "meta": { "request_id": "req_...", "version": "2026-04-01", "has_more": false, "next_cursor": null }
 }
 ```
 
@@ -103,39 +103,34 @@ Errors follow:
 ```json
 {
   "error": {
-    "code": "NOT_FOUND",
+    "code": "RESOURCE_NOT_FOUND",
     "message": "Contact not found",
-    "retryable": false
+    "retryable": false,
+    "request_id": "req_..."
   }
 }
 ```
 
-## Authentication
-
-Pass your API key in the `Authorization` header:
-
-```
-Authorization: Bearer sk_your_key_here
-```
-
-Keys are SHA-256 hashed before lookup. The adapter's `lookupApiKeyForAuth` callback
-receives the hashed key and must return the associated org/user context or `null`.
-
 ## Configuration reference
 
 ```typescript
+import type { IdempotencyStore } from '@orbit-ai/api'
+
 interface CreateApiOptions {
   adapter: RuntimeApiAdapter   // StorageAdapter minus migrate/runWithMigrationAuthority
   version: string              // Returned in every response's meta.version
   services?: CoreServices      // Optional: pre-built services (useful for tests)
   maxRequestBodySize?: number  // Bytes. Default: 1_048_576 (1 MB)
+  idempotencyStore?: IdempotencyStore // Optional: custom store for multi-instance
 }
 ```
 
 ## Known alpha limitations
 
-- Idempotency and rate limiting are **in-memory** — single-instance only. For
-  multi-instance deployments, implement `IdempotencyStore` and pass it via adapter config.
+- Rate limiting is **in-memory** — single-instance only. A pluggable `RateLimitStore`
+  interface is planned for v1 GA.
+- Idempotency defaults to an in-memory store. For multi-instance deployments, pass a
+  custom `IdempotencyStore` implementation via `CreateApiOptions.idempotencyStore`.
 - API keys are SHA-256 hashed. HMAC-SHA256 + server pepper is planned for v1 GA.
 - The full list of known gaps is in
   [`docs/review/2026-04-08-post-stack-audit.md`](../../docs/review/2026-04-08-post-stack-audit.md).

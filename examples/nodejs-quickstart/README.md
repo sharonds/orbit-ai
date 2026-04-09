@@ -12,6 +12,11 @@ A runnable end-to-end example that also serves as a CI smoke test.
 5. Repeats the same flow via **DirectTransport** (in-process, zero network overhead).
 6. Exits `0` on success, non-zero on any assertion failure.
 
+## Requirements
+
+- **Node.js 22+** (the SQLite adapter uses `node:sqlite`)
+- **pnpm 9+**
+
 ## Run it
 
 ```bash
