@@ -1,8 +1,8 @@
 # Orbit AI KB
 
-Date: 2026-04-03
+Date: 2026-04-09
 Status: Active working hub
-Current baseline commit: `a12f4e4`
+Current baseline commit: `3205584` (feat/cli)
 
 ## What Orbit Is
 
@@ -49,18 +49,15 @@ Completed:
 Current focus:
 
 - maintain the repo knowledge base as the live hub
-- Core Wave 2 Slice E is complete: `system.customFieldDefinitions`, `system.auditLogs`, `system.schemaMigrations`, `system.idempotencyKeys`, final Wave 2 registry wiring, adapter bootstrap for all four entities, and SQLite/Postgres persistence proofs are all landed on branch `core-wave-2-slice-e`
-- Core tenant hardening is complete on branch `core-tenant-hardening`: Slice E bootstrap now runs in a transaction, creates schema `orbit`, sets local `search_path` to `orbit, pg_temp`, applies table DDL, applies baseline org-leading indexes for tenant filters and RLS, and applies RLS by default. The pg-mem persistence proofs use `includeRls: false` because pg-mem does not implement RLS DDL. Drift detection tests still prove the shared tenant inventory and RLS coverage stay aligned.
-- An opt-in live Postgres proof now exists at `packages/core/src/adapters/postgres/live-bootstrap.test.ts`, gated by `ORBIT_TEST_POSTGRES_URL` and `ORBIT_TEST_POSTGRES_ALLOW_SCHEMA_RESET=1` because it resets schema `orbit` on a dedicated test database
-- API/SDK execution is now unblocked by the completed Wave 2 merge and tenant hardening; execution order is a product decision rather than a missing-core blocker
-- tenant hardening is now treated as merged into the core baseline; the landed follow-up remains documented in [core-tenant-hardening-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-tenant-hardening-plan.md) and the worker-facing execution record in [2026-04-03-core-tenant-hardening.md](/Users/sharonsciammas/orbit-ai/docs/superpowers/plans/2026-04-03-core-tenant-hardening.md)
-- the next primary package-level track is API execution planning in [api-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/api-implementation-plan.md)
-- SDK execution planning now follows immediately in [sdk-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/sdk-implementation-plan.md), using the API plan as the transport-parity anchor
+- `@orbit-ai/cli` is complete and reviewed: 7 implementation slices (A–G), 4 rounds of code review (Codex + 3 agent-panel rounds), 161 tests passing, merging to main via PR
+- CLI package adds: Commander CLI with 30 commands, JSON/table/CSV/TSV output, direct SQLite + API modes, config file resolution (profiles, apiKeyEnv, nested cwd), `orbit init/status/doctor/seed/migrate`, structured `{ error }` contract throughout, `utils/prompt.ts` shared TTY confirmation utility
+- MCP execution planning is documented in [mcp-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/mcp-implementation-plan.md) — next package track after CLI merges
 - keep execution docs and skills aligned with implementation progress
 
 Not started yet:
 
-- broad package implementation beyond `@orbit-ai/core`
+- `packages/mcp`
+- `packages/integrations`
 
 ## Frozen Decisions
 
@@ -110,6 +107,8 @@ Use these files first:
   - [core-tenant-hardening-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/core-tenant-hardening-plan.md)
   - [api-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/api-implementation-plan.md)
   - [sdk-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/sdk-implementation-plan.md)
+  - [cli-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/cli-implementation-plan.md)
+  - [mcp-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/mcp-implementation-plan.md)
   - [core-wave-1-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-review.md)
   - [core-wave-1-full-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-full-review.md)
   - [core-wave-1-remediation-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-remediation-review.md)
@@ -127,23 +126,19 @@ Use these files first:
 
 Immediate next actions:
 
-1. Minimum pre-core skills are in place:
-   - `orbit-tenant-safety-review`
-   - `orbit-schema-change`
-   - `orbit-core-slice-review`
-2. Core execution baseline already completed:
-   - slice 1 on `core-slice-1-execution`
-   - slice 2 on `core-slice-2-execution`
-   - Wave 1 service surface committed on `core-wave-1-services`
-   - SQLite persistence bridge committed on `core-wave-1-services`
-3. Package planning baseline now completed:
-   - tenant hardening is treated as merged into the accepted core baseline
-   - [api-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/api-implementation-plan.md) defines the next transport-contract execution track
-   - [sdk-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/sdk-implementation-plan.md) defines the immediate follow-on SDK track anchored to API parity
-4. Next:
-   - execute [api-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/api-implementation-plan.md) on a fresh API branch with package bootstrap, auth, tenant-context, and envelope/error boundaries first
-   - execute [sdk-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/sdk-implementation-plan.md) immediately after the API contract baseline is accepted, keeping route/envelope/error behavior API-owned
-   - keep the repo-local review gates explicit during execution: `orbit-tenant-safety-review`, `orbit-schema-change`, `orbit-core-slice-review`, plus independent code/security sub-agent review passes
+1. All five core packages are implemented:
+   - `@orbit-ai/core` — Wave 1 + Wave 2 + tenant hardening on main
+   - `@orbit-ai/api` — Hono REST API on main
+   - `@orbit-ai/sdk` — TypeScript client SDK on main
+   - `@orbit-ai/cli` — Commander CLI, merging from `feat/cli`
+   - `@orbit-ai/mcp` — not yet started
+2. Execution plans in place for all remaining work:
+   - [cli-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/cli-implementation-plan.md) — complete and reviewed
+   - [mcp-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/mcp-implementation-plan.md) — ready to execute, 8 slices (A–H), 92-test minimum
+3. Next:
+   - merge `feat/cli` PR to main (in progress)
+   - start [mcp-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/mcp-implementation-plan.md) — 23 tools, stdio + HTTP transport
+   - after MCP: publish all 5 packages together as `0.1.0-alpha.0` to npm
 
 ## Open Items
 
@@ -211,6 +206,9 @@ These are still open, but they do not block the KB:
 - 2026-04-03: Executed the core tenant hardening plan on branch `core-tenant-hardening` (Slices A-E): transactional Postgres bootstrap with `orbit` schema creation and `search_path` pinning, table DDL, baseline org-leading indexes for tenant filters/RLS, RLS enabled by default, and drift detection tests. The pg-mem persistence proofs use `includeRls: false` because pg-mem does not implement RLS DDL. Review artifact at [core-tenant-hardening-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-tenant-hardening-review.md).
 - 2026-04-03: Reviewed and revised the worker-facing tenant-hardening implementation plan in [2026-04-03-core-tenant-hardening.md](/Users/sharonsciammas/orbit-ai/docs/superpowers/plans/2026-04-03-core-tenant-hardening.md) so it now matches the accepted execution baseline: idempotent RLS policy DDL, migration-authority-only bootstrap integration, explicit mid-sequence and final tenant-safety review gates, targeted SQLite validation, and fresh independent code/security review passes. The plan is now execution-ready.
 - 2026-04-03: Marked the tenant-hardening follow-up as merged into the accepted core baseline in the KB, and created [api-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/api-implementation-plan.md) plus [sdk-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/sdk-implementation-plan.md) so API is the next package-level track and SDK follows with API as the transport-parity anchor.
+- 2026-04-09: Created [cli-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/cli-implementation-plan.md) as the next package-level execution baseline, explicitly grounding CLI work in the checked-in API/SDK packages and calling out current dependency gaps for direct adapter resolution and `@orbit-ai/mcp`.
+- 2026-04-09: Created [mcp-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/mcp-implementation-plan.md) as the MCP execution baseline, fixing the package around the 23-tool core contract and calling out current dependency gates for schema, export, and analytics tool families.
+- 2026-04-09: Completed `@orbit-ai/cli` on branch `feat/cli` (7 implementation slices, A–G). Codex review surfaced 11 issues; all fixed. Three agent-panel review rounds (6 reviewers) surfaced 17 additional issues; all fixed. Final state: 161 tests, 17 test files, 0 typecheck errors, clean build. Key fixes: Commander `exitOverride` + `instanceof CommanderError`, `isJsonMode()` unification, `apiKeyEnv` config resolution, nested-cwd discovery, `--profile` implementation, SQLite default path + `file://hostname` rejection, synchronous `write+exit` throughout, `confirmAction` extracted to `utils/prompt.ts` with stdin EOF/error cleanup, `seed` count validation, `migrate` no-flags guard. PR opened and merged to main.
 
 ## Working Rule
 
