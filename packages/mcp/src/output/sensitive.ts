@@ -3,9 +3,22 @@ import { truncateUnknownStrings } from './truncation.js'
 
 export interface McpIntegrationConnectionRead {
   id?: string
-  provider?: string
+  object?: 'integration_connection'
   organization_id?: string
+  provider?: string
+  connection_type?: string
+  user_id?: string | null
+  status?: string
+  provider_account_id?: string | null
+  provider_webhook_registered?: boolean
+  scopes?: string[]
+  failure_count?: number
+  last_success_at?: string | null
+  last_failure_at?: string | null
+  metadata_summary?: Record<string, string | number | boolean | null>
   credentials_redacted: true
+  created_at?: string
+  updated_at?: string
 }
 
 export function sanitizeWebhookRead(record: Record<string, unknown>): WebhookRead {
@@ -34,28 +47,45 @@ export function sanitizeSecretBearingRecord(objectType: string, record: unknown)
     }
   }
 
-  const blocked = new Set([
-    'access_token',
-    'refresh_token',
-    'accessToken',
-    'refreshToken',
-    'signing_secret',
-    'signingSecret',
-    'secret',
-  ])
-
   return Object.fromEntries(
     Object.entries(record as Record<string, unknown>)
-      .filter(([key]) => !blocked.has(key))
-      .map(([key, value]) => [key, truncateUnknownStrings(value, 10_000)]),
+      .filter(([key]) => !isSensitiveKey(key))
+      .map(([key, value]) => [key, truncateUnknownStrings(value, 5_000)]),
   )
 }
 
 export function toMcpIntegrationConnectionRead(record: Record<string, unknown>): McpIntegrationConnectionRead {
   return {
     ...(record.id ? { id: String(record.id) } : {}),
-    ...(record.provider ? { provider: String(record.provider) } : {}),
+    object: 'integration_connection',
     ...(record.organization_id ? { organization_id: String(record.organization_id) } : {}),
+    ...(record.provider ? { provider: String(record.provider) } : {}),
+    ...(record.connection_type ? { connection_type: String(record.connection_type) } : {}),
+    ...(record.user_id !== undefined ? { user_id: record.user_id === null ? null : String(record.user_id) } : {}),
+    ...(record.status ? { status: String(record.status) } : {}),
+    ...(record.provider_account_id !== undefined
+      ? { provider_account_id: record.provider_account_id === null ? null : String(record.provider_account_id) }
+      : {}),
+    ...(record.provider_webhook_registered !== undefined
+      ? { provider_webhook_registered: Boolean(record.provider_webhook_registered) }
+      : {}),
+    ...(Array.isArray(record.scopes) ? { scopes: record.scopes.map((scope) => String(scope)) } : {}),
+    ...(record.failure_count !== undefined ? { failure_count: Number(record.failure_count) } : {}),
+    ...(record.last_success_at !== undefined
+      ? { last_success_at: record.last_success_at === null ? null : String(record.last_success_at) }
+      : {}),
+    ...(record.last_failure_at !== undefined
+      ? { last_failure_at: record.last_failure_at === null ? null : String(record.last_failure_at) }
+      : {}),
+    ...(record.metadata_summary && typeof record.metadata_summary === 'object'
+      ? { metadata_summary: truncateUnknownStrings(record.metadata_summary, 5_000) as Record<string, string | number | boolean | null> }
+      : {}),
     credentials_redacted: true,
+    ...(record.created_at ? { created_at: String(record.created_at) } : {}),
+    ...(record.updated_at ? { updated_at: String(record.updated_at) } : {}),
   }
+}
+
+function isSensitiveKey(key: string): boolean {
+  return /(token|secret|password|private[_-]?key|client[_-]?secret)/i.test(key)
 }

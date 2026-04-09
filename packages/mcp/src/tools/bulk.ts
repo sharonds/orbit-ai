@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { OrbitClient } from '@orbit-ai/sdk'
 import { defineTool, ObjectTypeSchema, sanitizeRecordPayload } from './schemas.js'
-import { McpNotImplementedError, toToolSuccess } from '../errors.js'
+import { McpToolError, toToolSuccess } from '../errors.js'
 import { getClientResource } from './core-records.js'
 import { isDirectModeClient, writeDirectModeAuditLog } from '../server.js'
 
@@ -13,7 +13,7 @@ const BulkOperationInput = z.object({
       z.object({ action: z.literal('update'), record_id: z.string(), record: z.record(z.string(), z.unknown()) }),
       z.object({ action: z.literal('delete'), record_id: z.string(), confirm: z.literal(true) }),
     ]),
-  ),
+  ).max(100),
 })
 
 const BULK_SUPPORTED_TYPES = new Set([
@@ -43,10 +43,7 @@ export async function handleBulkOperation(client: OrbitClient, rawArgs: unknown)
   const args = BulkOperationInput.parse(rawArgs)
 
   if (!BULK_SUPPORTED_TYPES.has(args.object_type)) {
-    throw {
-      code: 'UNSUPPORTED_OBJECT_TYPE' as const,
-      message: `Bulk operations are not supported for ${args.object_type}.`,
-    }
+    throw new McpToolError('UNSUPPORTED_OBJECT_TYPE', `Bulk operations are not supported for ${args.object_type}.`)
   }
 
   if (isDirectModeClient(client)) {

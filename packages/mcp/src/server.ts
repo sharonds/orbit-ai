@@ -7,7 +7,7 @@ import { createStdioTransport } from './transports/stdio.js'
 import { startHttpTransport } from './transports/http.js'
 import { readTeamMembers } from './resources/team-members.js'
 import { readSchema } from './resources/schema.js'
-import { toToolError } from './errors.js'
+import { McpToolError, normalizeToolError } from './errors.js'
 
 export interface StartMcpServerOptions {
   client: OrbitClient
@@ -68,13 +68,13 @@ export function createMcpServer(options: StartMcpServerOptions): McpServer {
     'orbit-team-members',
     'orbit://team-members',
     { title: 'Orbit team members', mimeType: 'application/json' },
-    async () => readTeamMembers(options.client),
+    async () => safeReadResource(() => readTeamMembers(options.client)),
   )
   server.registerResource(
     'orbit-schema',
     'orbit://schema',
     { title: 'Orbit schema', mimeType: 'application/json' },
-    async () => readSchema(options.client),
+    async () => safeReadResource(() => readSchema(options.client)),
   )
 
   return server
@@ -109,10 +109,7 @@ export async function resolveDeleteConfirmation(server: McpServer, args: Record<
     return { ...args, confirm: true }
   }
 
-  throw {
-    code: 'DESTRUCTIVE_CONFIRM_REQUIRED' as const,
-    message: 'User declined or dismissed the destructive confirmation.',
-  }
+  throw new McpToolError('DESTRUCTIVE_CONFIRM_REQUIRED', 'User declined or dismissed the destructive confirmation.')
 }
 
 export function isDirectModeClient(client: OrbitClient): boolean {
@@ -134,10 +131,7 @@ export function validateWebhookUrlForDirectMode(url: string): void {
     hostname.startsWith('169.254.') ||
     is172PrivateRange(hostname)
   ) {
-    throw {
-      code: 'SSRF_BLOCKED' as const,
-      message: `Webhook URL ${url} is blocked by the direct-mode SSRF policy.`,
-    }
+    throw new McpToolError('SSRF_BLOCKED', `Webhook URL ${url} is blocked by the direct-mode SSRF policy.`)
   }
 }
 
@@ -162,4 +156,15 @@ export function writeStderrWarning(message: string): void {
 
 export function writeDirectModeAuditLog(payload: Record<string, unknown>): void {
   process.stderr.write(`${JSON.stringify(payload)}\n`)
+}
+
+async function safeReadResource<T>(reader: () => Promise<T>): Promise<T> {
+  try {
+    return await reader()
+  } catch (error) {
+    const normalized = normalizeToolError(error)
+    // MCP resource reads currently surface plain Error instances, so we preserve the sanitized
+    // message here and intentionally drop the richer tool-style code/hint/recovery metadata.
+    throw new Error(normalized.message)
+  }
 }
