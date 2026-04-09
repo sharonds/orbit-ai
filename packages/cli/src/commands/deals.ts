@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 import type { CreateDealInput, UpdateDealInput } from '@orbit-ai/sdk'
 
@@ -20,7 +21,7 @@ export function registerDealsCommand(program: Command): void {
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       }
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.deals.response().list(query)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -36,7 +37,7 @@ export function registerDealsCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.deals.response().get(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -73,7 +74,7 @@ export function registerDealsCommand(program: Command): void {
       if (opts.closeDate) input.expected_close_date = opts.closeDate
       if (opts.status) input.status = opts.status
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.deals.response().create(input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -111,7 +112,7 @@ export function registerDealsCommand(program: Command): void {
       if (opts.closeDate) input.expected_close_date = opts.closeDate
       if (opts.status) input.status = opts.status
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.deals.response().update(id, input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -127,7 +128,7 @@ export function registerDealsCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.deals.response().delete(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -144,7 +145,7 @@ export function registerDealsCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.deals.response().move(id, { stage_id: opts.stageId })
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

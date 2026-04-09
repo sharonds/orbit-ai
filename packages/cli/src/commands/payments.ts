@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 import type { CreatePaymentInput, UpdatePaymentInput } from '@orbit-ai/sdk'
 
@@ -20,7 +21,7 @@ export function registerPaymentsCommand(program: Command): void {
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       }
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.payments.response().list(query)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -36,7 +37,7 @@ export function registerPaymentsCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.payments.response().get(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -69,7 +70,7 @@ export function registerPaymentsCommand(program: Command): void {
       if (opts.paymentMethod) input.payment_method = opts.paymentMethod
       if (opts.paidAt) input.paid_at = opts.paidAt
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.payments.response().create(input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -101,7 +102,7 @@ export function registerPaymentsCommand(program: Command): void {
       if (opts.paymentMethod) input.payment_method = opts.paymentMethod
       if (opts.paidAt) input.paid_at = opts.paidAt
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.payments.response().update(id, input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -117,7 +118,7 @@ export function registerPaymentsCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.payments.response().delete(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

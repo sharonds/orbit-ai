@@ -2,6 +2,7 @@ import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
 import { CliNotImplementedError } from '../errors.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 import type { CreateContactInput, UpdateContactInput } from '@orbit-ai/sdk'
 
@@ -21,7 +22,7 @@ export function registerContactsCommand(program: Command): void {
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       }
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.contacts.response().list(query)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -37,7 +38,7 @@ export function registerContactsCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.contacts.response().get(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -72,7 +73,7 @@ export function registerContactsCommand(program: Command): void {
       if (opts.assignedTo) input.assigned_to_user_id = opts.assignedTo
       if (opts.leadScore !== undefined) input.lead_score = Number(opts.leadScore)
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.contacts.response().create(input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -108,7 +109,7 @@ export function registerContactsCommand(program: Command): void {
       if (opts.assignedTo) input.assigned_to_user_id = opts.assignedTo
       if (opts.leadScore !== undefined) input.lead_score = Number(opts.leadScore)
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.contacts.response().update(id, input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -124,7 +125,7 @@ export function registerContactsCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.contacts.response().delete(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

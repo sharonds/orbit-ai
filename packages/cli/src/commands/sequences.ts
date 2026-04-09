@@ -2,6 +2,7 @@ import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
 import { CliValidationError } from '../errors.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 import type { CreateSequenceInput, UpdateSequenceInput } from '@orbit-ai/sdk'
 
@@ -21,7 +22,7 @@ export function registerSequencesCommand(program: Command): void {
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       }
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.sequences.response().list(query)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -37,7 +38,7 @@ export function registerSequencesCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.sequences.response().get(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -62,7 +63,7 @@ export function registerSequencesCommand(program: Command): void {
       if (opts.status) input.status = opts.status
       if (opts.triggerType) input.trigger_type = opts.triggerType
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.sequences.response().create(input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -88,7 +89,7 @@ export function registerSequencesCommand(program: Command): void {
       if (opts.status) input.status = opts.status
       if (opts.triggerType) input.trigger_type = opts.triggerType
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.sequences.response().update(id, input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -104,7 +105,7 @@ export function registerSequencesCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.sequences.response().delete(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -128,7 +129,7 @@ export function registerSequencesCommand(program: Command): void {
       // Uses client.sequences.enroll() — NOT client.sequenceEnrollments.create()
       const result = await client.sequences.enroll(seqId, body)
 
-      if (flags.json) {
+      if (isJsonMode()) {
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
         process.stdout.write(formatOutput({ data: result }, { format: flags.format ?? 'table' }))
@@ -152,7 +153,7 @@ export function registerSequencesCommand(program: Command): void {
       // Uses client.sequenceEnrollments.unenroll() — NOT client.sequenceEnrollments.delete()
       const result = await client.sequenceEnrollments.unenroll(enrollmentId)
 
-      if (flags.json) {
+      if (isJsonMode()) {
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
         process.stdout.write(formatOutput({ data: result }, { format: flags.format ?? 'table' }))

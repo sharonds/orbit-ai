@@ -2,6 +2,7 @@ import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
 import { CliValidationError } from '../errors.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 
 export function registerContextCommand(program: Command): void {
@@ -20,7 +21,7 @@ export function registerContextCommand(program: Command): void {
 
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.contacts.response().context(idOrEmail)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

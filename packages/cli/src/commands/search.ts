@@ -2,6 +2,7 @@ import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
 import { CliValidationError } from '../errors.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 import type { SearchInput } from '@orbit-ai/sdk'
 
@@ -31,7 +32,7 @@ export function registerSearchCommand(program: Command): void {
       if (opts.limit !== undefined) input.limit = Number(opts.limit)
       if (opts.cursor) input.cursor = opts.cursor
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.search.response().query(input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

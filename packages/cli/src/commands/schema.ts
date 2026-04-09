@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 
 export function registerSchemaCommand(program: Command): void {
@@ -13,7 +14,7 @@ export function registerSchemaCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.schema.response().listObjects()
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -29,7 +30,7 @@ export function registerSchemaCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.schema.response().describeObject(entity)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

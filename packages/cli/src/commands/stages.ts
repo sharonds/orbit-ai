@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 import type { CreateStageInput, UpdateStageInput } from '@orbit-ai/sdk'
 
@@ -20,7 +21,7 @@ export function registerStagesCommand(program: Command): void {
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       }
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.stages.response().list(query)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -36,7 +37,7 @@ export function registerStagesCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.stages.response().get(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -58,7 +59,7 @@ export function registerStagesCommand(program: Command): void {
       const input: CreateStageInput = { pipeline_id: opts.pipelineId, name: opts.name }
       if (opts.position !== undefined) input.position = Number(opts.position)
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.stages.response().create(input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -80,7 +81,7 @@ export function registerStagesCommand(program: Command): void {
       if (opts.name) input.name = opts.name
       if (opts.position !== undefined) input.position = Number(opts.position)
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.stages.response().update(id, input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -96,7 +97,7 @@ export function registerStagesCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.stages.response().delete(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

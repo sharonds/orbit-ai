@@ -23,7 +23,7 @@ export function registerFieldsCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.schema.response().describeObject(entity)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -51,7 +51,7 @@ export function registerFieldsCommand(program: Command): void {
       if (opts.label) body.label = opts.label
       if (opts.required) body.required = true
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.schema.response().addField(entity, body)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -92,7 +92,7 @@ export function registerFieldsCommand(program: Command): void {
 
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.schema.response().deleteField(entity, fieldName)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 import type { CreateUserInput, UpdateUserInput } from '@orbit-ai/sdk'
 
@@ -20,7 +21,7 @@ export function registerUsersCommand(program: Command): void {
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       }
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.users.response().list(query)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -36,7 +37,7 @@ export function registerUsersCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.users.response().get(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -58,7 +59,7 @@ export function registerUsersCommand(program: Command): void {
       const input: CreateUserInput = { name: opts.name, email: opts.email }
       if (opts.role) input.role = opts.role
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.users.response().create(input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -82,7 +83,7 @@ export function registerUsersCommand(program: Command): void {
       if (opts.email) input.email = opts.email
       if (opts.role) input.role = opts.role
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.users.response().update(id, input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -98,7 +99,7 @@ export function registerUsersCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.users.response().delete(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 import type { CreatePipelineInput, UpdatePipelineInput } from '@orbit-ai/sdk'
 
@@ -20,7 +21,7 @@ export function registerPipelinesCommand(program: Command): void {
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       }
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.pipelines.response().list(query)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -36,7 +37,7 @@ export function registerPipelinesCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.pipelines.response().get(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -59,7 +60,7 @@ export function registerPipelinesCommand(program: Command): void {
       if (opts.description) input.description = opts.description
       if (opts.default) input.is_default = true
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.pipelines.response().create(input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -83,7 +84,7 @@ export function registerPipelinesCommand(program: Command): void {
       if (opts.description) input.description = opts.description
       if (opts.default) input.is_default = true
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.pipelines.response().update(id, input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -99,7 +100,7 @@ export function registerPipelinesCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.pipelines.response().delete(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 
 export function registerImportsCommand(program: Command): void {
@@ -19,7 +20,7 @@ export function registerImportsCommand(program: Command): void {
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       }
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.imports.list(query)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -35,7 +36,7 @@ export function registerImportsCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.imports.response().get(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -60,7 +61,7 @@ export function registerImportsCommand(program: Command): void {
         ...(opts.totalRows !== undefined ? { total_rows: Number(opts.totalRows) } : {}),
       }
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.imports.response().create(input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

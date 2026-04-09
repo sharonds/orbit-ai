@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 import type { CreateContractInput, UpdateContractInput } from '@orbit-ai/sdk'
 
@@ -20,7 +21,7 @@ export function registerContractsCommand(program: Command): void {
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       }
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.contracts.response().list(query)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -36,7 +37,7 @@ export function registerContractsCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.contracts.response().get(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -71,7 +72,7 @@ export function registerContractsCommand(program: Command): void {
       if (opts.contactId) input.contact_id = opts.contactId
       if (opts.companyId) input.company_id = opts.companyId
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.contracts.response().create(input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -107,7 +108,7 @@ export function registerContractsCommand(program: Command): void {
       if (opts.contactId) input.contact_id = opts.contactId
       if (opts.companyId) input.company_id = opts.companyId
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.contracts.response().update(id, input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -123,7 +124,7 @@ export function registerContractsCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.contracts.response().delete(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

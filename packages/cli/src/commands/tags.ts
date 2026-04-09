@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 import type { CreateTagInput, UpdateTagInput } from '@orbit-ai/sdk'
 
@@ -20,7 +21,7 @@ export function registerTagsCommand(program: Command): void {
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       }
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.tags.response().list(query)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -36,7 +37,7 @@ export function registerTagsCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.tags.response().get(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -57,7 +58,7 @@ export function registerTagsCommand(program: Command): void {
       const input: CreateTagInput = { name: opts.name }
       if (opts.color) input.color = opts.color
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.tags.response().create(input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -79,7 +80,7 @@ export function registerTagsCommand(program: Command): void {
       if (opts.name) input.name = opts.name
       if (opts.color) input.color = opts.color
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.tags.response().update(id, input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -95,7 +96,7 @@ export function registerTagsCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.tags.response().delete(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

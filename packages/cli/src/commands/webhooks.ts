@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 import type { CreateWebhookInput, UpdateWebhookInput } from '@orbit-ai/sdk'
 
@@ -20,7 +21,7 @@ export function registerWebhooksCommand(program: Command): void {
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       }
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.webhooks.response().list(query)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -36,7 +37,7 @@ export function registerWebhooksCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.webhooks.response().get(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -63,7 +64,7 @@ export function registerWebhooksCommand(program: Command): void {
       if (opts.status) input.status = opts.status
       if (opts.description) input.description = opts.description
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.webhooks.response().create(input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -89,7 +90,7 @@ export function registerWebhooksCommand(program: Command): void {
       if (opts.status) input.status = opts.status
       if (opts.description) input.description = opts.description
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.webhooks.response().update(id, input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -105,7 +106,7 @@ export function registerWebhooksCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.webhooks.response().delete(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

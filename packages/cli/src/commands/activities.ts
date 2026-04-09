@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 import type { CreateActivityInput, UpdateActivityInput } from '@orbit-ai/sdk'
 
@@ -20,7 +21,7 @@ export function registerActivitiesCommand(program: Command): void {
         ...(opts.cursor ? { cursor: opts.cursor } : {}),
       }
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.activities.response().list(query)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -36,7 +37,7 @@ export function registerActivitiesCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.activities.response().get(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -69,7 +70,7 @@ export function registerActivitiesCommand(program: Command): void {
       if (opts.userId) input.user_id = opts.userId
       if (opts.occurredAt) input.occurred_at = opts.occurredAt
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.activities.response().create(input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -103,7 +104,7 @@ export function registerActivitiesCommand(program: Command): void {
       if (opts.userId) input.user_id = opts.userId
       if (opts.occurredAt) input.occurred_at = opts.occurredAt
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.activities.response().update(id, input)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
@@ -119,7 +120,7 @@ export function registerActivitiesCommand(program: Command): void {
       const flags = program.opts() as GlobalFlags
       const client = resolveClient({ flags })
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.activities.response().delete(id)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {

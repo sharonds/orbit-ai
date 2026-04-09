@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
 import { formatOutput } from '../output/formatter.js'
+import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 import type { CreateActivityInput } from '@orbit-ai/sdk'
 
@@ -26,7 +27,7 @@ export function registerLogCommand(program: Command): void {
       if (opts.subject) body.subject = opts.subject
       if (opts.occurredAt) body.occurred_at = opts.occurredAt
 
-      if (flags.json) {
+      if (isJsonMode()) {
         const result = await client.activities.response().log(body)
         process.stdout.write(JSON.stringify(result, null, 2) + '\n')
       } else {
