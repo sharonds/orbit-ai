@@ -6,6 +6,14 @@ import { registerStatusCommand } from './commands/status.js'
 import { registerDoctorCommand } from './commands/doctor.js'
 import { registerSeedCommand } from './commands/seed.js'
 import { registerMigrateCommand } from './commands/migrate.js'
+import { registerContactsCommand } from './commands/contacts.js'
+import { registerCompaniesCommand } from './commands/companies.js'
+import { registerDealsCommand } from './commands/deals.js'
+import { registerUsersCommand } from './commands/users.js'
+import { registerPipelinesCommand } from './commands/pipelines.js'
+import { registerStagesCommand } from './commands/stages.js'
+import { registerContextCommand } from './commands/context.js'
+import { registerSearchCommand } from './commands/search.js'
 
 let _jsonMode = false
 
@@ -107,12 +115,14 @@ export function createProgram(): Command {
   registerDoctorCommand(program)
   registerSeedCommand(program)
   registerMigrateCommand(program)
-  registerStubCommand(program, 'contacts', 'Manage contacts')
-  registerStubCommand(program, 'companies', 'Manage companies')
-  registerStubCommand(program, 'deals', 'Manage deals')
-  registerStubCommand(program, 'context', 'Show full CRM context for a contact')
-  registerStubCommand(program, 'search', 'Search across CRM entities')
-  registerStubCommand(program, 'users', 'Manage users')
+  registerContactsCommand(program)
+  registerCompaniesCommand(program)
+  registerDealsCommand(program)
+  registerUsersCommand(program)
+  registerPipelinesCommand(program)
+  registerStagesCommand(program)
+  registerContextCommand(program)
+  registerSearchCommand(program)
   registerStubCommand(program, 'log', 'Log an activity (call, email, meeting, note)')
   registerStubCommand(program, 'tasks', 'Manage tasks')
   registerStubCommand(program, 'notes', 'Manage notes')
