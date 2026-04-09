@@ -43,6 +43,9 @@ export function _resetJsonMode(): void {
   _jsonMode = false
 }
 
+// test-only export
+export { classifyError as _classifyError }
+
 function classifyError(error: unknown): { code: number; payload: Record<string, unknown> } {
   if (error instanceof CliNotImplementedError) {
     return {
