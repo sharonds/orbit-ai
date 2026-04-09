@@ -212,6 +212,7 @@ export class DirectTransport implements OrbitTransport {
       RLS_GENERATION_FAILED: 500,
       WEBHOOK_DELIVERY_FAILED: 502,
       SEARCH_RESULT_TOO_LARGE: 413,
+      PAYLOAD_TOO_LARGE: 413,
       INTERNAL_ERROR: 500,
     }
     return map[code] ?? 500
