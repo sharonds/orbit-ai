@@ -1,3 +1,5 @@
+import type { OrbitClient } from '@orbit-ai/sdk'
+
 export type OutputFormat = 'table' | 'json' | 'csv' | 'tsv'
 
 export interface GlobalFlags {
@@ -13,4 +15,10 @@ export interface GlobalFlags {
   profile?: string
   quiet?: boolean
   yes?: boolean
+}
+
+export interface ResolvedContext {
+  client: OrbitClient
+  flags: GlobalFlags
+  format: OutputFormat
 }
