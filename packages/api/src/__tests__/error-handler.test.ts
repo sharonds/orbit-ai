@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { Hono } from 'hono'
-import { ZodError } from 'zod'
+import { z } from 'zod'
 import { OrbitError } from '@orbit-ai/core'
 import { orbitErrorHandler } from '../middleware/error-handler.js'
 import { requestIdMiddleware } from '../middleware/request-id.js'
@@ -84,23 +84,12 @@ describe('orbitErrorHandler logging', () => {
     const app = new Hono()
     app.use('*', requestIdMiddleware())
     app.onError(orbitErrorHandler)
+    // In Zod v4, `new ZodError([...])` no longer extends Error, so Hono's
+    // error boundary won't catch it. Use schema.parse() to produce a real
+    // ZodError that IS an Error instance and will reach onError.
+    const TestSchema = z.object({ name: z.string(), email: z.string() })
     app.post('/validate', () => {
-      throw new ZodError([
-        {
-          code: 'invalid_type',
-          expected: 'string',
-          received: 'undefined',
-          path: ['name'],
-          message: 'Required',
-        },
-        {
-          code: 'invalid_type',
-          expected: 'string',
-          received: 'number',
-          path: ['email'],
-          message: 'Expected string, received number',
-        },
-      ])
+      TestSchema.parse({ name: undefined, email: 42 })
     })
 
     const res = await app.request('/validate', { method: 'POST' })

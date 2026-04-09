@@ -51,7 +51,16 @@ export const orbitErrorHandler: ErrorHandler = (err, c) => {
       status as Parameters<typeof c.json>[1],
     )
   }
-  if (err instanceof ZodError) {
+  // Use a duck-type guard in addition to instanceof to handle the case where
+  // multiple Zod instances are loaded (e.g. via workspace hoisting). In Zod v4,
+  // `new ZodError()` no longer extends Error, but errors thrown by schema.parse()
+  // do — they carry `name === 'ZodError'`, `_zod`, and `issues`.
+  const isZodError = (e: unknown): e is ZodError =>
+    e instanceof ZodError ||
+    (e instanceof Error &&
+      e.name === 'ZodError' &&
+      Array.isArray((e as { issues?: unknown }).issues))
+  if (isZodError(err)) {
     const hint = err.issues
       .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
       .join('; ')

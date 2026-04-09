@@ -29,7 +29,7 @@ interface BootstrapAdminCapability<TInput, TRecord> {
 const CreateOrganizationSchema = z.object({
   name: z.string().min(1).max(255),
   slug: z.string().min(1).max(128).optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 })
 
 const CreateApiKeySchema = z.object({

@@ -40,6 +40,6 @@
   "dependencies": {
     "@orbit-ai/core": "workspace:*",
     "hono": "^4.7.0",
-    "zod": "^3.23.0"
+    "zod": "^4.1.11"
   }
 }
