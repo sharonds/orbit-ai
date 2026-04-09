@@ -40,10 +40,10 @@ async function runSeed(flags: GlobalFlags, count: number, cwd?: string): Promise
     return
   }
 
-  const client = resolveClient({ flags })
   const created: unknown[] = []
 
   try {
+    const client = resolveClient({ flags })
     for (let i = 0; i < count; i++) {
       const contact = await client.contacts.create({ name: `Seed ${i + 1}`, email: `seed${i + 1}@example.com` })
       created.push(contact)

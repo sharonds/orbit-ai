@@ -27,6 +27,18 @@ interface InitOptions {
   cwd: string
 }
 
+function assertNotSymlink(targetPath: string, label: string): void {
+  if (!fs.existsSync(targetPath)) return
+
+  const stat = fs.lstatSync(targetPath)
+  if (stat.isSymbolicLink()) {
+    throw new CliValidationError(`${label} must not be a symlink: ${targetPath}`, {
+      code: 'SYMLINK_NOT_ALLOWED',
+      target: targetPath,
+    })
+  }
+}
+
 export async function runInit(opts: InitOptions): Promise<void> {
   const { db = 'sqlite', orgName, yes, overwrite, envFile, cwd } = opts
 
@@ -64,9 +76,19 @@ export async function runInit(opts: InitOptions): Promise<void> {
   const envExamplePath = path.join(cwd, '.env.example')
   const gitignorePath = path.join(cwd, '.gitignore')
 
+  assertNotSymlink(orbitDir, '.orbit directory')
+  assertNotSymlink(configPath, 'Config file')
+  assertNotSymlink(envExamplePath, '.env.example')
+  assertNotSymlink(gitignorePath, '.gitignore')
+
   // Create .orbit directory
   if (!fs.existsSync(orbitDir)) {
     fs.mkdirSync(orbitDir, { recursive: true })
+  } else if (!fs.statSync(orbitDir).isDirectory()) {
+    throw new CliValidationError(`.orbit path is not a directory: ${orbitDir}`, {
+      code: 'INVALID_INIT_TARGET',
+      target: orbitDir,
+    })
   }
 
   // Write config.json

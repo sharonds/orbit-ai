@@ -60,11 +60,11 @@ export function registerPublicEntityRoutes(app: Hono, services: CoreServices) {
       })
     }
 
-    // POST /v1/<entity>/search
+    // POST /v1/<entity>/search — body-paginated: omit links.next (cursor must stay in request body)
     app.post(`/v1/${entity}/search`, requireScope(`${entity}:read`), async (c) => {
       const service = resolveService(services, typedEntity)
       const result = await service.search(c.get('orbit'), await c.req.json())
-      return c.json(toEnvelope(c, sanitizePublicPage(entity, result.data), result))
+      return c.json(toEnvelope(c, sanitizePublicPage(entity, result.data), result, { omitNextLink: true }))
     })
 
     // POST /v1/<entity>/batch (only if capable)

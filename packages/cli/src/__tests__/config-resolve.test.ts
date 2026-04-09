@@ -49,7 +49,7 @@ vi.mock('node:sqlite', () => ({
 // ---------------------------------------------------------------------------
 
 import { resolveClient } from '../config/resolve-context.js'
-import { readConfigFile, canonicalizePath } from '../config/files.js'
+import { readConfigFile, canonicalizePath, loadConfig } from '../config/files.js'
 import { createSqliteStorageAdapter, createPostgresStorageAdapter } from '@orbit-ai/core'
 import { OrbitClient } from '@orbit-ai/sdk'
 
@@ -120,8 +120,8 @@ describe('config resolution — resolveClient', () => {
     expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'env-key' }))
   })
 
-  // Test 3: .orbit/config.json (project) overrides ~/.config/orbit/config.json (user)
-  it('3: project config overrides user config', () => {
+  // Test 3: project config cannot override user credential config
+  it('3: project config cannot override user apiKey', () => {
     const cwd = makeTmpDir()
     const home = makeTmpDir()
     makeUserConfig(home, { apiKey: 'user-key', mode: 'api' })
@@ -132,7 +132,7 @@ describe('config resolution — resolveClient', () => {
       cwd,
       overrideHome: home,
     })
-    expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'project-key' }))
+    expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'user-key' }))
   })
 
   // Test 4: Only user config present → its value is used
@@ -335,10 +335,68 @@ describe('config resolution — resolveClient', () => {
     expect(process.argv).toContain('--api-key=[REDACTED]')
   })
 
-  // Test D3a: reads api key from env var named by apiKeyEnv in config
-  it('reads api key from env var named by apiKeyEnv in config', () => {
+  it('16: project config cannot override user baseUrl', () => {
+    const cwd = makeTmpDir()
+    const home = makeTmpDir()
+    makeUserConfig(home, { apiKey: 'user-key', mode: 'api', baseUrl: 'https://api.orbit.example' })
+    makeProjectConfig(cwd, { baseUrl: 'https://evil.example' })
+
+    resolveClient({
+      flags: {},
+      env: {},
+      cwd,
+      overrideHome: home,
+    })
+
+    expect(OrbitClient).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: 'user-key', baseUrl: 'https://api.orbit.example' }),
+    )
+  })
+
+  it('17: project config apiKeyEnv is ignored', () => {
+    const cwd = makeTmpDir()
+    makeProjectConfig(cwd, { apiKeyEnv: 'ATTACKER_SECRET' })
+
+    expect(() =>
+      resolveClient({
+        flags: { mode: 'api' },
+        env: { ATTACKER_SECRET: 'stolen-secret' },
+        cwd,
+        overrideHome: cwd,
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        details: expect.objectContaining({ code: 'MISSING_REQUIRED_CONFIG' }),
+      }),
+    )
+  })
+
+  it('18: project config cannot force direct mode or database path', () => {
+    const cwd = makeTmpDir()
+    const home = makeTmpDir()
+    makeUserConfig(home, { apiKey: 'user-key', mode: 'api' })
+    makeProjectConfig(cwd, {
+      mode: 'direct',
+      adapter: 'sqlite',
+      databaseUrl: path.join(cwd, 'attacker.db'),
+      orgId: 'org_project',
+    })
+
+    resolveClient({
+      flags: {},
+      env: {},
+      cwd,
+      overrideHome: home,
+    })
+
+    expect(createSqliteStorageAdapter).not.toHaveBeenCalled()
+    expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'user-key' }))
+  })
+
+  // Test D3a: reads api key from env var named by apiKeyEnv in user config
+  it('reads api key from env var named by apiKeyEnv in user config', () => {
     const tmp = makeTmpDir()
-    makeProjectConfig(tmp, { mode: 'api', apiKeyEnv: 'MY_CUSTOM_KEY' })
+    makeUserConfig(tmp, { mode: 'api', apiKeyEnv: 'MY_CUSTOM_KEY' })
     const env = { MY_CUSTOM_KEY: 'key-from-custom-env' }
     resolveClient({ flags: {}, env, cwd: tmp, overrideHome: tmp })
     expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'key-from-custom-env' }))
@@ -347,7 +405,7 @@ describe('config resolution — resolveClient', () => {
   // Test D3b: apiKeyEnv is lower priority than ORBIT_API_KEY env var
   it('apiKeyEnv is lower priority than ORBIT_API_KEY env var', () => {
     const tmp = makeTmpDir()
-    makeProjectConfig(tmp, { mode: 'api', apiKeyEnv: 'MY_CUSTOM_KEY' })
+    makeUserConfig(tmp, { mode: 'api', apiKeyEnv: 'MY_CUSTOM_KEY' })
     const env = { ORBIT_API_KEY: 'standard-key', MY_CUSTOM_KEY: 'custom-key' }
     resolveClient({ flags: {}, env, cwd: tmp, overrideHome: tmp })
     expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'standard-key' }))
@@ -356,7 +414,7 @@ describe('config resolution — resolveClient', () => {
   // Test D4a: applies named profile when --profile flag is set
   it('applies named profile when --profile flag is set', () => {
     const tmp = makeTmpDir()
-    makeProjectConfig(tmp, {
+    makeUserConfig(tmp, {
       mode: 'api',
       apiKey: 'default-key',
       profiles: {
@@ -378,7 +436,7 @@ describe('config resolution — resolveClient', () => {
   // Test D4b: falls back to base config when profile name does not exist
   it('falls back to base config when profile name does not exist in profiles', () => {
     const tmp = makeTmpDir()
-    makeProjectConfig(tmp, { mode: 'api', apiKey: 'base-key', profiles: {} })
+    makeUserConfig(tmp, { mode: 'api', apiKey: 'base-key', profiles: {} })
     resolveClient({
       flags: { profile: 'nonexistent' },
       env: {},
@@ -392,7 +450,8 @@ describe('config resolution — resolveClient', () => {
   it('finds project config in ancestor directory when cwd is a nested subdirectory', () => {
     const tmp = makeTmpDir()
     // Config lives at project root, cwd is a nested package dir
-    makeProjectConfig(tmp, { mode: 'api', apiKey: 'ancestor-key' })
+    makeProjectConfig(tmp, { orgId: 'org_ancestor' })
+    makeUserConfig(tmp, { mode: 'api', apiKey: 'ancestor-key' })
     const nested = path.join(tmp, 'packages', 'cli')
     fs.mkdirSync(nested, { recursive: true })
     resolveClient({
@@ -401,6 +460,59 @@ describe('config resolution — resolveClient', () => {
       cwd: nested,
       overrideHome: tmp,
     })
-    expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'ancestor-key' }))
+    expect(OrbitClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: 'ancestor-key',
+        context: expect.objectContaining({ orgId: 'org_ancestor' }),
+      }),
+    )
+  })
+})
+
+describe('loadConfig sanitization', () => {
+  it('strips transport and credential fields from project config profiles', () => {
+    const cwd = makeTmpDir()
+    const home = makeTmpDir()
+    makeUserConfig(home, {
+      apiKey: 'user-key',
+      profiles: {
+        safe: {
+          orgId: 'org_user',
+          apiKeyEnv: 'USER_SECRET',
+        },
+      },
+    })
+    makeProjectConfig(cwd, {
+      profile: 'workspace',
+      profiles: {
+        workspace: {
+          orgId: 'org_project',
+          baseUrl: 'https://evil.example',
+          apiKeyEnv: 'ATTACKER_SECRET',
+          mode: 'direct',
+        },
+      },
+    })
+
+    const loaded = loadConfig(cwd, home)
+    expect(loaded.profile).toBe('workspace')
+    expect(loaded.profiles?.workspace).toEqual({ orgId: 'org_project' })
+  })
+
+  it('rejects malformed project profile entries with CliConfigError', () => {
+    const cwd = makeTmpDir()
+    const home = makeTmpDir()
+    makeProjectConfig(cwd, {
+      profiles: {
+        broken: null,
+      },
+    })
+
+    expect(() => loadConfig(cwd, home)).toThrowError(
+      expect.objectContaining({
+        name: 'CliConfigError',
+        details: expect.objectContaining({ code: 'CONFIG_PARSE_ERROR', profile: 'broken' }),
+      }),
+    )
   })
 })

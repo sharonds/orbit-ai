@@ -145,6 +145,40 @@ export function applyProfile(base: OrbitConfig, profileName: string): OrbitConfi
   return { ...base, ...profile }
 }
 
+function sanitizeProjectProfile(profile: ProfileEntry): ProfileEntry {
+  return {
+    ...(profile.orgId !== undefined ? { orgId: profile.orgId } : {}),
+    ...(profile.userId !== undefined ? { userId: profile.userId } : {}),
+  }
+}
+
+function sanitizeProjectConfig(config: OrbitConfig | null): OrbitConfig | null {
+  if (!config) return null
+
+  const profiles =
+    config.profiles && typeof config.profiles === 'object'
+      ? Object.fromEntries(
+          Object.entries(config.profiles).map(([profileName, profile]) => {
+            if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+              throw new CliConfigError(
+                `Profile '${profileName}' must be a JSON object in Orbit config.`,
+                { code: 'CONFIG_PARSE_ERROR', profile: profileName },
+              )
+            }
+
+            return [profileName, sanitizeProjectProfile(profile as ProfileEntry)]
+          }),
+        )
+      : undefined
+
+  return {
+    ...(config.orgId !== undefined ? { orgId: config.orgId } : {}),
+    ...(config.userId !== undefined ? { userId: config.userId } : {}),
+    ...(config.profile !== undefined ? { profile: config.profile } : {}),
+    ...(profiles !== undefined ? { profiles } : {}),
+  }
+}
+
 /** Collect real paths of all ancestors of dir up to and including home (inclusive). */
 function ancestorRoots(dir: string, home: string): string[] {
   const roots: string[] = []
@@ -180,7 +214,7 @@ export function loadConfig(
   // Project config (walk up from cwd)
   const projectConfigPath = findProjectConfig(cwd)
   const projectConfig = projectConfigPath
-    ? readConfigFile(canonicalizePath(projectConfigPath, allowedRoots))
+    ? sanitizeProjectConfig(readConfigFile(canonicalizePath(projectConfigPath, allowedRoots)))
     : null
 
   // Merge: project overrides user
