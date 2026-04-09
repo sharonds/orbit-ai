@@ -241,7 +241,13 @@ export function fromPostgresBoolean(value: unknown): boolean {
 }
 
 export function fromPostgresJson<T>(value: unknown, fallback: T): T {
-  if (value == null) {
+  if (value === null) {
+    // Distinct from `undefined`: SQL NULL is a meaningful value when the
+    // jsonb column allows it. Callers that pass a non-null fallback can
+    // still distinguish via the typed shape.
+    return null as unknown as T
+  }
+  if (value === undefined) {
     return fallback
   }
 
@@ -251,6 +257,14 @@ export function fromPostgresJson<T>(value: unknown, fallback: T): T {
     } catch {
       return fallback
     }
+  }
+
+  // L10: scalar primitives stored in jsonb columns (numbers, booleans)
+  // were previously dropped to the fallback. Postgres `jsonb` accepts
+  // any valid JSON document, including bare numbers and booleans, so
+  // these are legitimate values and must round-trip cleanly.
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return value as unknown as T
   }
 
   if (typeof value === 'object') {

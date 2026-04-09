@@ -1,3 +1,4 @@
+import type { TransactionScope } from '../../adapters/interface.js'
 import { generateId } from '../../ids/generate-id.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { EntityService } from '../../services/entity-service.js'
@@ -115,6 +116,7 @@ export function createDealService(deps: {
   stages: StageRepository
   contacts: ContactRepository
   companies: CompanyRepository
+  tx: TransactionScope
 }): EntityService<DealCreateInput, DealUpdateInput, DealRecord> {
   function relationNotFound(message: string) {
     return createOrbitError({
@@ -164,58 +166,69 @@ export function createDealService(deps: {
     },
     async update(ctx, id, input) {
       const parsed = dealUpdateInputSchema.parse(input)
-      const current = assertFound(await deps.deals.get(ctx, id), `Deal ${id} not found`)
-      const patch: Partial<DealRecord> = {
-        updatedAt: new Date(),
-      }
-
-      if (parsed.stageId !== undefined || parsed.pipelineId !== undefined) {
-        const graph = await resolveDealGraph(
-          ctx,
-          deps,
-          {
-            stageId: parsed.stageId,
-            pipelineId: parsed.pipelineId,
-          },
-          {
-            stageId: current.stageId,
-            pipelineId: current.pipelineId,
-          },
-        )
-
-        patch.stageId = graph.stageId
-        patch.pipelineId = graph.pipelineId
-      }
-
-      if (parsed.contactId !== undefined && parsed.contactId !== null) {
-        const contact = await deps.contacts.get(ctx, parsed.contactId)
-        if (!contact) {
-          throw relationNotFound(`Contact ${parsed.contactId} not found for deal`)
+      // M7: read the current deal, validate the next graph state
+      // (stage/pipeline/contact/company), and write — all inside one
+      // transaction so a concurrent stage/pipeline mutation cannot
+      // invalidate the validation between read and write. The deal repo
+      // is rebound to the transaction-scoped db handle. Relation reads
+      // (stages, pipelines, contacts, companies) stay outside the rebound
+      // view; the FK constraints on the deals table catch any deletion
+      // race at the final update statement.
+      return deps.tx.run(ctx, async (txDb) => {
+        const txDeals = deps.deals.withDatabase(txDb)
+        const current = assertFound(await txDeals.get(ctx, id), `Deal ${id} not found`)
+        const patch: Partial<DealRecord> = {
+          updatedAt: new Date(),
         }
-      }
 
-      if (parsed.companyId !== undefined && parsed.companyId !== null) {
-        const company = await deps.companies.get(ctx, parsed.companyId)
-        if (!company) {
-          throw relationNotFound(`Company ${parsed.companyId} not found for deal`)
+        if (parsed.stageId !== undefined || parsed.pipelineId !== undefined) {
+          const graph = await resolveDealGraph(
+            ctx,
+            deps,
+            {
+              stageId: parsed.stageId,
+              pipelineId: parsed.pipelineId,
+            },
+            {
+              stageId: current.stageId,
+              pipelineId: current.pipelineId,
+            },
+          )
+
+          patch.stageId = graph.stageId
+          patch.pipelineId = graph.pipelineId
         }
-      }
 
-      if (parsed.title !== undefined) patch.title = parsed.title
-      if (parsed.value !== undefined) patch.value = parsed.value
-      if (parsed.currency !== undefined) patch.currency = parsed.currency
-      if (parsed.probability !== undefined) patch.probability = parsed.probability
-      if (parsed.expectedCloseDate !== undefined) patch.expectedCloseDate = parsed.expectedCloseDate
-      if (parsed.contactId !== undefined) patch.contactId = parsed.contactId ?? null
-      if (parsed.companyId !== undefined) patch.companyId = parsed.companyId ?? null
-      if (parsed.assignedToUserId !== undefined) patch.assignedToUserId = parsed.assignedToUserId ?? null
-      if (parsed.status !== undefined) patch.status = parsed.status
-      if (parsed.wonAt !== undefined) patch.wonAt = parsed.wonAt ?? null
-      if (parsed.lostAt !== undefined) patch.lostAt = parsed.lostAt ?? null
-      if (parsed.lostReason !== undefined) patch.lostReason = parsed.lostReason ?? null
-      if (parsed.customFields !== undefined) patch.customFields = parsed.customFields
+        if (parsed.contactId !== undefined && parsed.contactId !== null) {
+          const contact = await deps.contacts.get(ctx, parsed.contactId)
+          if (!contact) {
+            throw relationNotFound(`Contact ${parsed.contactId} not found for deal`)
+          }
+        }
 
-      return assertFound(await deps.deals.update(ctx, id, patch), `Deal ${id} not found`)
+        if (parsed.companyId !== undefined && parsed.companyId !== null) {
+          const company = await deps.companies.get(ctx, parsed.companyId)
+          if (!company) {
+            throw relationNotFound(`Company ${parsed.companyId} not found for deal`)
+          }
+        }
+
+        if (parsed.title !== undefined) patch.title = parsed.title
+        if (parsed.value !== undefined) patch.value = parsed.value
+        if (parsed.currency !== undefined) patch.currency = parsed.currency
+        if (parsed.probability !== undefined) patch.probability = parsed.probability
+        if (parsed.expectedCloseDate !== undefined) patch.expectedCloseDate = parsed.expectedCloseDate
+        if (parsed.contactId !== undefined) patch.contactId = parsed.contactId ?? null
+        if (parsed.companyId !== undefined) patch.companyId = parsed.companyId ?? null
+        if (parsed.assignedToUserId !== undefined) patch.assignedToUserId = parsed.assignedToUserId ?? null
+        if (parsed.status !== undefined) patch.status = parsed.status
+        if (parsed.wonAt !== undefined) patch.wonAt = parsed.wonAt ?? null
+        if (parsed.lostAt !== undefined) patch.lostAt = parsed.lostAt ?? null
+        if (parsed.lostReason !== undefined) patch.lostReason = parsed.lostReason ?? null
+        if (parsed.customFields !== undefined) patch.customFields = parsed.customFields
+
+        return assertFound(await txDeals.update(ctx, id, patch), `Deal ${id} not found`)
+      })
     },
     async delete(ctx, id) {
       assertDeleted(await deps.deals.delete(ctx, id), `Deal ${id} not found`)

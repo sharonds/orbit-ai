@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { createNoopTransactionScope } from '../../adapters/noop-transaction-scope.js'
 import { generateId } from '../../ids/generate-id.js'
 import { createInMemoryContractRepository } from './repository.js'
 import { createContractService } from './service.js'
@@ -34,9 +35,9 @@ async function createLinkedDealGraph() {
 
   const companyService = createCompanyService(companies)
   const contactService = createContactService({ contacts, companies })
-  const pipelineService = createPipelineService(pipelines)
+  const pipelineService = createPipelineService({ pipelines, tx: createNoopTransactionScope() })
   const stageService = createStageService({ stages, pipelines })
-  const dealService = createDealService({ deals, pipelines, stages, contacts, companies })
+  const dealService = createDealService({ deals, pipelines, stages, contacts, companies, tx: createNoopTransactionScope() })
   const contractService = createContractService({ contracts, contacts, companies, deals })
 
   const company = await companyService.create(ctx, { name: 'Orbit Labs' })

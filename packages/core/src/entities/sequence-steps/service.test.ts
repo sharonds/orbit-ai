@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import { createNoopTransactionScope } from '../../adapters/noop-transaction-scope.js'
 import { generateId } from '../../ids/generate-id.js'
+import type { SequenceStepRepository } from './repository.js'
 import { createInMemorySequenceEnrollmentRepository } from '../sequence-enrollments/repository.js'
 import { createSequenceEnrollmentService } from '../sequence-enrollments/service.js'
 import { createInMemorySequenceEventRepository } from '../sequence-events/repository.js'
@@ -31,8 +33,9 @@ async function createSequenceGraph() {
     sequences,
     sequenceSteps,
     sequenceEnrollments,
+    tx: createNoopTransactionScope(),
   })
-  const sequenceStepService = createSequenceStepService({ sequenceSteps, sequences, sequenceEvents })
+  const sequenceStepService = createSequenceStepService({ sequenceSteps, sequences, sequenceEvents, tx: createNoopTransactionScope() })
 
   const primary = await sequenceService.create(ctx, {
     name: 'Outbound',
@@ -41,7 +44,15 @@ async function createSequenceGraph() {
     name: 'Lifecycle',
   })
 
-  return { sequenceService, sequenceStepService, primary, secondary, sequenceSteps }
+  return {
+    sequenceService,
+    sequenceStepService,
+    primary,
+    secondary,
+    sequenceSteps,
+    sequences,
+    sequenceEvents,
+  }
 }
 
 async function createGraphWithHistory() {
@@ -58,13 +69,15 @@ async function createGraphWithHistory() {
     sequences,
     sequenceSteps,
     sequenceEnrollments,
+    tx: createNoopTransactionScope(),
   })
-  const sequenceStepService = createSequenceStepService({ sequenceSteps, sequences, sequenceEvents })
+  const sequenceStepService = createSequenceStepService({ sequenceSteps, sequences, sequenceEvents, tx: createNoopTransactionScope() })
   const sequenceEnrollmentService = createSequenceEnrollmentService({
     sequenceEnrollments,
     sequences,
     contacts,
     sequenceEvents,
+    tx: createNoopTransactionScope(),
   })
   const sequenceEventService = createSequenceEventService({
     sequenceEvents,
@@ -226,6 +239,64 @@ describe('sequence step service', () => {
     await expect(sequenceStepService.delete(ctx, step.id)).rejects.toMatchObject({
       code: 'CONFLICT',
       field: 'id',
+    })
+  })
+
+  describe('transactional safety', () => {
+    it('runs create inside a single transaction.run() call', async () => {
+      const graph = await createSequenceGraph()
+      // Re-build with a spy scope
+      const noop = createNoopTransactionScope()
+      const runSpy = vi.fn(noop.run.bind(noop))
+      const sequenceStepService = createSequenceStepService({
+        sequenceSteps: graph.sequenceSteps,
+        sequences: graph.sequences,
+        sequenceEvents: graph.sequenceEvents,
+        tx: { run: runSpy },
+      })
+
+      await sequenceStepService.create(ctx, {
+        sequenceId: graph.primary.id,
+        stepOrder: 99,
+        actionType: 'email',
+      })
+
+      // Note: graph.primary was created via the helper which uses
+      // its own tx scope, so runSpy starts fresh and only fires once.
+      expect(runSpy).toHaveBeenCalledTimes(1)
+      expect(runSpy).toHaveBeenCalledWith(ctx, expect.any(Function))
+    })
+
+    it('coerces a repository unique-index error into a typed CONFLICT', async () => {
+      const graph = await createSequenceGraph()
+      const indexError = new Error(
+        'duplicate key value violates unique constraint "sequence_steps_order_idx" on sequence_id and step_order',
+      )
+      const sequenceSteps: SequenceStepRepository = {
+        ...graph.sequenceSteps,
+        async create() {
+          throw indexError
+        },
+        withDatabase() {
+          return sequenceSteps
+        },
+      }
+      const sequenceStepService = createSequenceStepService({
+        sequenceSteps,
+        sequences: graph.sequences,
+        sequenceEvents: graph.sequenceEvents,
+        tx: createNoopTransactionScope(),
+      })
+
+      await expect(
+        sequenceStepService.create(ctx, {
+          sequenceId: graph.primary.id,
+          stepOrder: 5,
+          actionType: 'email',
+        }),
+      ).rejects.toMatchObject({
+        code: 'CONFLICT',
+      })
     })
   })
 })

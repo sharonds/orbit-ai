@@ -1,3 +1,4 @@
+import type { TransactionScope } from '../../adapters/interface.js'
 import { generateId } from '../../ids/generate-id.js'
 import type { EntityService } from '../../services/entity-service.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
@@ -101,73 +102,98 @@ export function createSequenceStepService(deps: {
   sequenceSteps: SequenceStepRepository
   sequences: SequenceRepository
   sequenceEvents: SequenceEventRepository
+  tx: TransactionScope
 }): EntityService<SequenceStepCreateInput, SequenceStepUpdateInput, SequenceStepRecord> {
   return {
     async create(ctx, input) {
       const parsed = sequenceStepCreateInputSchema.parse(input)
+      // Sequence existence read stays outside the rebound view — the FK
+      // on sequence_steps.sequence_id catches a deletion race at insert.
       await assertSequenceExists(ctx, deps.sequences, parsed.sequenceId)
-      await assertUniqueStepOrder(ctx, deps.sequenceSteps, parsed.sequenceId, parsed.stepOrder)
-      const now = new Date()
 
-      try {
-        return await deps.sequenceSteps.create(
-          ctx,
-          sequenceStepRecordSchema.parse({
-            id: generateId('sequenceStep'),
-            organizationId: ctx.orgId,
-            sequenceId: parsed.sequenceId,
-            stepOrder: parsed.stepOrder,
-            actionType: parsed.actionType,
-            delayMinutes: parsed.delayMinutes ?? 0,
-            templateSubject: parsed.templateSubject ?? null,
-            templateBody: parsed.templateBody ?? null,
-            taskTitle: parsed.taskTitle ?? null,
-            taskDescription: parsed.taskDescription ?? null,
-            metadata: parsed.metadata ?? {},
-            createdAt: now,
-            updatedAt: now,
-          }),
-        )
-      } catch (error) {
-        coerceSequenceStepConflict(error, parsed.sequenceId, parsed.stepOrder)
-      }
+      const now = new Date()
+      // Wrap the (sequence_id, step_order) uniqueness check + insert in
+      // one transaction. `sequence_steps_order_idx` is the race-decider.
+      return deps.tx.run(ctx, async (txDb) => {
+        const txSequenceSteps = deps.sequenceSteps.withDatabase(txDb)
+        await assertUniqueStepOrder(ctx, txSequenceSteps, parsed.sequenceId, parsed.stepOrder)
+
+        try {
+          return await txSequenceSteps.create(
+            ctx,
+            sequenceStepRecordSchema.parse({
+              id: generateId('sequenceStep'),
+              organizationId: ctx.orgId,
+              sequenceId: parsed.sequenceId,
+              stepOrder: parsed.stepOrder,
+              actionType: parsed.actionType,
+              delayMinutes: parsed.delayMinutes ?? 0,
+              templateSubject: parsed.templateSubject ?? null,
+              templateBody: parsed.templateBody ?? null,
+              taskTitle: parsed.taskTitle ?? null,
+              taskDescription: parsed.taskDescription ?? null,
+              metadata: parsed.metadata ?? {},
+              createdAt: now,
+              updatedAt: now,
+            }),
+          )
+        } catch (error) {
+          coerceSequenceStepConflict(error, parsed.sequenceId, parsed.stepOrder)
+        }
+      })
     },
     async get(ctx, id) {
       return deps.sequenceSteps.get(ctx, id)
     },
     async update(ctx, id, input) {
       const parsed = sequenceStepUpdateInputSchema.parse(input)
-      const current = assertFound(await deps.sequenceSteps.get(ctx, id), `Sequence step ${id} not found`)
-      const nextSequenceId = parsed.sequenceId ?? current.sequenceId
-      const nextStepOrder = parsed.stepOrder ?? current.stepOrder
-
+      // Sequence existence read stays outside the rebound view —
+      // FK on sequence_steps.sequence_id catches deletion races at update.
       if (parsed.sequenceId !== undefined) {
-        if (parsed.sequenceId !== current.sequenceId) {
-          await assertStepHistoryMutable(ctx, deps.sequenceEvents, id, 'reparent')
-        }
         await assertSequenceExists(ctx, deps.sequences, parsed.sequenceId)
       }
-      await assertUniqueStepOrder(ctx, deps.sequenceSteps, nextSequenceId, nextStepOrder, id)
 
-      const patch: Partial<SequenceStepRecord> = {
-        updatedAt: new Date(),
-      }
+      // Phase 2 gate fix: the `current` get and the
+      // assertStepHistoryMutable check (which decides whether a step
+      // can be reparented based on whether any history events exist)
+      // both run inside the rebound view. Reading current outside the
+      // tx let two concurrent updates both pass the history-mutability
+      // guard against the same stale event count.
+      return deps.tx.run(ctx, async (txDb) => {
+        const txSequenceSteps = deps.sequenceSteps.withDatabase(txDb)
+        const current = assertFound(
+          await txSequenceSteps.get(ctx, id),
+          `Sequence step ${id} not found`,
+        )
+        const nextSequenceId = parsed.sequenceId ?? current.sequenceId
+        const nextStepOrder = parsed.stepOrder ?? current.stepOrder
 
-      if (parsed.sequenceId !== undefined) patch.sequenceId = parsed.sequenceId
-      if (parsed.stepOrder !== undefined) patch.stepOrder = parsed.stepOrder
-      if (parsed.actionType !== undefined) patch.actionType = parsed.actionType
-      if (parsed.delayMinutes !== undefined) patch.delayMinutes = parsed.delayMinutes
-      if (parsed.templateSubject !== undefined) patch.templateSubject = parsed.templateSubject ?? null
-      if (parsed.templateBody !== undefined) patch.templateBody = parsed.templateBody ?? null
-      if (parsed.taskTitle !== undefined) patch.taskTitle = parsed.taskTitle ?? null
-      if (parsed.taskDescription !== undefined) patch.taskDescription = parsed.taskDescription ?? null
-      if (parsed.metadata !== undefined) patch.metadata = parsed.metadata
+        if (parsed.sequenceId !== undefined && parsed.sequenceId !== current.sequenceId) {
+          await assertStepHistoryMutable(ctx, deps.sequenceEvents, id, 'reparent')
+        }
 
-      try {
-        return assertFound(await deps.sequenceSteps.update(ctx, id, patch), `Sequence step ${id} not found`)
-      } catch (error) {
-        coerceSequenceStepConflict(error, nextSequenceId, nextStepOrder)
-      }
+        await assertUniqueStepOrder(ctx, txSequenceSteps, nextSequenceId, nextStepOrder, id)
+
+        const patch: Partial<SequenceStepRecord> = {
+          updatedAt: new Date(),
+        }
+
+        if (parsed.sequenceId !== undefined) patch.sequenceId = parsed.sequenceId
+        if (parsed.stepOrder !== undefined) patch.stepOrder = parsed.stepOrder
+        if (parsed.actionType !== undefined) patch.actionType = parsed.actionType
+        if (parsed.delayMinutes !== undefined) patch.delayMinutes = parsed.delayMinutes
+        if (parsed.templateSubject !== undefined) patch.templateSubject = parsed.templateSubject ?? null
+        if (parsed.templateBody !== undefined) patch.templateBody = parsed.templateBody ?? null
+        if (parsed.taskTitle !== undefined) patch.taskTitle = parsed.taskTitle ?? null
+        if (parsed.taskDescription !== undefined) patch.taskDescription = parsed.taskDescription ?? null
+        if (parsed.metadata !== undefined) patch.metadata = parsed.metadata
+
+        try {
+          return assertFound(await txSequenceSteps.update(ctx, id, patch), `Sequence step ${id} not found`)
+        } catch (error) {
+          coerceSequenceStepConflict(error, nextSequenceId, nextStepOrder)
+        }
+      })
     },
     async delete(ctx, id) {
       await assertStepHistoryMutable(ctx, deps.sequenceEvents, id, 'delete')

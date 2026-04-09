@@ -155,4 +155,65 @@ describe('HttpTransport', () => {
     const parsedUrl = url instanceof URL ? url : new URL(url as string)
     expect(parsedUrl.origin).toBe('http://localhost:3000')
   })
+
+  describe('timeoutMs (T9/L4)', () => {
+    it('passes an AbortSignal to fetch when timeoutMs is configured', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {},
+            meta: { request_id: 'req_1', cursor: null, next_cursor: null, has_more: false, version: '2026-04-01' },
+            links: { self: '/' },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+
+      const transport = new HttpTransport(makeOptions({ timeoutMs: 5000 }))
+      await transport.request({ method: 'GET', path: '/health' })
+
+      const [, init] = fetchSpy.mock.calls[0]!
+      expect((init as RequestInit | undefined)?.signal).toBeInstanceOf(AbortSignal)
+    })
+
+    it('does not attach a signal when timeoutMs is not configured', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {},
+            meta: { request_id: 'req_1', cursor: null, next_cursor: null, has_more: false, version: '2026-04-01' },
+            links: { self: '/' },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+
+      const transport = new HttpTransport(makeOptions())
+      await transport.request({ method: 'GET', path: '/health' })
+
+      const [, init] = fetchSpy.mock.calls[0]!
+      expect((init as RequestInit | undefined)?.signal).toBeUndefined()
+    })
+
+    it('aborts a slow request once the deadline elapses', async () => {
+      // Mock fetch to return a promise that respects the AbortSignal so we
+      // can prove the wiring without leaning on a real network slowdown.
+      fetchSpy.mockImplementationOnce((_url, init) => {
+        return new Promise((_resolve, reject) => {
+          const signal = (init as RequestInit | undefined)?.signal
+          if (signal) {
+            signal.addEventListener('abort', () => {
+              const reason = signal.reason ?? new Error('aborted')
+              reject(reason)
+            })
+          }
+        })
+      })
+
+      const transport = new HttpTransport(makeOptions({ timeoutMs: 10, maxRetries: 0 }))
+      await expect(
+        transport.request({ method: 'GET', path: '/health' }),
+      ).rejects.toBeDefined()
+    })
+  })
 })

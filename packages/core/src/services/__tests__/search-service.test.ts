@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createSearchService } from '../search-service.js'
+import { createSearchService, MAX_SEARCH_ROWS_PER_TYPE } from '../search-service.js'
 
 function mockRepo(records: any[]) {
   return {
@@ -62,6 +62,82 @@ describe('SearchService', () => {
     expect(types.has('contact')).toBe(true)
   })
 
+  it('does not re-apply the text-search query against the merged title/subtitle (M1)', async () => {
+    // The repos already filtered by `query.query`. Their results contain
+    // records whose match came from a field that only the entity repo
+    // searches (here: company.industry). The merged-result pass must NOT
+    // filter those records out a second time using only title/subtitle —
+    // doing so silently drops legitimate matches.
+    const company = {
+      id: 'company_01',
+      name: 'Northwind',
+      domain: null,
+      industry: 'aerospace',
+      website: null,
+      updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+    }
+    const service = createSearchService({
+      // Mock repo returns the record regardless of query — it has already
+      // matched at the entity layer.
+      companies: mockRepo([company]) as any,
+      contacts: mockRepo([]) as any,
+      deals: mockRepo([]) as any,
+      pipelines: mockRepo([]) as any,
+      stages: mockRepo([]) as any,
+      users: mockRepo([]) as any,
+    })
+
+    const result = await service.search(
+      { orgId: 'org_test', apiKeyId: 'key_test', scopes: ['*'] },
+      { query: 'aerospace' },
+    )
+
+    // Without the M1 fix, the merged pass would re-run `applySearch` on
+    // ['title', 'subtitle']. Neither contains "aerospace" (the title is
+    // "Northwind" and the subtitle is null), so the record would be
+    // dropped. With the fix, the per-repo match is honored.
+    expect(result.data).toHaveLength(1)
+    expect(result.data[0]?.id).toBe('company_01')
+  })
+
+  it('sorts merged records by emitted updatedAt camelCase field (M2)', async () => {
+    // Earlier `defaultSort: 'updated_at'` only worked via implicit
+    // toRecordKey conversion. After the M2 fix, the sort spec uses
+    // camelCase `updatedAt` directly to match the emitted shape.
+    const oldRecord = {
+      id: 'company_old',
+      name: 'Old Co',
+      domain: null,
+      industry: null,
+      website: null,
+      updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+    }
+    const newRecord = {
+      id: 'company_new',
+      name: 'New Co',
+      domain: null,
+      industry: null,
+      website: null,
+      updatedAt: new Date('2026-04-08T00:00:00.000Z'),
+    }
+    const service = createSearchService({
+      // Return in old-first order so the desc sort must reorder them.
+      companies: mockRepo([oldRecord, newRecord]) as any,
+      contacts: mockRepo([]) as any,
+      deals: mockRepo([]) as any,
+      pipelines: mockRepo([]) as any,
+      stages: mockRepo([]) as any,
+      users: mockRepo([]) as any,
+    })
+
+    const result = await service.search(
+      { orgId: 'org_test', apiKeyId: 'key_test', scopes: ['*'] },
+      { query: '' },
+    )
+
+    expect(result.data.map((r) => r.id)).toEqual(['company_new', 'company_old'])
+  })
+
   it('only fetches requested repos when object_types is specified', async () => {
     const companiesRepo = mockRepo([{ id: 'company_01', name: 'Acme', updatedAt: new Date() }])
     const contactsRepo = mockRepo([{ id: 'contact_01', name: 'Alice', status: 'active', updatedAt: new Date() }])
@@ -90,5 +166,57 @@ describe('SearchService', () => {
     expect(pipelinesRepo.search).not.toHaveBeenCalled()
     expect(stagesRepo.search).not.toHaveBeenCalled()
     expect(usersRepo.search).not.toHaveBeenCalled()
+  })
+
+  it('refuses merged search past MAX_SEARCH_ROWS_PER_TYPE per entity (T9/L11)', async () => {
+    // Construct a paginated repo that always reports another page exists.
+    // Without the cap, fetchAllPages would loop forever (test would hang).
+    // After the Phase 2 gate fix, hitting the cap throws SEARCH_RESULT_TOO_LARGE
+    // instead of silently truncating + console.warn — that prevents the API
+    // from returning incomplete data dressed up as a complete page.
+    let pageCount = 0
+    const companiesRepo = {
+      search: vi.fn(async (q: { limit?: number }) => {
+        pageCount += 1
+        const limit = q.limit ?? 100
+        const data = Array.from({ length: limit }, (_v, i) => ({
+          id: `company_${pageCount}_${i}`,
+          name: `Org ${pageCount}-${i}`,
+          domain: null,
+          industry: null,
+          website: null,
+          updatedAt: new Date(2026, 0, 1, pageCount, i),
+        }))
+        return {
+          data,
+          hasMore: true,
+          nextCursor: `cursor_page_${pageCount + 1}`,
+        }
+      }),
+    }
+    const service = createSearchService({
+      companies: companiesRepo as any,
+      contacts: mockRepo([]) as any,
+      deals: mockRepo([]) as any,
+      pipelines: mockRepo([]) as any,
+      stages: mockRepo([]) as any,
+      users: mockRepo([]) as any,
+    })
+
+    await expect(
+      service.search(
+        { orgId: 'org_test', apiKeyId: 'key_test', scopes: ['*'] },
+        { query: '', limit: MAX_SEARCH_ROWS_PER_TYPE },
+      ),
+    ).rejects.toMatchObject({
+      code: 'SEARCH_RESULT_TOO_LARGE',
+    })
+
+    // The repo's search should have been called a bounded number of
+    // times — not indefinitely. With MAX_SEARCH_ROWS_PER_TYPE = 5000 and
+    // a per-page limit of MAX_LIST_LIMIT (100), the cap is hit after 50
+    // pages. Allow some slack for off-by-one but assert we never enter
+    // the runaway regime.
+    expect(companiesRepo.search.mock.calls.length).toBeLessThanOrEqual(60)
   })
 })

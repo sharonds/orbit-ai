@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import { createNoopTransactionScope } from '../../adapters/noop-transaction-scope.js'
 import { createInMemoryCompanyRepository } from '../companies/repository.js'
 import { createInMemoryContactRepository } from '../contacts/repository.js'
 import { createInMemoryDealRepository } from './repository.js'
@@ -18,7 +19,7 @@ describe('deal service', () => {
     const contacts = createInMemoryContactRepository()
     const companies = createInMemoryCompanyRepository()
     const deals = createInMemoryDealRepository()
-    const dealService = createDealService({ deals, pipelines, stages, contacts, companies })
+    const dealService = createDealService({ deals, pipelines, stages, contacts, companies, tx: createNoopTransactionScope() })
 
     await expect(
       dealService.create(ctx, {
@@ -68,7 +69,7 @@ describe('deal service', () => {
       createdAt: new Date('2026-03-31T12:32:00.000Z'),
       updatedAt: new Date('2026-03-31T12:32:00.000Z'),
     })
-    const dealService = createDealService({ deals, pipelines, stages, contacts, companies })
+    const dealService = createDealService({ deals, pipelines, stages, contacts, companies, tx: createNoopTransactionScope() })
     const created = await dealService.create(ctx, {
       title: 'Expansion',
       pipelineId: pipelineA.id,
@@ -109,7 +110,7 @@ describe('deal service', () => {
       createdAt: new Date('2026-03-31T12:32:00.000Z'),
       updatedAt: new Date('2026-03-31T12:32:00.000Z'),
     })
-    const dealService = createDealService({ deals, pipelines, stages, contacts, companies })
+    const dealService = createDealService({ deals, pipelines, stages, contacts, companies, tx: createNoopTransactionScope() })
     const created = await dealService.create(ctx, {
       title: 'Expansion',
       pipelineId: pipeline.id,
@@ -182,7 +183,7 @@ describe('deal service', () => {
       createdAt: new Date('2026-03-31T13:03:00.000Z'),
       updatedAt: new Date('2026-03-31T13:03:00.000Z'),
     })
-    const dealService = createDealService({ deals, pipelines, stages, contacts, companies })
+    const dealService = createDealService({ deals, pipelines, stages, contacts, companies, tx: createNoopTransactionScope() })
     const created = await dealService.create(ctx, {
       title: 'Expansion',
       pipelineId: pipeline.id,
@@ -201,5 +202,58 @@ describe('deal service', () => {
     expect(updated.title).toBe('Expansion renewed')
     expect(updated.stageId).toBe(stage.id)
     expect(updated.pipelineId).toBe(pipeline.id)
+  })
+
+  describe('transactional safety (T7)', () => {
+    it('runs deals.update inside exactly one tx.run() call', async () => {
+      const deals = createInMemoryDealRepository()
+      const pipelines = createInMemoryPipelineRepository()
+      const stages = createInMemoryStageRepository()
+      const contacts = createInMemoryContactRepository()
+      const companies = createInMemoryCompanyRepository()
+
+      const noop = createNoopTransactionScope()
+      const runSpy = vi.fn(noop.run.bind(noop))
+      const dealService = createDealService({
+        deals,
+        pipelines,
+        stages,
+        contacts,
+        companies,
+        tx: { run: runSpy },
+      })
+
+      // create a deal first — create() does not yet wrap in tx, so the
+      // spy should still be at zero after this.
+      const created = await dealService.create(ctx, { title: 'To rename' })
+      expect(runSpy).not.toHaveBeenCalled()
+
+      await dealService.update(ctx, created.id, { title: 'Renamed' })
+      expect(runSpy).toHaveBeenCalledTimes(1)
+      expect(runSpy).toHaveBeenCalledWith(ctx, expect.any(Function))
+    })
+
+    it('rebinds the deals repository to the transaction-scoped db handle', async () => {
+      const baseDeals = createInMemoryDealRepository()
+      const withDatabaseSpy = vi.fn(() => baseDeals)
+      const deals = {
+        ...baseDeals,
+        withDatabase: withDatabaseSpy,
+      }
+      const dealService = createDealService({
+        deals,
+        pipelines: createInMemoryPipelineRepository(),
+        stages: createInMemoryStageRepository(),
+        contacts: createInMemoryContactRepository(),
+        companies: createInMemoryCompanyRepository(),
+        tx: createNoopTransactionScope(),
+      })
+
+      const created = await dealService.create(ctx, { title: 'Rebound' })
+      // Reset the spy: only update() should call withDatabase in T7 scope.
+      withDatabaseSpy.mockClear()
+      await dealService.update(ctx, created.id, { title: 'Renamed' })
+      expect(withDatabaseSpy).toHaveBeenCalledTimes(1)
+    })
   })
 })

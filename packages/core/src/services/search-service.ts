@@ -8,7 +8,22 @@ import type { UserRepository } from '../entities/users/repository.js'
 import { runArrayQuery } from './service-helpers.js'
 import { MAX_LIST_LIMIT } from '../query/list-query.js'
 import type { SearchQuery } from '../types/api.js'
+import { createOrbitError } from '../types/errors.js'
 import type { InternalPaginatedResult } from '../types/pagination.js'
+
+/**
+ * L11: Hard cap on the number of rows we will pull into memory per entity
+ * type when assembling a merged search response. The merged-search code
+ * path uses `fetchAllPages` to flatten every page into a single array
+ * before sorting/slicing, which is OOM-prone on large tenants.
+ *
+ * This is an INTERIM safety net — T10's registry-driven search rebuild
+ * is expected to push pagination down to the repositories and eliminate
+ * the need for `fetchAllPages` entirely. When that lands, this cap and
+ * its test should be removed in the same commit so we don't leave
+ * dead defensive code.
+ */
+export const MAX_SEARCH_ROWS_PER_TYPE = 5000
 
 type SearchRecordSummary = Record<string, string | number | boolean | null>
 
@@ -49,6 +64,23 @@ export function createSearchService(deps: {
 
       rows.push(...page.data)
       cursor = page.hasMore ? page.nextCursor : null
+
+      // L11 OOM cap: refuse the request loudly once we hit
+      // MAX_SEARCH_ROWS_PER_TYPE. Originally this returned a truncated
+      // result with a console.warn, but the Phase 2 silent-failure-hunter
+      // gate flagged that as a real risk: the API would respond with
+      // hasMore: false on a truncated dataset, leaving the caller no way
+      // to detect the truncation. Throwing forces the caller to refine
+      // the query (filters, narrower object_types) instead of unknowingly
+      // operating on incomplete data.
+      if (rows.length >= MAX_SEARCH_ROWS_PER_TYPE && cursor !== null) {
+        throw createOrbitError({
+          code: 'SEARCH_RESULT_TOO_LARGE',
+          message:
+            `Search would return more than ${MAX_SEARCH_ROWS_PER_TYPE} rows for a single ` +
+            `entity type. Narrow the query with filters or restrict object_types.`,
+        })
+      }
     } while (cursor)
 
     return rows
@@ -202,11 +234,23 @@ export function createSearchService(deps: {
         })),
       ]
 
-      // Strip object_types before passing to runArrayQuery — it's not a ListQuery field
-      const { object_types: _ot, ...listQuery } = query
+      // Strip both `object_types` and `query` before passing to runArrayQuery.
+      // - `object_types` is not a ListQuery field (M5 fix from a prior wave).
+      // - `query` is the free-text search term, which the per-entity repos
+      //   already applied via their own `search()` implementations. Leaving
+      //   it in here would re-run text search against the merged result's
+      //   reduced surface (only `title`/`subtitle` are searchable at this
+      //   layer), silently dropping results whose match was on a field that
+      //   only the underlying entity repo knew about (e.g. company.industry,
+      //   contact.email). M1 fix.
+      const { object_types: _ot, query: _q, ...listQuery } = query
       return runArrayQuery(rows, listQuery, {
         searchableFields: ['title', 'subtitle'],
-        defaultSort: [{ field: 'updated_at', direction: 'desc' }],
+        // M2 fix: emitted records use camelCase `updatedAt` (see
+        // SearchResultRecord above). The sort field must match the emitted
+        // shape — the previous snake_case `updated_at` only worked by
+        // accident through `toRecordKey` conversion in the helper.
+        defaultSort: [{ field: 'updatedAt', direction: 'desc' }],
       })
     },
   }

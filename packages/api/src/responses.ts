@@ -11,6 +11,28 @@ export function toEnvelope<T>(
   data: T,
   page?: InternalPaginatedResult<unknown>,
 ): OrbitEnvelope<T> {
+  const links: OrbitEnvelope<T>['links'] = { self: c.req.path }
+
+  // L7: when there is another page, populate `links.next` with a fully
+  // resolved URL — same path as the current request, but with the
+  // `cursor` query parameter set to the new next_cursor and any
+  // existing `cursor` overwritten. Consumers can follow `links.next`
+  // directly without manually rebuilding the URL.
+  if (page && page.hasMore && page.nextCursor) {
+    try {
+      const reqUrl = new URL(c.req.url)
+      reqUrl.searchParams.set('cursor', page.nextCursor)
+      // Preserve only the path + query so the link is server-relative.
+      links.next = `${reqUrl.pathname}${reqUrl.search}`
+    } catch {
+      // c.req.url should always be a valid URL, but if for any reason
+      // it isn't (e.g. test harness using a relative path) fall back
+      // to a path-only construction.
+      const sep = c.req.path.includes('?') ? '&' : '?'
+      links.next = `${c.req.path}${sep}cursor=${encodeURIComponent(page.nextCursor)}`
+    }
+  }
+
   return {
     data,
     meta: page
@@ -28,9 +50,7 @@ export function toEnvelope<T>(
           has_more: false,
           version: c.get('orbitVersion'),
         },
-    links: {
-      self: c.req.path,
-    },
+    links,
   }
 }
 
