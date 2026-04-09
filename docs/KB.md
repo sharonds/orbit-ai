@@ -2,7 +2,7 @@
 
 Date: 2026-04-09
 Status: Active working hub
-Current baseline commit: `78d6108` (main) / `48fc5f1` (fix/pr-review-findings, pending PR)
+Current baseline commit: `78d6108` (main) / `working tree` (local MCP implementation in progress)
 
 ## What Orbit Is
 
@@ -51,12 +51,11 @@ Current focus:
 - maintain the repo knowledge base as the live hub
 - `@orbit-ai/cli` is complete and reviewed: 7 implementation slices (A–G), 4 rounds of code review (Codex + 3 agent-panel rounds), 161 tests passing, merging to main via PR
 - CLI package adds: Commander CLI with 30 commands, JSON/table/CSV/TSV output, direct SQLite + API modes, config file resolution (profiles, apiKeyEnv, nested cwd), `orbit init/status/doctor/seed/migrate`, structured `{ error }` contract throughout, `utils/prompt.ts` shared TTY confirmation utility
-- MCP execution planning is documented in [mcp-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/mcp-implementation-plan.md) — next package track after CLI merges
+- `@orbit-ai/mcp` is now implemented locally: 23 core tools, stdio + HTTP transport seams, `_untrusted` resources, structured MCP errors, gated stubs for unavailable capabilities, and 93 passing tests
 - keep execution docs and skills aligned with implementation progress
 
 Not started yet:
 
-- `packages/mcp`
 - `packages/integrations`
 
 ## Frozen Decisions
@@ -131,14 +130,14 @@ Immediate next actions:
    - `@orbit-ai/api` — Hono REST API on main
    - `@orbit-ai/sdk` — TypeScript client SDK on main
    - `@orbit-ai/cli` — Commander CLI, merging from `feat/cli`
-   - `@orbit-ai/mcp` — not yet started
+   - `@orbit-ai/mcp` — implemented locally and under review/final integration
 2. Execution plans in place for all remaining work:
    - [cli-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/cli-implementation-plan.md) — complete and reviewed
-   - [mcp-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/mcp-implementation-plan.md) — ready to execute, 8 slices (A–H), 92-test minimum
+   - [mcp-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/mcp-implementation-plan.md) — executed locally with the 92-test minimum exceeded
 3. Next:
    - merge `feat/cli` PR to main (in progress)
-   - start [mcp-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/mcp-implementation-plan.md) — 23 tools, stdio + HTTP transport
-   - after MCP: publish all 5 packages together as `0.1.0-alpha.0` to npm
+   - integrate the CLI `mcp serve` wrapper with the implemented package
+   - publish all 5 packages together as `0.1.0-alpha.0` to npm
 
 ## Open Items
 
@@ -210,6 +209,8 @@ These are still open, but they do not block the KB:
 - 2026-04-09: Created [mcp-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/mcp-implementation-plan.md) as the MCP execution baseline, fixing the package around the 23-tool core contract and calling out current dependency gates for schema, export, and analytics tool families.
 - 2026-04-09: Completed `@orbit-ai/cli` on branch `feat/cli` (7 implementation slices, A–G). Codex review surfaced 11 issues; all fixed. Three agent-panel review rounds (6 reviewers) surfaced 17 additional issues; all fixed. Final state: 161 tests, 17 test files, 0 typecheck errors, clean build. Key fixes: Commander `exitOverride` + `instanceof CommanderError`, `isJsonMode()` unification, `apiKeyEnv` config resolution, nested-cwd discovery, `--profile` implementation, SQLite default path + `file://hostname` rejection, synchronous `write+exit` throughout, `confirmAction` extracted to `utils/prompt.ts` with stdin EOF/error cleanup, `seed` count validation, `migrate` no-flags guard. PR opened and merged to main.
 - 2026-04-09: Analyzed PRs #22–26 Copilot/Codex review comments (24 findings across 5 PRs). All addressed on branch `fix/pr-review-findings`: `SEARCH_RESULT_TOO_LARGE` HTTP 400 parity, duplicate import fix, `PAYLOAD_TOO_LARGE` 413, `deleteField` SDK type, `AbortSignal.timeout` leak fix, `links.next` suppressed for all POST search routes (entity + global), `beginTransaction` DRY via `withTenantContext` delegation, `--format` choices guard, dashboard await, seed error contract, `orgName` typed, config trust hardening, security review artifact added. Final state: 328+194+281+170 = **973 tests passing**.
+- 2026-04-10: Executed `@orbit-ai/mcp` locally across the plan slices: package bootstrap, shared registry/error/output runtime, 23-tool fixed registry, stdio + HTTP transport seams, `_untrusted` resources, dependency-gated import/export/analytics tools, and direct-mode SSRF protections. Final local proof: 93 passing tests, clean typecheck, clean build.
+- 2026-04-10: Ran independent code review, security review, and plan-alignment review on the MCP implementation. Fixed the validated findings: bracketed IPv6 loopback SSRF bypass, missing HTTP request-level error boundary, and missing KB/review-artifact closeout. Review artifacts: [2026-04-10-mcp-security-review.md](/Users/sharonsciammas/orbit-ai/docs/review/2026-04-10-mcp-security-review.md) and [2026-04-10-mcp-final-review.md](/Users/sharonsciammas/orbit-ai/docs/review/2026-04-10-mcp-final-review.md).
 
 ## Working Rule
 
