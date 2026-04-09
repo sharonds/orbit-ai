@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { CliValidationError, CliConfigError, CliUnsupportedAdapterError, CliNotImplementedError } from '../errors.js'
-import { _classifyError } from '../program.js'
+import { _classifyError, run, _resetJsonMode } from '../program.js'
 
 // We test the classifyError logic indirectly by checking the error classes
 describe('exit code contract', () => {
@@ -92,5 +92,57 @@ describe('classifyError end-to-end', () => {
     const result = _classifyError(e)
     expect(result.code).toBe(3)
     expect(result.payload.code).toBe('CONFIG_PARSE_ERROR')
+  })
+})
+
+describe('seed --count validation', () => {
+  let origArgv: string[]
+  let origExit: typeof process.exit
+  let exitCode: number | undefined
+  let stdoutOutput: string
+
+  beforeEach(() => {
+    origArgv = [...process.argv]
+    origExit = process.exit
+    exitCode = undefined
+    stdoutOutput = ''
+    process.env.ORBIT_API_KEY = 'test-key'
+    process.exit = ((code?: number) => {
+      exitCode = code ?? 0
+      throw new Error(`process.exit(${code})`)
+    }) as typeof process.exit
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+      stdoutOutput += String(chunk); return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  })
+
+  afterEach(() => {
+    process.argv = origArgv
+    process.exit = origExit
+    vi.restoreAllMocks()
+    _resetJsonMode()
+  })
+
+  it('--count 0 exits with INVALID_ARGUMENT in JSON mode', async () => {
+    process.argv = ['node', 'orbit', '--json', 'seed', '--count', '0']
+    await expect(run()).rejects.toThrow()
+    const parsed = JSON.parse(stdoutOutput)
+    expect(parsed.error.code).toBe('INVALID_ARGUMENT')
+    expect(exitCode).toBe(2)
+  })
+
+  it('--count abc (NaN) exits with INVALID_ARGUMENT in JSON mode', async () => {
+    process.argv = ['node', 'orbit', '--json', 'seed', '--count', 'abc']
+    await expect(run()).rejects.toThrow()
+    const parsed = JSON.parse(stdoutOutput)
+    expect(parsed.error.code).toBe('INVALID_ARGUMENT')
+  })
+
+  it('--count 1001 exits with INVALID_ARGUMENT in JSON mode', async () => {
+    process.argv = ['node', 'orbit', '--json', 'seed', '--count', '1001']
+    await expect(run()).rejects.toThrow()
+    const parsed = JSON.parse(stdoutOutput)
+    expect(parsed.error.code).toBe('INVALID_ARGUMENT')
   })
 })

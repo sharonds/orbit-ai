@@ -197,6 +197,29 @@ describe('Commander parse errors — JSON contract', () => {
     _resetJsonMode()
   })
 
+  it('_jsonMode is reset to false between run() invocations', async () => {
+    let savedArgv = [...process.argv]
+
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+
+    try {
+      // First invocation with --json sets _jsonMode = true
+      process.argv = ['node', 'orbit', '--json', '--unknown-xyz']
+      await expect(run()).rejects.toThrow()
+      expect(isJsonMode()).toBe(true)
+
+      // Second invocation without --json should reset _jsonMode to false
+      process.argv = ['node', 'orbit', '--unknown-xyz']
+      await expect(run()).rejects.toThrow()
+      expect(isJsonMode()).toBe(false)
+    } finally {
+      process.argv = savedArgv
+      vi.restoreAllMocks()
+      _resetJsonMode()
+    }
+  })
+
   it('--json: Commander unknown flag error produces { error: ... } JSON on stdout', async () => {
     process.argv = ['node', 'orbit', '--json', '--unknown-flag-xyz-abc']
     await expect(run()).rejects.toThrow()

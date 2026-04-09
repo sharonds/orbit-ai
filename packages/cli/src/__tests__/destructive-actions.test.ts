@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createProgram, _resetJsonMode } from '../program.js'
+import { createProgram, run, _resetJsonMode } from '../program.js'
 
 // --- mock schema resource ---
 const mockSchemaResponse = {
@@ -176,6 +176,28 @@ describe('migrate --apply — destructive gating', () => {
     const parsed = JSON.parse(output)
     expect(parsed.error.code).toBe('DESTRUCTIVE_ACTION_REQUIRES_CONFIRMATION')
     expect(mockSchema.applyMigration).not.toHaveBeenCalled()
+  })
+})
+
+describe('migrate with no action flag', () => {
+  it('emits MISSING_REQUIRED_ARG error in JSON mode', async () => {
+    let origArgv = [...process.argv]
+    let stdoutOutput = ''
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+      stdoutOutput += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    process.argv = ['node', 'orbit', '--json', '--api-key', 'key', 'migrate']
+    try {
+      await run()
+    } catch {
+      // run() calls process.exit which throws in beforeEach mock
+    }
+    process.argv = origArgv
+    const parsed = JSON.parse(stdoutOutput)
+    expect(parsed.error.code).toBe('MISSING_REQUIRED_ARG')
+    expect(mockExitCode).toBe(2)
   })
 })
 
