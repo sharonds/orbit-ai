@@ -14,20 +14,19 @@ which minor/patch releases receive security fixes.
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Please email **security@orbit-ai.dev** with:
+Use **GitHub's Private Vulnerability Reporting** to report security issues:
 
-1. A description of the vulnerability and its potential impact
-2. Steps to reproduce (a minimal proof-of-concept if possible)
-3. The version(s) affected
-4. Whether you have a suggested fix
+1. Go to the [Security tab](https://github.com/sharonds/orbit-ai/security) of this repository
+2. Click **"Report a vulnerability"**
+3. Include:
+   - A description of the vulnerability and its potential impact
+   - Steps to reproduce (a minimal proof-of-concept if possible)
+   - The version(s) affected
+   - Whether you have a suggested fix
 
 You will receive an acknowledgement within **2 business days** and a status update
 within **7 days** of the initial report. We will work with you to understand and
 validate the issue before any public disclosure.
-
-> **Note for alpha users**: `security@orbit-ai.dev` is a placeholder address during
-> pre-alpha. Until a production email is configured, open a private GitHub Security
-> Advisory via the **Security** tab on this repository.
 
 ## Scope
 
