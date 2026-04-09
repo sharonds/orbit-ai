@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { createProgram, isJsonMode } from '../program.js'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { createProgram, isJsonMode, run, _resetJsonMode } from '../program.js'
 
 describe('program', () => {
   const expectedCommands = [
@@ -164,5 +164,47 @@ describe('program', () => {
       // exitOverride throws on --help
     }
     expect(helpText).toContain('orbit')
+  })
+})
+
+describe('Commander parse errors — JSON contract', () => {
+  let origArgv: string[]
+  let origExit: typeof process.exit
+  let exitCode: number | undefined
+  let stdoutOutput: string
+
+  beforeEach(() => {
+    origArgv = [...process.argv]
+    origExit = process.exit
+    exitCode = undefined
+    stdoutOutput = ''
+    _resetJsonMode()
+    process.exit = ((code?: number) => {
+      exitCode = code ?? 0
+      throw new Error(`process.exit(${code})`)
+    }) as typeof process.exit
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+      stdoutOutput += String(chunk)
+      return true
+    })
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  })
+
+  afterEach(() => {
+    process.argv = origArgv
+    process.exit = origExit
+    vi.restoreAllMocks()
+    _resetJsonMode()
+  })
+
+  it('--json: Commander unknown flag error produces { error: ... } JSON on stdout', async () => {
+    process.argv = ['node', 'orbit', '--json', '--unknown-flag-xyz-abc']
+    await expect(run()).rejects.toThrow()
+    let parsed: unknown
+    try { parsed = JSON.parse(stdoutOutput) } catch { parsed = null }
+    expect(parsed).not.toBeNull()
+    expect((parsed as { error?: unknown }).error).toBeDefined()
+    expect(typeof (parsed as { error: { code: string; message: string } }).error.code).toBe('string')
+    expect(typeof (parsed as { error: { code: string; message: string } }).error.message).toBe('string')
   })
 })

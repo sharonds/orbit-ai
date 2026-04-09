@@ -140,6 +140,45 @@ describe('fields delete — destructive action', () => {
   })
 })
 
+describe('migrate --apply — destructive gating', () => {
+  it('migrate --apply applies non-destructive migration without --yes', async () => {
+    mockSchema.previewMigration.mockResolvedValue({ operations: [], destructive: false })
+    mockSchema.applyMigration.mockResolvedValue({ applied: 1 })
+
+    const { output } = await captureStdout(async () => {
+      await createProgram()
+        .exitOverride()
+        .parseAsync(
+          ['node', 'orbit', '--json', '--api-key', 'key', '--mode', 'api', 'migrate', '--apply'],
+        )
+    })
+
+    expect(mockSchema.applyMigration).toHaveBeenCalled()
+    const parsed = JSON.parse(output)
+    expect(parsed).toHaveProperty('applied', 1)
+  })
+
+  it('migrate --apply requires --yes for destructive migration (preview has destructive:true)', async () => {
+    mockSchema.previewMigration.mockResolvedValue({
+      operations: [{ type: 'drop_column', table: 'contacts', column: 'old_field' }],
+      destructive: true,
+    })
+
+    const { exitCode, output } = await captureStdout(async () => {
+      await createProgram()
+        .exitOverride()
+        .parseAsync(
+          ['node', 'orbit', '--json', '--api-key', 'key', '--mode', 'api', 'migrate', '--apply'],
+        )
+    })
+
+    expect(exitCode).toBe(1)
+    const parsed = JSON.parse(output)
+    expect(parsed.error.code).toBe('DESTRUCTIVE_ACTION_REQUIRES_CONFIRMATION')
+    expect(mockSchema.applyMigration).not.toHaveBeenCalled()
+  })
+})
+
 describe('migrate --rollback — destructive action', () => {
   it('without --yes in JSON mode: exit code 1, DESTRUCTIVE_ACTION_REQUIRES_CONFIRMATION on stdout', async () => {
     const program = createProgram()

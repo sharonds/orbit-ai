@@ -334,4 +334,73 @@ describe('config resolution — resolveClient', () => {
     expect(process.argv).not.toContain('--api-key=secret-key-value')
     expect(process.argv).toContain('--api-key=[REDACTED]')
   })
+
+  // Test D3a: reads api key from env var named by apiKeyEnv in config
+  it('reads api key from env var named by apiKeyEnv in config', () => {
+    const tmp = makeTmpDir()
+    makeProjectConfig(tmp, { mode: 'api', apiKeyEnv: 'MY_CUSTOM_KEY' })
+    const env = { MY_CUSTOM_KEY: 'key-from-custom-env' }
+    resolveClient({ flags: {}, env, cwd: tmp, overrideHome: tmp })
+    expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'key-from-custom-env' }))
+  })
+
+  // Test D3b: apiKeyEnv is lower priority than ORBIT_API_KEY env var
+  it('apiKeyEnv is lower priority than ORBIT_API_KEY env var', () => {
+    const tmp = makeTmpDir()
+    makeProjectConfig(tmp, { mode: 'api', apiKeyEnv: 'MY_CUSTOM_KEY' })
+    const env = { ORBIT_API_KEY: 'standard-key', MY_CUSTOM_KEY: 'custom-key' }
+    resolveClient({ flags: {}, env, cwd: tmp, overrideHome: tmp })
+    expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'standard-key' }))
+  })
+
+  // Test D4a: applies named profile when --profile flag is set
+  it('applies named profile when --profile flag is set', () => {
+    const tmp = makeTmpDir()
+    makeProjectConfig(tmp, {
+      mode: 'api',
+      apiKey: 'default-key',
+      profiles: {
+        staging: { apiKey: 'staging-key', baseUrl: 'https://staging.example.com' },
+      },
+    })
+    resolveClient({
+      flags: { profile: 'staging' },
+      env: {},
+      cwd: tmp,
+      overrideHome: tmp,
+    })
+    expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({
+      apiKey: 'staging-key',
+      baseUrl: 'https://staging.example.com',
+    }))
+  })
+
+  // Test D4b: falls back to base config when profile name does not exist
+  it('falls back to base config when profile name does not exist in profiles', () => {
+    const tmp = makeTmpDir()
+    makeProjectConfig(tmp, { mode: 'api', apiKey: 'base-key', profiles: {} })
+    resolveClient({
+      flags: { profile: 'nonexistent' },
+      env: {},
+      cwd: tmp,
+      overrideHome: tmp,
+    })
+    expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'base-key' }))
+  })
+
+  // Test D5: finds project config in ancestor directory when cwd is a nested subdirectory
+  it('finds project config in ancestor directory when cwd is a nested subdirectory', () => {
+    const tmp = makeTmpDir()
+    // Config lives at project root, cwd is a nested package dir
+    makeProjectConfig(tmp, { mode: 'api', apiKey: 'ancestor-key' })
+    const nested = path.join(tmp, 'packages', 'cli')
+    fs.mkdirSync(nested, { recursive: true })
+    resolveClient({
+      flags: {},
+      env: {},
+      cwd: nested,
+      overrideHome: tmp,
+    })
+    expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'ancestor-key' }))
+  })
 })
