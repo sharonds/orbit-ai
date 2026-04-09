@@ -310,7 +310,7 @@ describe('config resolution — resolveClient', () => {
     }
   })
 
-  // Test 15: --api-key in argv → stderr warning + argv redaction
+  // Test 15: --api-key in argv (two-token form) → stderr warning + argv redaction
   it('15: --api-key in argv → stderr warning + argv redaction', () => {
     const cwd = makeTmpDir()
     process.argv = ['node', 'orbit', '--api-key', 'secret-key-value', '--mode', 'api']
@@ -321,7 +321,24 @@ describe('config resolution — resolveClient', () => {
       overrideHome: cwd,
     })
     expect(stderrOutput).toContain('--api-key')
+    expect(stderrOutput).toContain('visible in process listings')
     expect(process.argv).not.toContain('secret-key-value')
     expect(process.argv).toContain('[REDACTED]')
+  })
+
+  // Test 15b: --api-key=value (single-token form) → stderr warning + argv redaction
+  it('15b: --api-key=value in argv → stderr warning + argv redaction', () => {
+    const cwd = makeTmpDir()
+    process.argv = ['node', 'orbit', '--api-key=secret-key-value', '--mode', 'api']
+    resolveClient({
+      flags: { apiKey: 'secret-key-value', mode: 'api' },
+      env: {},
+      cwd,
+      overrideHome: cwd,
+    })
+    expect(stderrOutput).toContain('--api-key')
+    expect(stderrOutput).toContain('visible in process listings')
+    expect(process.argv).not.toContain('--api-key=secret-key-value')
+    expect(process.argv).toContain('--api-key=[REDACTED]')
   })
 })

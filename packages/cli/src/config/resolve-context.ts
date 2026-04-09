@@ -81,15 +81,24 @@ export function resolveClient(options: ResolveContextOptions): OrbitClient {
   const { flags, env = process.env, cwd, overrideHome } = options
 
   // Warn if --api-key appeared in argv (security: key visible in process list)
-  const argvApiKey = process.argv.includes('--api-key')
+  const argvApiKey =
+    process.argv.includes('--api-key') || process.argv.some((a) => a.startsWith('--api-key='))
   if (argvApiKey) {
     process.stderr.write(
-      'Warning: --api-key flag exposes your API key in the process list. Use ORBIT_API_KEY env var instead.\n',
+      'Warning: --api-key is visible in process listings. Prefer ORBIT_API_KEY env var.\n',
     )
-    // Redact from argv
-    const idx = process.argv.indexOf('--api-key')
-    if (idx !== -1 && idx + 1 < process.argv.length) {
-      process.argv[idx + 1] = '[REDACTED]'
+    // Redact from argv — handle both --api-key <value> and --api-key=<value>
+    for (let i = 0; i < process.argv.length; i++) {
+      const arg = process.argv[i] ?? ''
+      if (arg === '--api-key' && i + 1 < process.argv.length) {
+        // Two-token form: --api-key <value>
+        process.argv[i + 1] = '[REDACTED]'
+        break
+      } else if (arg.startsWith('--api-key=')) {
+        // Single-token form: --api-key=<value>
+        process.argv[i] = '--api-key=[REDACTED]'
+        break
+      }
     }
   }
 
