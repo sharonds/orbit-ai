@@ -31,21 +31,20 @@ async function runMigrate(
   flags: GlobalFlags,
   opts: { preview?: boolean; apply?: boolean; rollback?: boolean; id?: string; yes?: boolean },
 ): Promise<void> {
-  const isDestructive = opts.rollback || opts.apply
+  // Only --rollback is always destructive (no preview step)
+  const isDefinitelyDestructive = opts.rollback
   const isTTY = process.stdout.isTTY
-  // --yes may be consumed by the global flag parser (parent opts) or the subcommand opts
   const confirmed = opts.yes === true || flags.yes === true
 
-  if (isDestructive && !confirmed) {
+  if (isDefinitelyDestructive && !confirmed) {
     if (isJsonMode() || !isTTY) {
       process.stdout.write(JSON.stringify(DESTRUCTIVE_ERROR) + '\n', () => {
         process.exit(1)
       })
       return
     }
-    // TTY mode: prompt (basic readline prompt)
-    const confirmed = await confirmAction('Are you sure you want to run this migration? [y/N] ')
-    if (!confirmed) {
+    const ok = await confirmAction('Are you sure you want to run this migration? [y/N] ')
+    if (!ok) {
       process.stdout.write('Aborted.\n')
       process.exit(1)
       return
@@ -65,6 +64,36 @@ async function runMigrate(
   }
 
   if (opts.apply) {
+    // Preview first to detect destructive operations
+    const preview = await client.schema.previewMigration({})
+    const previewStr = JSON.stringify(preview).toLowerCase()
+    const hasDestructive =
+      (typeof (preview as { destructive?: boolean }).destructive === 'boolean'
+        ? (preview as { destructive?: boolean }).destructive
+        : false) ||
+      /\b(drop|rename)\b/.test(previewStr)
+
+    if (hasDestructive && !confirmed) {
+      if (isJsonMode() || !isTTY) {
+        process.stdout.write(
+          JSON.stringify({
+            ...DESTRUCTIVE_ERROR,
+            error: { ...DESTRUCTIVE_ERROR.error, preview },
+          }) + '\n',
+          () => { process.exit(1) },
+        )
+        return
+      }
+      const ok = await confirmAction(
+        'This migration contains destructive operations. Confirm? [y/N] ',
+      )
+      if (!ok) {
+        process.stdout.write('Aborted.\n')
+        process.exit(1)
+        return
+      }
+    }
+
     const result = await client.schema.applyMigration({})
     if (isJsonMode()) {
       process.stdout.write(JSON.stringify(result, null, 2) + '\n')
