@@ -56,7 +56,12 @@ function resolveAdapter(flags: GlobalFlags, config: OrbitConfig, cwd: string): S
     // Resolve actual file path from file: URI or bare path
     let dbPath: string
     if (dbUrl.startsWith('file:')) {
-      dbPath = dbUrl.slice(5)
+      // Use URL.pathname to correctly handle file:///abs/path and file:/abs/path
+      try {
+        dbPath = new URL(dbUrl).pathname
+      } catch {
+        dbPath = dbUrl.slice(5) // fallback for malformed but non-rejectable file: URIs
+      }
     } else {
       dbPath = dbUrl || path.join(cwd, '.orbit', 'orbit.db')
     }
@@ -134,8 +139,10 @@ export function resolveClient(options: ResolveContextOptions): OrbitClient {
   resolvedConfig.mode = mode
   const apiKeyFromEnvName =
     mergedFileConfig.apiKeyEnv ? env[mergedFileConfig.apiKeyEnv] : undefined
+  // Priority: CLI flag > ORBIT_API_KEY env > apiKeyEnv-indirected env > literal key in config file
+  // apiKeyEnv beats the literal apiKey so operators can inject at runtime without storing in the file
   const apiKey =
-    flags.apiKey ?? env['ORBIT_API_KEY'] ?? mergedFileConfig.apiKey ?? apiKeyFromEnvName
+    flags.apiKey ?? env['ORBIT_API_KEY'] ?? apiKeyFromEnvName ?? mergedFileConfig.apiKey
   if (apiKey !== undefined) resolvedConfig.apiKey = apiKey
   const baseUrl = flags.baseUrl ?? env['ORBIT_BASE_URL'] ?? mergedFileConfig.baseUrl
   if (baseUrl !== undefined) resolvedConfig.baseUrl = baseUrl

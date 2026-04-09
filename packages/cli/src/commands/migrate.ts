@@ -66,12 +66,12 @@ async function runMigrate(
   if (opts.apply) {
     // Preview first to detect destructive operations
     const preview = await client.schema.previewMigration({})
-    const previewStr = JSON.stringify(preview).toLowerCase()
+    // Rely only on the explicit destructive flag — regex matching on serialised JSON
+    // causes false positives for field names or descriptions containing "drop"/"rename"
     const hasDestructive =
-      (typeof (preview as { destructive?: boolean }).destructive === 'boolean'
+      typeof (preview as { destructive?: boolean }).destructive === 'boolean'
         ? (preview as { destructive?: boolean }).destructive
-        : false) ||
-      /\b(drop|rename)\b/.test(previewStr)
+        : false
 
     if (hasDestructive && !confirmed) {
       if (isJsonMode() || !isTTY) {

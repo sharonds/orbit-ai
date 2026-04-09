@@ -11,13 +11,14 @@ export function registerSeedCommand(program: Command): void {
     .option('--count <n>', 'Number of example records to create', '5')
     .action(async (opts) => {
       const flags = program.opts() as GlobalFlags
-      await runSeed(flags, Number(opts.count))
+      await runSeed(flags, Number(opts.count), process.cwd())
     })
 }
 
-async function runSeed(flags: GlobalFlags, count: number): Promise<void> {
+async function runSeed(flags: GlobalFlags, count: number, cwd?: string): Promise<void> {
   // Resolve effective mode: flag > config file > default 'api'
-  const fileConfig = loadConfig()
+  // Pass cwd so resolution matches what resolveClient will use (avoids divergence in tests)
+  const fileConfig = loadConfig(cwd)
   const effectiveMode = flags.mode ?? fileConfig.mode ?? 'api'
 
   if (effectiveMode !== 'direct') {
