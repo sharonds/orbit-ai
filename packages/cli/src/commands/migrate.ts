@@ -31,6 +31,13 @@ async function runMigrate(
   flags: GlobalFlags,
   opts: { preview?: boolean; apply?: boolean; rollback?: boolean; id?: string; yes?: boolean },
 ): Promise<void> {
+  if (!opts.preview && !opts.apply && !opts.rollback) {
+    throw new CliValidationError(
+      'orbit migrate requires --preview, --apply, or --rollback.',
+      { code: 'MISSING_REQUIRED_ARG', path: 'subcommand' },
+    )
+  }
+
   // Only --rollback is always destructive (no preview step)
   const isDefinitelyDestructive = opts.rollback
   const isTTY = process.stdout.isTTY
@@ -38,9 +45,8 @@ async function runMigrate(
 
   if (isDefinitelyDestructive && !confirmed) {
     if (isJsonMode() || !isTTY) {
-      process.stdout.write(JSON.stringify(DESTRUCTIVE_ERROR) + '\n', () => {
-        process.exit(1)
-      })
+      process.stdout.write(JSON.stringify(DESTRUCTIVE_ERROR) + '\n')
+      process.exit(1)
       return
     }
     const ok = await confirmAction('Are you sure you want to run this migration? [y/N] ')
@@ -55,11 +61,7 @@ async function runMigrate(
 
   if (opts.preview) {
     const preview = await client.schema.previewMigration({})
-    if (isJsonMode()) {
-      process.stdout.write(JSON.stringify(preview, null, 2) + '\n')
-    } else {
-      process.stdout.write(JSON.stringify(preview, null, 2) + '\n')
-    }
+    process.stdout.write(JSON.stringify(preview, null, 2) + '\n')
     return
   }
 
@@ -80,8 +82,8 @@ async function runMigrate(
             ...DESTRUCTIVE_ERROR,
             error: { ...DESTRUCTIVE_ERROR.error, preview },
           }) + '\n',
-          () => { process.exit(1) },
         )
+        process.exit(1)
         return
       }
       const ok = await confirmAction(
