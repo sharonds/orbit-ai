@@ -33,6 +33,7 @@ import { registerMcpCommand } from './commands/mcp.js'
 import { registerIntegrationsCommand } from './commands/integrations.js'
 
 let _jsonMode = false
+let _sigintHandler: (() => void) | null = null
 
 export function isJsonMode(): boolean {
   return _jsonMode
@@ -176,7 +177,9 @@ export function createProgram(): Command {
 
 export async function run(): Promise<void> {
   _jsonMode = false  // reset from any previous invocation
-  process.once('SIGINT', () => { process.exit(130) })
+  if (_sigintHandler) process.removeListener('SIGINT', _sigintHandler)
+  _sigintHandler = () => { process.exit(130) }
+  process.once('SIGINT', _sigintHandler)
 
   // Detect JSON mode from argv before preAction hook can fire
   // (preAction only fires if Commander reaches the command — parse errors fire before it)

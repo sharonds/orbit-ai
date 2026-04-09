@@ -58,9 +58,20 @@ function resolveAdapter(flags: GlobalFlags, config: OrbitConfig, cwd: string): S
     if (dbUrl.startsWith('file:')) {
       // Use URL.pathname to correctly handle file:///abs/path and file:/abs/path
       try {
-        dbPath = new URL(dbUrl).pathname
-      } catch {
-        dbPath = dbUrl.slice(5) // fallback for malformed but non-rejectable file: URIs
+        const parsed = new URL(dbUrl)
+        if (parsed.hostname && parsed.hostname !== 'localhost') {
+          throw new CliValidationError(
+            `SQLite file: URI must not specify a remote host. Got hostname: '${parsed.hostname}'`,
+            { code: 'MISSING_REQUIRED_CONFIG', path: 'databaseUrl' },
+          )
+        }
+        dbPath = parsed.pathname
+      } catch (err) {
+        if (err instanceof CliValidationError) throw err
+        throw new CliValidationError(
+          `Malformed file: URI for SQLite database: '${dbUrl}'. Use 'file:///absolute/path' or a bare file path.`,
+          { code: 'INVALID_DATABASE_URL', path: 'databaseUrl' },
+        )
       }
     } else {
       dbPath = dbUrl || path.join(cwd, '.orbit', 'orbit.db')
