@@ -4,6 +4,10 @@ Orbit AI's Model Context Protocol server.
 
 This package exposes the fixed 23-tool Orbit MCP surface over the accepted SDK and API contracts.
 
+Runtime requirement:
+
+- `@orbit-ai/mcp` currently requires Node.js 22+.
+
 Direct mode trust boundary:
 
 - Direct mode is for trusted local embeddings only.

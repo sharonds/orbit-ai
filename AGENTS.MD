@@ -186,6 +186,10 @@ orbit --json migrate --preview
 - pnpm 9+
 - A Supabase, Neon, or local Postgres instance (for integration tests)
 
+Package-specific floor:
+
+- `@orbit-ai/mcp` currently requires Node.js 22+ even though the broader repository baseline is Node.js 20+.
+
 ### Setup
 
 ```bash
