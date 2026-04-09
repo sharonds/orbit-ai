@@ -104,6 +104,13 @@ function createTestAdapter(): StorageAdapter {
     async transaction(fn) {
       return runtimeDb.transaction(fn)
     },
+    beginTransaction() {
+      return {
+        async run(_ctx, fn) {
+          return runtimeDb.transaction(fn)
+        },
+      }
+    },
     async execute(statement) {
       return runtimeDb.execute(statement)
     },
