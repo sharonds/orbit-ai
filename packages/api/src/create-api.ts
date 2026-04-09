@@ -59,7 +59,7 @@ export function createApi(options: CreateApiOptions) {
   app.use('/v1/*', authMiddleware(options.adapter))
   app.use('/v1/*', tenantContextMiddleware(options.adapter))
   app.use('/v1/*', rateLimitMiddleware())
-  app.use('/v1/*', idempotencyMiddleware())
+  app.use('/v1/*', idempotencyMiddleware(options.idempotencyStore ? { store: options.idempotencyStore } : {}))
 
   // Core services — use pre-built services if provided, otherwise create
   // from adapter. RuntimeApiAdapter is a subset of StorageAdapter;
