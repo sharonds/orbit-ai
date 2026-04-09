@@ -2,7 +2,7 @@
 
 Date: 2026-04-09
 Status: Active working hub
-Current baseline commit: `3205584` (feat/cli)
+Current baseline commit: `78d6108` (main) / `48fc5f1` (fix/pr-review-findings, pending PR)
 
 ## What Orbit Is
 
@@ -209,6 +209,7 @@ These are still open, but they do not block the KB:
 - 2026-04-09: Created [cli-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/cli-implementation-plan.md) as the next package-level execution baseline, explicitly grounding CLI work in the checked-in API/SDK packages and calling out current dependency gaps for direct adapter resolution and `@orbit-ai/mcp`.
 - 2026-04-09: Created [mcp-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/mcp-implementation-plan.md) as the MCP execution baseline, fixing the package around the 23-tool core contract and calling out current dependency gates for schema, export, and analytics tool families.
 - 2026-04-09: Completed `@orbit-ai/cli` on branch `feat/cli` (7 implementation slices, A–G). Codex review surfaced 11 issues; all fixed. Three agent-panel review rounds (6 reviewers) surfaced 17 additional issues; all fixed. Final state: 161 tests, 17 test files, 0 typecheck errors, clean build. Key fixes: Commander `exitOverride` + `instanceof CommanderError`, `isJsonMode()` unification, `apiKeyEnv` config resolution, nested-cwd discovery, `--profile` implementation, SQLite default path + `file://hostname` rejection, synchronous `write+exit` throughout, `confirmAction` extracted to `utils/prompt.ts` with stdin EOF/error cleanup, `seed` count validation, `migrate` no-flags guard. PR opened and merged to main.
+- 2026-04-09: Analyzed PRs #22–26 Copilot/Codex review comments (24 findings across 5 PRs). All addressed on branch `fix/pr-review-findings`: `SEARCH_RESULT_TOO_LARGE` HTTP 400 parity, duplicate import fix, `PAYLOAD_TOO_LARGE` 413, `deleteField` SDK type, `AbortSignal.timeout` leak fix, `links.next` suppressed for all POST search routes (entity + global), `beginTransaction` DRY via `withTenantContext` delegation, `--format` choices guard, dashboard await, seed error contract, `orgName` typed, config trust hardening, security review artifact added. Final state: 328+194+281+170 = **973 tests passing**.
 
 ## Working Rule
 
