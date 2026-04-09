@@ -52,9 +52,31 @@ describe('workflow tools', () => {
       data: [{ id: 'activity_01', subject: 'a'.repeat(6000), description: 'b'.repeat(6000) }],
     } as never)
     const result = await executeTool(client, 'list_activities', {})
-    const text = JSON.stringify(parseTextResult(result))
+    const parsed = parseTextResult(result)
+    const text = JSON.stringify(parsed)
     expect(text.length).toBeLessThan(12000)
     expect(text).toContain('[truncated]')
+    expect(parsed.meta.truncated).toBe(true)
+  })
+
+  it('list_activities forwards supported filters', async () => {
+    const client = makeMockClient()
+    await executeTool(client, 'list_activities', {
+      contact_id: 'contact_01',
+      company_id: 'company_01',
+      deal_id: 'deal_01',
+      user_id: 'user_01',
+      type: 'email',
+      limit: 5,
+    })
+    expect(client.activities.list).toHaveBeenCalledWith({
+      contact_id: 'contact_01',
+      company_id: 'company_01',
+      deal_id: 'deal_01',
+      user_id: 'user_01',
+      type: 'email',
+      limit: 5,
+    })
   })
 
   it('bulk_operation direct mode emits audit log before delete batch', async () => {

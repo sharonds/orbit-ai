@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { toToolError } from '../errors.js'
+import { OrbitApiError } from '@orbit-ai/sdk'
+import { normalizeToolError, toToolError, toToolSuccess } from '../errors.js'
 import { getTextContent, parseTextResult } from './helpers.js'
 
 describe('toToolError', () => {
@@ -28,5 +29,40 @@ describe('toToolError', () => {
   it('uses text content blocks', () => {
     const result = toToolError({ code: 'INTERNAL_ERROR', message: 'boom' })
     expect(result.content[0]?.type).toBe('text')
+  })
+
+  it('normalizes zod errors into validation failures', () => {
+    const error = normalizeToolError({
+      code: 'VALIDATION_FAILED',
+      message: 'invalid field',
+    })
+    expect(error.code).toBe('VALIDATION_FAILED')
+    expect(error.hint).toBeTruthy()
+    expect(error.recovery).toBeTruthy()
+  })
+
+  it('normalizes OrbitApiError paths with sanitized hint and recovery', () => {
+    const error = new OrbitApiError({
+      code: 'AUTH_INVALID_API_KEY',
+      message: 'Bearer leakedtoken',
+      hint: 'secret token',
+      recovery: 'refresh JWT eyJabc.def.ghi',
+      requestId: 'req_01',
+    } as never, 401)
+    const normalized = normalizeToolError(error)
+    expect(normalized.code).toBe('AUTH_INVALID')
+    expect(normalized.message).not.toContain('leakedtoken')
+    expect(normalized.hint).not.toContain('secret')
+    expect(normalized.recovery).not.toContain('eyJabc.def.ghi')
+  })
+})
+
+describe('toToolSuccess', () => {
+  it('returns structured success content', () => {
+    const result = toToolSuccess({ id: 'record_01' }, { truncated: true })
+    const parsed = parseTextResult(result)
+    expect(parsed.ok).toBe(true)
+    expect(parsed.data.id).toBe('record_01')
+    expect(parsed.meta.truncated).toBe(true)
   })
 })

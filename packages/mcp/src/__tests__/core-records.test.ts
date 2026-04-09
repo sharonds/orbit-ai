@@ -46,6 +46,17 @@ describe('core record tools', () => {
     expect(client.contacts.update).toHaveBeenCalledWith('contact_01', { name: 'Jane' })
   })
 
+  it('update_record blocks webhook SSRF URLs in direct mode', async () => {
+    const client = makeMockClient({ direct: true })
+    const result = await executeTool(client, 'update_record', {
+      object_type: 'webhooks',
+      record_id: 'webhook_01',
+      record: { url: 'http://127.0.0.1/hook', events: ['contact.created'] },
+    })
+    expect(result.isError).toBe(true)
+    expect(parseTextResult(result).error.code).toBe('SSRF_BLOCKED')
+  })
+
   it('delete_record with confirm true deletes', async () => {
     const client = makeMockClient()
     const result = await executeTool(client, 'delete_record', { object_type: 'contacts', record_id: 'contact_01', confirm: true })
@@ -102,6 +113,48 @@ describe('core record tools', () => {
     expect(client.contacts.update).toHaveBeenCalledWith('contact_01', { company_id: 'company_01' })
   })
 
+  it('relate_records tag detach path calls tags.detach', async () => {
+    const client = makeMockClient()
+    await executeTool(client, 'relate_records', {
+      relationship_type: 'tag',
+      source_record_id: 'contact_01',
+      target_record_id: 'tag_01',
+      detach: true,
+    })
+    expect(client.tags.detach).toHaveBeenCalled()
+  })
+
+  it('relate_records contact_deal path patches deal contact_id', async () => {
+    const client = makeMockClient()
+    await executeTool(client, 'relate_records', {
+      relationship_type: 'contact_deal',
+      source_record_id: 'contact_01',
+      target_record_id: 'deal_01',
+    })
+    expect(client.deals.update).toHaveBeenCalledWith('deal_01', { contact_id: 'contact_01' })
+  })
+
+  it('relate_records company_deal path patches deal company_id', async () => {
+    const client = makeMockClient()
+    await executeTool(client, 'relate_records', {
+      relationship_type: 'company_deal',
+      source_record_id: 'company_01',
+      target_record_id: 'deal_01',
+    })
+    expect(client.deals.update).toHaveBeenCalledWith('deal_01', { company_id: 'company_01' })
+  })
+
+  it('relate_records rejects unknown record prefixes for tag relationships', async () => {
+    const client = makeMockClient()
+    const result = await executeTool(client, 'relate_records', {
+      relationship_type: 'tag',
+      source_record_id: 'mystery_01',
+      target_record_id: 'tag_01',
+    })
+    expect(result.isError).toBe(true)
+    expect(parseTextResult(result).error.code).toBe('VALIDATION_FAILED')
+  })
+
   it('bulk_operation enforces confirm for delete actions', async () => {
     const client = makeMockClient()
     const result = await executeTool(client, 'bulk_operation', {
@@ -120,6 +173,20 @@ describe('core record tools', () => {
     } as never)
     expect(result.isError).toBe(true)
     expect(parseTextResult(result).error.code).toBe('UNSUPPORTED_OBJECT_TYPE')
+  })
+
+  it('bulk_operation rejects more than 100 operations', async () => {
+    const client = makeMockClient()
+    const result = await executeTool(client, 'bulk_operation', {
+      object_type: 'contacts',
+      operations: Array.from({ length: 101 }, (_, index) => ({
+        action: 'delete',
+        record_id: `contact_${index}`,
+        confirm: true,
+      })),
+    } as never)
+    expect(result.isError).toBe(true)
+    expect(parseTextResult(result).error.code).toBe('VALIDATION_FAILED')
   })
 
   it('list_related_records stays dependency-gated', async () => {
