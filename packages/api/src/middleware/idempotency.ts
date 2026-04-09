@@ -21,6 +21,15 @@ export interface StoredResponse {
 export interface IdempotencyStore {
   get(key: string): Promise<StoredResponse | undefined>
   set(key: string, value: StoredResponse): Promise<void>
+  /**
+   * Remove entries older than the store's TTL. Called before each lookup.
+   *
+   * The default MemoryIdempotencyStore iterates its Map, which is cheap.
+   * Custom implementations backed by Redis or a DB SHOULD self-throttle
+   * (e.g. probabilistic eviction, TTL-based expiry at the storage layer,
+   * or a no-op if eviction is handled out-of-band) to avoid running a
+   * full sweep on every mutating request.
+   */
   evictExpired(): Promise<void>
 }
 
@@ -95,18 +104,38 @@ export function idempotencyMiddleware(
       return
     }
 
-    await store.evictExpired()
+    // Store operations are wrapped in try-catch so a failing custom store
+    // (e.g. Redis network error) degrades gracefully instead of crashing
+    // the request with an unhandled 500.
+    try {
+      await store.evictExpired()
+    } catch (evictErr) {
+      console.error('[idempotency] evictExpired failed, proceeding without eviction:', evictErr)
+    }
 
     const orgId = c.get('orbit')?.orgId ?? 'unknown'
     const routeKey = `${orgId}:${c.req.method}:${c.req.path}:${key}`
-    const existing = await store.get(routeKey)
+
+    let existing: StoredResponse | undefined
+    try {
+      existing = await store.get(routeKey)
+    } catch (getErr) {
+      // If we can't read from the store, skip idempotency and process
+      // the request normally. This avoids crashing on store failures.
+      console.error('[idempotency] store.get failed, skipping idempotency check:', getErr)
+      await next()
+      c.header('idempotency-key', key)
+      return
+    }
 
     let bodyText = ''
     try {
       const parsed = await c.req.json()
       bodyText = JSON.stringify(parsed)
-    } catch {
-      // no body or not JSON
+    } catch (parseErr) {
+      // Only swallow JSON parse errors (no body or not JSON). Re-throw
+      // unexpected errors (OOM, AbortError, etc.) so they surface.
+      if (!(parseErr instanceof SyntaxError)) throw parseErr
     }
     const currentHash = bodyText || 'null'
 
@@ -128,14 +157,22 @@ export function idempotencyMiddleware(
 
     await next()
 
+    // Store the response for future replay. If store.set() fails, the
+    // response was already sent — log the error but don't crash. The
+    // next request with the same idempotency key will re-execute the
+    // handler (no replay), which is safer than crashing.
     const cloned = c.res.clone()
     const responseBody = await cloned.text()
-    await store.set(routeKey, {
-      status: c.res.status,
-      body: responseBody,
-      requestHash: currentHash,
-      createdAt: Date.now(),
-    })
+    try {
+      await store.set(routeKey, {
+        status: c.res.status,
+        body: responseBody,
+        requestHash: currentHash,
+        createdAt: Date.now(),
+      })
+    } catch (setErr) {
+      console.error('[idempotency] store.set failed, response not cached for replay:', setErr)
+    }
 
     c.header('idempotency-key', key)
   }

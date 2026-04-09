@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import { OrbitError } from '@orbit-ai/core'
-import { idempotencyMiddleware, _resetIdempotencyStore } from '../middleware/idempotency.js'
+import { idempotencyMiddleware, _resetIdempotencyStore, type IdempotencyStore, type StoredResponse } from '../middleware/idempotency.js'
 import { orbitErrorHandler } from '../middleware/error-handler.js'
 import { requestIdMiddleware } from '../middleware/request-id.js'
 import '../context.js'
@@ -232,9 +232,9 @@ describe('idempotency middleware', () => {
 
   it('uses a custom IdempotencyStore when provided via middleware options', async () => {
     const calls: string[] = []
-    const customStore = {
+    const customStore: IdempotencyStore = {
       async get(key: string) { calls.push(`get:${key}`); return undefined },
-      async set(key: string, _value: any) { calls.push(`set:${key}`) },
+      async set(key: string, _value: StoredResponse) { calls.push(`set:${key}`) },
       async evictExpired() { calls.push('evictExpired') },
     }
 
@@ -242,10 +242,10 @@ describe('idempotency middleware', () => {
     app.onError(orbitErrorHandler)
     app.use('*', requestIdMiddleware())
     app.use('*', async (c, next) => {
-      c.set('orbit', { orgId: 'org_test', scopes: ['*'] } as any)
+      c.set('orbit', { orgId: 'org_test', scopes: ['*'] })
       await next()
     })
-    app.use('*', idempotencyMiddleware({ store: customStore as any }))
+    app.use('*', idempotencyMiddleware({ store: customStore }))
 
     app.post('/v1/contacts', async (c) => {
       return c.json({ id: 'ct_001' }, 201)
