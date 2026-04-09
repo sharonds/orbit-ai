@@ -158,13 +158,14 @@ export function writeDirectModeAuditLog(payload: Record<string, unknown>): void 
   process.stderr.write(`${JSON.stringify(payload)}\n`)
 }
 
-async function safeReadResource<T>(reader: () => Promise<T>): Promise<T> {
+export async function safeReadResource<T>(reader: () => Promise<T>): Promise<T> {
   try {
     return await reader()
   } catch (error) {
     const normalized = normalizeToolError(error)
-    // MCP resource reads currently surface plain Error instances, so we preserve the sanitized
-    // message here and intentionally drop the richer tool-style code/hint/recovery metadata.
-    throw new Error(normalized.message)
+    // Resource readers surface errors as thrown Error instances. We normalize through
+    // normalizeToolError for redaction and log the structured code before re-throwing.
+    writeStderrWarning(`MCP resource read failed [${normalized.code}]: ${normalized.message}`)
+    throw new McpToolError(normalized.code, normalized.message, normalized.hint, normalized.recovery)
   }
 }

@@ -3,7 +3,7 @@ import { truncateUnknownStrings } from './truncation.js'
 
 export interface McpIntegrationConnectionRead {
   id?: string
-  object?: 'integration_connection'
+  object: 'integration_connection'
   organization_id?: string
   provider?: string
   connection_type?: string
@@ -87,5 +87,5 @@ export function toMcpIntegrationConnectionRead(record: Record<string, unknown>):
 }
 
 function isSensitiveKey(key: string): boolean {
-  return /(token|secret|password|private[_-]?key|client[_-]?secret)/i.test(key)
+  return /(token|secret|password|private[_-]?key|client[_-]?secret|api[_-]?key)/i.test(key)
 }
