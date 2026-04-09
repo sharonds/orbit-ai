@@ -15,9 +15,9 @@ const ImportSourceSchema = z.enum(['csv', 'json', 'inline'])
 const CreateImportSchema = z.object({
   source: ImportSourceSchema,
   entity: z.string().min(1).max(64),
-  rows: z.array(z.record(z.unknown())).optional(),
+  rows: z.array(z.record(z.string(), z.unknown())).optional(),
   file_id: z.string().min(1).max(128).optional(),
-  options: z.record(z.unknown()).optional(),
+  options: z.record(z.string(), z.unknown()).optional(),
 })
 
 export function registerImportRoutes(app: Hono, services: CoreServices) {
