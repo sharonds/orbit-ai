@@ -10,6 +10,7 @@ export function toEnvelope<T>(
   c: Context,
   data: T,
   page?: InternalPaginatedResult<unknown>,
+  options?: { omitNextLink?: boolean },
 ): OrbitEnvelope<T> {
   const links: OrbitEnvelope<T>['links'] = { self: c.req.path }
 
@@ -18,7 +19,12 @@ export function toEnvelope<T>(
   // `cursor` query parameter set to the new next_cursor and any
   // existing `cursor` overwritten. Consumers can follow `links.next`
   // directly without manually rebuilding the URL.
-  if (page && page.hasMore && page.nextCursor) {
+  //
+  // `omitNextLink` must be set for POST-body paginated routes (e.g.
+  // POST /v1/search) where the cursor lives in the JSON body, not the
+  // query string. Appending `?cursor=…` to the URL would silently drop
+  // the body criteria, producing an incorrect and misleading link.
+  if (page && page.hasMore && page.nextCursor && !options?.omitNextLink) {
     try {
       const reqUrl = new URL(c.req.url)
       reqUrl.searchParams.set('cursor', page.nextCursor)

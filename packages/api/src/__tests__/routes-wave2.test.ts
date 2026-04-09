@@ -11,7 +11,6 @@ import { registerRelationshipRoutes } from '../routes/relationships.js'
 import { registerObjectRoutes } from '../routes/objects.js'
 import { orbitErrorHandler } from '../middleware/error-handler.js'
 import { registerOrganizationRoutes } from '../routes/organizations.js'
-import { orbitErrorHandler } from '../middleware/error-handler.js'
 
 // --- Helper: create a minimal Hono app with middleware ---
 

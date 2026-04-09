@@ -233,4 +233,50 @@ describe('DirectTransport wrapEnvelope links.next', () => {
     expect(result.meta.has_more).toBe(false)
     expect(result.links.next).toBeUndefined()
   })
+
+  it('omits links.next for POST /v1/search because the cursor belongs in the body', async () => {
+    const transport = new DirectTransport(makeDirectOptions())
+    const result = (transport as any).wrapEnvelope('POST', '/v1/search', undefined, {
+      data: [{ id: 'contact_01' }],
+      nextCursor: 'cursor_body',
+      hasMore: true,
+    })
+
+    expect(result.meta.has_more).toBe(true)
+    expect(result.meta.next_cursor).toBe('cursor_body')
+    expect(result.links.next).toBeUndefined()
+  })
+
+  it('omits links.next for POST /v1/contacts/search because the cursor belongs in the body', async () => {
+    const adapter = await createRealAdapter()
+    const transport = new DirectTransport({
+      adapter,
+      context: { orgId: ORG_ID },
+      version: '2026-04-01',
+    })
+    const ctx = { orgId: ORG_ID, scopes: ['*'] as const }
+
+    await adapter.withTenantContext(ctx, async () => {
+      await transport.request({
+        method: 'POST',
+        path: '/v1/contacts',
+        body: { name: 'Alice Entity Search', email: 'alice-entity@example.com' },
+      })
+      await transport.request({
+        method: 'POST',
+        path: '/v1/contacts',
+        body: { name: 'Bob Entity Search', email: 'bob-entity@example.com' },
+      })
+    })
+
+    const result = await transport.request({
+      method: 'POST',
+      path: '/v1/contacts/search',
+      body: { query: 'Entity Search', limit: 1 },
+    })
+
+    expect(result.meta.has_more).toBe(true)
+    expect(result.meta.next_cursor).toBeTruthy()
+    expect(result.links.next).toBeUndefined()
+  })
 })

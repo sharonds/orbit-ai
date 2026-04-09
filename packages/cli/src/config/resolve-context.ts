@@ -1,5 +1,4 @@
 import * as path from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
 import { Pool } from 'pg'
 import {
   createSqliteStorageAdapter,
@@ -49,7 +48,7 @@ function resolveAdapter(flags: GlobalFlags, config: OrbitConfig, cwd: string): S
       }
       throw new CliValidationError(
         `SQLite database URL must be a file path or file: URI, not a remote URL. Scheme+host: '${safeUrl}'`,
-        { code: 'MISSING_REQUIRED_CONFIG', path: 'databaseUrl' },
+        { code: 'INVALID_DATABASE_URL', path: 'databaseUrl' },
       )
     }
 
@@ -62,7 +61,7 @@ function resolveAdapter(flags: GlobalFlags, config: OrbitConfig, cwd: string): S
         if (parsed.hostname && parsed.hostname !== 'localhost') {
           throw new CliValidationError(
             `SQLite file: URI must not specify a remote host. Got hostname: '${parsed.hostname}'`,
-            { code: 'MISSING_REQUIRED_CONFIG', path: 'databaseUrl' },
+            { code: 'INVALID_DATABASE_URL', path: 'databaseUrl' },
           )
         }
         dbPath = parsed.pathname

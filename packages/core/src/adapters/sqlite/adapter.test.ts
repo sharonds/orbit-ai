@@ -99,6 +99,60 @@ describe('SqliteStorageAdapter', () => {
     }
   })
 
+  describe('beginTransaction().run', () => {
+    it('rejects before entering the transaction when orgId is an empty string', async () => {
+      const transaction = vi.fn(async (fn: (tx: OrbitDatabase) => Promise<string>) => fn(database))
+      const database = {
+        transaction,
+        execute: async () => undefined,
+        query: async () => [],
+      } as OrbitDatabase
+      const adapter = createSqliteStorageAdapter({ database })
+      const scope = adapter.beginTransaction()
+
+      await expect(scope.run({ orgId: '' }, async () => 'ok')).rejects.toThrow(
+        'Expected organization ID with prefix "org_"',
+      )
+      expect(transaction).not.toHaveBeenCalled()
+    })
+
+    it('rejects before entering the transaction when orgId is not a valid ULID', async () => {
+      const transaction = vi.fn(async (fn: (tx: OrbitDatabase) => Promise<string>) => fn(database))
+      const database = {
+        transaction,
+        execute: async () => undefined,
+        query: async () => [],
+      } as OrbitDatabase
+      const adapter = createSqliteStorageAdapter({ database })
+      const scope = adapter.beginTransaction()
+
+      await expect(scope.run({ orgId: 'not-a-valid-id' }, async () => 'ok')).rejects.toThrow()
+      expect(transaction).not.toHaveBeenCalled()
+    })
+
+    it('invokes the callback with a transaction-scoped database for a valid orgId', async () => {
+      const transaction = vi.fn(async (fn: (tx: OrbitDatabase) => Promise<string>) => fn(database))
+      const database = {
+        transaction,
+        execute: async () => undefined,
+        query: async () => [],
+      } as OrbitDatabase
+      const adapter = createSqliteStorageAdapter({ database })
+      const scope = adapter.beginTransaction()
+
+      const result = await scope.run(
+        { orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY' },
+        async (txDb) => {
+          expect(txDb).toBe(database)
+          return 'done'
+        },
+      )
+
+      expect(result).toBe('done')
+      expect(transaction).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it('migrate() respects a custom migrate function when provided', async () => {
     const customMigrate = vi.fn(async () => undefined)
     const database = {
