@@ -18,13 +18,13 @@ import type { GlobalFlags } from '../types.js'
  * - API key authentication: no key validation occurs
  * - Rate limiting: no throttling on operations
  * - Scope enforcement: org isolation is the caller's responsibility
- * - SSRF protection: no outbound request filtering
+ * - Input validation: database URL / path is not validated beyond scheme and prefix checks
  *
  * Direct mode is trusted-caller-only. Ensure the database is local and the caller is authorized.
  */
 
 const DIRECT_MODE_WARNING =
-  'Warning: direct mode bypasses API key authentication, rate limiting, scope enforcement, and SSRF protection. Ensure the caller is trusted and the database is local.\n'
+  'Warning: direct mode bypasses API key authentication, rate limiting, and scope enforcement. Ensure the caller is trusted and the database is local.\n'
 
 export interface ResolveContextOptions {
   flags: GlobalFlags
@@ -140,7 +140,8 @@ export function resolveClient(options: ResolveContextOptions): OrbitClient {
   const apiKeyFromEnvName =
     mergedFileConfig.apiKeyEnv ? env[mergedFileConfig.apiKeyEnv] : undefined
   // Priority: CLI flag > ORBIT_API_KEY env > apiKeyEnv-indirected env > literal key in config file
-  // apiKeyEnv beats the literal apiKey so operators can inject at runtime without storing in the file
+  // apiKeyEnv lets the config file name a custom env var (e.g. MY_APP_KEY) for environments
+  // where ORBIT_API_KEY is not the standard name.
   const apiKey =
     flags.apiKey ?? env['ORBIT_API_KEY'] ?? apiKeyFromEnvName ?? mergedFileConfig.apiKey
   if (apiKey !== undefined) resolvedConfig.apiKey = apiKey

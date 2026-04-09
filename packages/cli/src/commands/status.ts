@@ -15,16 +15,10 @@ export function registerStatusCommand(program: Command): void {
 
 async function runStatus(flags: GlobalFlags): Promise<void> {
   const client = resolveClient({ flags })
-  // Try a lightweight call — list users with limit 1
-  try {
-    await client.users.list({ limit: 1 })
-    if (isJsonMode()) {
-      process.stdout.write(JSON.stringify({ status: 'ok', connected: true }) + '\n')
-    } else {
-      process.stdout.write('Status: connected\n')
-    }
-  } catch (e) {
-    // Re-throw so run()'s top-level handler applies the standard { error: ... } contract.
-    throw e
+  await client.users.list({ limit: 1 })
+  if (isJsonMode()) {
+    process.stdout.write(JSON.stringify({ status: 'ok', connected: true }) + '\n')
+  } else {
+    process.stdout.write('Status: connected\n')
   }
 }

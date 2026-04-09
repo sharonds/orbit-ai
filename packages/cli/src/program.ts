@@ -1,4 +1,4 @@
-import { Command } from 'commander'
+import { Command, CommanderError } from 'commander'
 import { CliValidationError, CliConfigError, CliNotImplementedError } from './errors.js'
 import type { GlobalFlags } from './types.js'
 import { registerInitCommand } from './commands/init.js'
@@ -78,17 +78,12 @@ function classifyError(error: unknown): { code: number; payload: Record<string, 
     }
   }
   // Commander parse/validation errors (exitOverride surfaces these as CommanderError)
-  if (
-    error instanceof Error &&
-    error.constructor.name === 'CommanderError' &&
-    'exitCode' in error
-  ) {
-    const ce = error as { exitCode: number; code?: string; message: string }
+  if (error instanceof CommanderError) {
     return {
-      code: ce.exitCode === 0 ? 0 : 2,
+      code: error.exitCode === 0 ? 0 : 2,
       payload: {
-        code: ce.code ?? 'COMMANDER_ERROR',
-        message: ce.message,
+        code: error.code ?? 'COMMANDER_ERROR',
+        message: error.message,
       },
     }
   }
@@ -180,6 +175,7 @@ export function createProgram(): Command {
 }
 
 export async function run(): Promise<void> {
+  _jsonMode = false  // reset from any previous invocation
   process.once('SIGINT', () => { process.exit(130) })
 
   // Detect JSON mode from argv before preAction hook can fire
