@@ -12,12 +12,15 @@ import { CliValidationError, CliUnsupportedAdapterError } from '../errors.js'
 import { loadConfig, type OrbitConfig } from './files.js'
 import type { GlobalFlags } from '../types.js'
 
-// Direct mode trust boundary — the following middleware protections are NOT active in direct mode:
-// - API key authentication
-// - Rate limiting
-// - Scope enforcement (org isolation is the caller's responsibility)
-// - SSRF protection
-// When using direct mode, ensure the caller is trusted and the database is local.
+/**
+ * Direct-mode trust boundaries — the following middleware protections are NOT active in direct mode:
+ * - API key authentication: no key validation occurs
+ * - Rate limiting: no throttling on operations
+ * - Scope enforcement: org isolation is the caller's responsibility
+ * - SSRF protection: no outbound request filtering
+ *
+ * Direct mode is trusted-caller-only. Ensure the database is local and the caller is authorized.
+ */
 
 const DIRECT_MODE_WARNING =
   'Warning: direct mode bypasses API key authentication, rate limiting, scope enforcement, and SSRF protection. Ensure the caller is trusted and the database is local.\n'

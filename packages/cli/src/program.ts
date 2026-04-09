@@ -29,6 +29,8 @@ import { registerSchemaCommand } from './commands/schema.js'
 import { registerFieldsCommand } from './commands/fields.js'
 import { registerReportCommand } from './commands/report.js'
 import { registerDashboardCommand } from './commands/dashboard.js'
+import { registerMcpCommand } from './commands/mcp.js'
+import { registerIntegrationsCommand } from './commands/integrations.js'
 
 let _jsonMode = false
 
@@ -153,16 +155,10 @@ export function createProgram(): Command {
   registerFieldsCommand(program)
   registerReportCommand(program)
   registerDashboardCommand(program)
-  registerStubCommand(program, 'mcp', 'MCP server commands')
-  registerStubCommand(program, 'integrations', 'Integration commands')
+  registerMcpCommand(program)
+  registerIntegrationsCommand(program)
 
   return program
-}
-
-function registerStubCommand(program: Command, name: string, description: string): void {
-  program.command(name).description(description).allowUnknownOption(true).action(() => {
-    // Stub — will be replaced by actual implementation in later slices
-  })
 }
 
 export async function run(): Promise<void> {
