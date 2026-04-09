@@ -1,4 +1,5 @@
-import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import type { OrbitAuthContext, OrbitDatabase, StorageAdapter } from '../../adapters/interface.js'
+import { createTxBoundAdapter } from '../../adapters/tx-bound-adapter.js'
 import {
   createTenantSqliteRepository,
   fromSqliteBoolean,
@@ -23,6 +24,8 @@ export interface PipelineRepository {
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
   list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<PipelineRecord>>
   search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<PipelineRecord>>
+  /** See `SequenceRepository.withDatabase` — same contract. */
+  withDatabase(txDb: OrbitDatabase): PipelineRepository
 }
 
 export function createInMemoryPipelineRepository(seed: PipelineRecord[] = []): PipelineRepository {
@@ -33,7 +36,7 @@ export function createInMemoryPipelineRepository(seed: PipelineRecord[] = []): P
     return [...rows.values()].filter((record) => record.organizationId === orgId)
   }
 
-  return {
+  const repo: PipelineRepository = {
     async create(ctx, record) {
       const orgId = assertOrgContext(ctx)
       if (record.organizationId !== orgId) {
@@ -85,11 +88,15 @@ export function createInMemoryPipelineRepository(seed: PipelineRecord[] = []): P
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
+    withDatabase() {
+      return repo
+    },
   }
+  return repo
 }
 
 export function createSqlitePipelineRepository(adapter: StorageAdapter): PipelineRepository {
-  return createTenantSqliteRepository<PipelineRecord>(adapter, {
+  const base = createTenantSqliteRepository<PipelineRecord>(adapter, {
     tableName: 'pipelines',
     columns: ['id', 'organization_id', 'name', 'is_default', 'description', 'created_at', 'updated_at'],
     searchableFields: ['name', 'description'],
@@ -118,10 +125,16 @@ export function createSqlitePipelineRepository(adapter: StorageAdapter): Pipelin
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createSqlitePipelineRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }
 
 export function createPostgresPipelineRepository(adapter: StorageAdapter): PipelineRepository {
-  return createTenantPostgresRepository<PipelineRecord>(adapter, {
+  const base = createTenantPostgresRepository<PipelineRecord>(adapter, {
     tableName: 'pipelines',
     columns: ['id', 'organization_id', 'name', 'is_default', 'description', 'created_at', 'updated_at'],
     searchableFields: ['name', 'description'],
@@ -150,4 +163,10 @@ export function createPostgresPipelineRepository(adapter: StorageAdapter): Pipel
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createPostgresPipelineRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }

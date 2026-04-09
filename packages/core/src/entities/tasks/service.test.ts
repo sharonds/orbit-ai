@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { createNoopTransactionScope } from '../../adapters/noop-transaction-scope.js'
 import { createInMemoryCompanyRepository } from '../companies/repository.js'
 import { createCompanyService } from '../companies/service.js'
 import { createInMemoryContactRepository } from '../contacts/repository.js'
@@ -30,9 +31,9 @@ async function createLinkedDealGraph() {
 
   const companyService = createCompanyService(companies)
   const contactService = createContactService({ contacts, companies })
-  const pipelineService = createPipelineService(pipelines)
+  const pipelineService = createPipelineService({ pipelines, tx: createNoopTransactionScope() })
   const stageService = createStageService({ stages, pipelines })
-  const dealService = createDealService({ deals, pipelines, stages, contacts, companies })
+  const dealService = createDealService({ deals, pipelines, stages, contacts, companies, tx: createNoopTransactionScope() })
   const taskService = createTaskService({ tasks, contacts, companies, deals, users })
 
   const company = await companyService.create(ctx, { name: 'Orbit Labs' })
@@ -180,5 +181,34 @@ describe('task service', () => {
     ).rejects.toMatchObject({
       code: 'RELATION_NOT_FOUND',
     })
+  })
+
+  it('preserves completedAt across non-completion updates on already-completed tasks (T9/L9)', async () => {
+    const taskService = createTaskService({
+      tasks: createInMemoryTaskRepository(),
+      contacts: createInMemoryContactRepository(),
+      companies: createInMemoryCompanyRepository(),
+      deals: createInMemoryDealRepository(),
+      users: createInMemoryUserRepository(),
+    })
+
+    const created = await taskService.create(ctx, { title: 'Initial title' })
+    expect(created.isCompleted).toBe(false)
+    expect(created.completedAt).toBeNull()
+
+    const completedAt = new Date('2026-04-05T10:00:00.000Z')
+    const completed = await taskService.update(ctx, created.id, {
+      isCompleted: true,
+      completedAt,
+    })
+    expect(completed.isCompleted).toBe(true)
+    expect(completed.completedAt?.toISOString()).toBe(completedAt.toISOString())
+
+    // Update the title only — completedAt must NOT be reset to a new value
+    // and must remain the original completion timestamp.
+    const renamed = await taskService.update(ctx, created.id, { title: 'New title' })
+    expect(renamed.title).toBe('New title')
+    expect(renamed.isCompleted).toBe(true)
+    expect(renamed.completedAt?.toISOString()).toBe(completedAt.toISOString())
   })
 })

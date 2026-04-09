@@ -267,6 +267,11 @@ export function createCoreServices(
   adapter: StorageAdapter,
   overrides: CoreRepositoryOverrides = {},
 ) {
+  // One transaction scope per service container — services capture this in
+  // their deps and use it for any operation that must wrap a read-then-write
+  // (uniqueness checks, multi-step graph mutations) in a real transaction.
+  const tx = adapter.beginTransaction()
+
   const organizations = resolveCoreRepository({
     adapter,
     override: overrides.organizations,
@@ -747,9 +752,9 @@ export function createCoreServices(
   return {
     companies: createCompanyService(companies),
     contacts: createContactService({ contacts, companies }),
-    pipelines: createPipelineService(pipelines),
+    pipelines: createPipelineService({ pipelines, tx }),
     stages: createStageService({ stages, pipelines }),
-    deals: createDealService({ deals, pipelines, stages, contacts, companies }),
+    deals: createDealService({ deals, pipelines, stages, contacts, companies, tx }),
     get activities() {
       activitiesService ??= createActivityService({
         activities: getActivitiesRepository(),
@@ -792,6 +797,7 @@ export function createCoreServices(
     },
     get payments() {
       paymentsService ??= createPaymentService({
+        tx,
         payments: getPaymentsRepository(),
         contacts,
         deals,
@@ -814,6 +820,7 @@ export function createCoreServices(
         sequences: getSequencesRepository(),
         sequenceSteps: getSequenceStepsRepository(),
         sequenceEnrollments: getSequenceEnrollmentsRepository(),
+        tx,
       })
 
       return sequencesService
@@ -823,6 +830,7 @@ export function createCoreServices(
         sequenceSteps: getSequenceStepsRepository(),
         sequences: getSequencesRepository(),
         sequenceEvents: getSequenceEventsRepository(),
+        tx,
       })
 
       return sequenceStepsService
@@ -833,6 +841,7 @@ export function createCoreServices(
         sequences: getSequencesRepository(),
         contacts,
         sequenceEvents: getSequenceEventsRepository(),
+        tx,
       })
 
       return sequenceEnrollmentsService
@@ -849,6 +858,7 @@ export function createCoreServices(
     get tags() {
       tagsService ??= createTagService({
         tags: getTagsRepository(),
+        tx,
       })
 
       return tagsService

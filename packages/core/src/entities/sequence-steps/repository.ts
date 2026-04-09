@@ -1,4 +1,5 @@
-import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import type { OrbitAuthContext, OrbitDatabase, StorageAdapter } from '../../adapters/interface.js'
+import { createTxBoundAdapter } from '../../adapters/tx-bound-adapter.js'
 import { createTenantPostgresRepository, fromPostgresDate, fromPostgresJson } from '../../repositories/postgres/shared.js'
 import { createTenantSqliteRepository, fromSqliteDate, fromSqliteJson, toSqliteDate, toSqliteJson } from '../../repositories/sqlite/shared.js'
 import { assertTenantPatchOrganizationInvariant } from '../../repositories/tenant-guards.js'
@@ -14,6 +15,8 @@ export interface SequenceStepRepository {
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
   list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<SequenceStepRecord>>
   search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<SequenceStepRecord>>
+  /** See `SequenceRepository.withDatabase` — same contract. */
+  withDatabase(txDb: OrbitDatabase): SequenceStepRepository
 }
 
 const SEQUENCE_STEP_SEARCHABLE_FIELDS = ['action_type', 'template_subject', 'template_body', 'task_title', 'task_description']
@@ -32,7 +35,7 @@ export function createInMemorySequenceStepRepository(seed: SequenceStepRecord[] 
     return [...rows.values()].filter((record) => record.organizationId === orgId)
   }
 
-  return {
+  const repo: SequenceStepRepository = {
     async create(ctx, record) {
       const orgId = assertOrgContext(ctx)
       if (record.organizationId !== orgId) {
@@ -87,11 +90,15 @@ export function createInMemorySequenceStepRepository(seed: SequenceStepRecord[] 
         defaultSort: SEQUENCE_STEP_DEFAULT_SORT,
       })
     },
+    withDatabase() {
+      return repo
+    },
   }
+  return repo
 }
 
 export function createSqliteSequenceStepRepository(adapter: StorageAdapter): SequenceStepRepository {
-  return createTenantSqliteRepository<SequenceStepRecord>(adapter, {
+  const base = createTenantSqliteRepository<SequenceStepRecord>(adapter, {
     tableName: 'sequence_steps',
     columns: [
       'id',
@@ -146,10 +153,16 @@ export function createSqliteSequenceStepRepository(adapter: StorageAdapter): Seq
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createSqliteSequenceStepRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }
 
 export function createPostgresSequenceStepRepository(adapter: StorageAdapter): SequenceStepRepository {
-  return createTenantPostgresRepository<SequenceStepRecord>(adapter, {
+  const base = createTenantPostgresRepository<SequenceStepRecord>(adapter, {
     tableName: 'sequence_steps',
     columns: [
       'id',
@@ -204,4 +217,10 @@ export function createPostgresSequenceStepRepository(adapter: StorageAdapter): S
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createPostgresSequenceStepRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }

@@ -74,6 +74,53 @@ describe('toEnvelope', () => {
     expect(body.meta.request_id).toBe('req_test2')
     expect(body.links.self).toBe('/v1/contacts')
   })
+
+  describe('links.next (T9/L7)', () => {
+    it('builds links.next with the new cursor when hasMore is true', async () => {
+      const app = createTestApp()
+      app.get('/v1/contacts', (c) => {
+        const records = [{ id: 'c_001' }]
+        const page = { data: records, nextCursor: 'cursor_xyz', hasMore: true }
+        return c.json(toEnvelope(c, records, page))
+      })
+
+      const res = await app.request('/v1/contacts?limit=25')
+      const body = (await res.json()) as OrbitEnvelope<{ id: string }[]>
+      expect(body.links.next).toBeDefined()
+      // The next URL should contain the new cursor and be server-relative.
+      expect(body.links.next).toContain('cursor=cursor_xyz')
+      expect(body.links.next).toContain('/v1/contacts')
+      // The original limit query param should be preserved.
+      expect(body.links.next).toContain('limit=25')
+    })
+
+    it('overwrites an existing cursor query param', async () => {
+      const app = createTestApp()
+      app.get('/v1/contacts', (c) => {
+        const records = [{ id: 'c_002' }]
+        const page = { data: records, nextCursor: 'cursor_page2', hasMore: true }
+        return c.json(toEnvelope(c, records, page))
+      })
+
+      const res = await app.request('/v1/contacts?cursor=cursor_page1')
+      const body = (await res.json()) as OrbitEnvelope<{ id: string }[]>
+      expect(body.links.next).toContain('cursor=cursor_page2')
+      expect(body.links.next).not.toContain('cursor_page1')
+    })
+
+    it('omits links.next when hasMore is false', async () => {
+      const app = createTestApp()
+      app.get('/v1/contacts', (c) => {
+        const records = [{ id: 'c_001' }]
+        const page = { data: records, nextCursor: null, hasMore: false }
+        return c.json(toEnvelope(c, records, page))
+      })
+
+      const res = await app.request('/v1/contacts')
+      const body = (await res.json()) as OrbitEnvelope<{ id: string }[]>
+      expect(body.links.next).toBeUndefined()
+    })
+  })
 })
 
 // --- toError ---

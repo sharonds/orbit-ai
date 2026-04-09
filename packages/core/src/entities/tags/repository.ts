@@ -1,4 +1,5 @@
-import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import type { OrbitAuthContext, OrbitDatabase, StorageAdapter } from '../../adapters/interface.js'
+import { createTxBoundAdapter } from '../../adapters/tx-bound-adapter.js'
 import { createTenantPostgresRepository, fromPostgresDate } from '../../repositories/postgres/shared.js'
 import { createTenantSqliteRepository, fromSqliteDate, toSqliteDate } from '../../repositories/sqlite/shared.js'
 import { assertTenantPatchOrganizationInvariant } from '../../repositories/tenant-guards.js'
@@ -14,6 +15,8 @@ export interface TagRepository {
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
   list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<TagRecord>>
   search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<TagRecord>>
+  /** See `SequenceRepository.withDatabase` — same contract. */
+  withDatabase(txDb: OrbitDatabase): TagRepository
 }
 
 const TAG_SEARCHABLE_FIELDS = ['name', 'color']
@@ -28,7 +31,7 @@ export function createInMemoryTagRepository(seed: TagRecord[] = []): TagReposito
     return [...rows.values()].filter((record) => record.organizationId === orgId)
   }
 
-  return {
+  const repo: TagRepository = {
     async create(ctx, record) {
       const orgId = assertOrgContext(ctx)
       if (record.organizationId !== orgId) {
@@ -83,11 +86,15 @@ export function createInMemoryTagRepository(seed: TagRecord[] = []): TagReposito
         defaultSort: TAG_DEFAULT_SORT,
       })
     },
+    withDatabase() {
+      return repo
+    },
   }
+  return repo
 }
 
 export function createSqliteTagRepository(adapter: StorageAdapter): TagRepository {
-  return createTenantSqliteRepository<TagRecord>(adapter, {
+  const base = createTenantSqliteRepository<TagRecord>(adapter, {
     tableName: 'tags',
     columns: [
       'id',
@@ -121,10 +128,16 @@ export function createSqliteTagRepository(adapter: StorageAdapter): TagRepositor
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createSqliteTagRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }
 
 export function createPostgresTagRepository(adapter: StorageAdapter): TagRepository {
-  return createTenantPostgresRepository<TagRecord>(adapter, {
+  const base = createTenantPostgresRepository<TagRecord>(adapter, {
     tableName: 'tags',
     columns: [
       'id',
@@ -158,4 +171,10 @@ export function createPostgresTagRepository(adapter: StorageAdapter): TagReposit
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createPostgresTagRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }

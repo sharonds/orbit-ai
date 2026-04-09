@@ -17,13 +17,51 @@ const cursorPayloadSchema = z.object({
 
 export type CursorPayload = z.infer<typeof cursorPayloadSchema>
 
+// Cross-runtime base64url codec. Node.js exposes `Buffer`, while browser /
+// edge / Deno / Bun runtimes only guarantee `btoa`/`atob`. The SDK ships
+// `cursor.ts` to consumers via `@orbit-ai/core`, so we cannot assume Buffer
+// exists. The detection is intentionally lazy (per-call) so tests and
+// runtime polyfills that mutate `globalThis.Buffer` are honored.
+function utf8ToBase64Url(input: string): string {
+  if (typeof globalThis.Buffer !== 'undefined') {
+    return globalThis.Buffer.from(input, 'utf8').toString('base64url')
+  }
+  // btoa accepts Latin-1 only — encode UTF-8 first via TextEncoder, then
+  // map each byte to a Latin-1 char so btoa produces valid base64.
+  const bytes = new TextEncoder().encode(input)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i] as number)
+  }
+  return globalThis
+    .btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+}
+
+function base64UrlToUtf8(input: string): string {
+  if (typeof globalThis.Buffer !== 'undefined') {
+    return globalThis.Buffer.from(input, 'base64url').toString('utf8')
+  }
+  // Restore base64 padding before atob.
+  const padded = input.replace(/-/g, '+').replace(/_/g, '/')
+  const padLength = (4 - (padded.length % 4)) % 4
+  const binary = globalThis.atob(padded + '='.repeat(padLength))
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i)
+  }
+  return new TextDecoder().decode(bytes)
+}
+
 export function encodeCursor(payload: CursorPayload): string {
-  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')
+  return utf8ToBase64Url(JSON.stringify(payload))
 }
 
 export function decodeCursor(cursor: string): CursorPayload {
   try {
-    const decoded = Buffer.from(cursor, 'base64url').toString('utf8')
+    const decoded = base64UrlToUtf8(cursor)
     return cursorPayloadSchema.parse(JSON.parse(decoded))
   } catch {
     throw createOrbitError({
