@@ -28,6 +28,7 @@ import { registerLogCommand } from './commands/log.js'
 import { registerSchemaCommand } from './commands/schema.js'
 import { registerFieldsCommand } from './commands/fields.js'
 import { registerReportCommand } from './commands/report.js'
+import { registerDashboardCommand } from './commands/dashboard.js'
 
 let _jsonMode = false
 
@@ -151,7 +152,7 @@ export function createProgram(): Command {
   registerSchemaCommand(program)
   registerFieldsCommand(program)
   registerReportCommand(program)
-  registerStubCommand(program, 'dashboard', 'Interactive dashboard')
+  registerDashboardCommand(program)
   registerStubCommand(program, 'mcp', 'MCP server commands')
   registerStubCommand(program, 'integrations', 'Integration commands')
 
