@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import React from 'react'
 import { PassThrough } from 'node:stream'
 import { render } from 'ink'
@@ -37,6 +37,7 @@ describe('Ink views', () => {
 
   afterEach(() => {
     Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, writable: true, configurable: true })
+    vi.restoreAllMocks()
   })
 
   describe('PipelineBoard', () => {
@@ -93,6 +94,23 @@ describe('Ink views', () => {
 
       expect(output.trim()).toBe('')
     })
+
+    it('returns empty output when isJsonMode is true', async () => {
+      // Import the program module and spy on isJsonMode to return true
+      const programModule = await import('../program.js')
+      const spy = vi.spyOn(programModule, 'isJsonMode').mockReturnValue(true)
+
+      const { PipelineBoard } = await import('../ink/pipeline-board.js')
+
+      const output = await renderToString(
+        React.createElement(PipelineBoard, {
+          stages: [{ id: 's1', name: 'Test', deals: [{ id: 'd1', title: 'Deal X' }] }],
+        }),
+      )
+
+      spy.mockRestore()
+      expect(output.trim()).toBe('')
+    })
   })
 
   describe('Confirm', () => {
@@ -107,6 +125,78 @@ describe('Ink views', () => {
       )
 
       expect(output).toContain('Are you sure?')
+    })
+
+    it('calls onConfirm(true) when y is pressed', async () => {
+      const { Confirm } = await import('../interactive/confirm.js')
+
+      const onConfirm = vi.fn()
+      const stdinStream = new PassThrough() as PassThrough & {
+        isTTY?: boolean
+        setRawMode?: (raw: boolean) => void
+        ref?: () => void
+        unref?: () => void
+      }
+      stdinStream.isTTY = true
+      stdinStream.setRawMode = () => {}
+      stdinStream.ref = () => {}
+      stdinStream.unref = () => {}
+      const stdoutStream = new PassThrough()
+
+      const instance = render(
+        React.createElement(Confirm, { message: 'Confirm?', onConfirm }),
+        {
+          stdout: stdoutStream as unknown as NodeJS.WriteStream,
+          stdin: stdinStream as unknown as NodeJS.ReadStream,
+          debug: true,
+          patchConsole: false,
+        },
+      )
+
+      await new Promise((r) => setTimeout(r, 50))
+      stdinStream.write('y')
+      await new Promise((r) => setTimeout(r, 100))
+
+      instance.unmount()
+      instance.cleanup()
+
+      expect(onConfirm).toHaveBeenCalledWith(true)
+    })
+
+    it('calls onConfirm(false) when n is pressed', async () => {
+      const { Confirm } = await import('../interactive/confirm.js')
+
+      const onConfirm = vi.fn()
+      const stdinStream = new PassThrough() as PassThrough & {
+        isTTY?: boolean
+        setRawMode?: (raw: boolean) => void
+        ref?: () => void
+        unref?: () => void
+      }
+      stdinStream.isTTY = true
+      stdinStream.setRawMode = () => {}
+      stdinStream.ref = () => {}
+      stdinStream.unref = () => {}
+      const stdoutStream = new PassThrough()
+
+      const instance = render(
+        React.createElement(Confirm, { message: 'Confirm?', onConfirm }),
+        {
+          stdout: stdoutStream as unknown as NodeJS.WriteStream,
+          stdin: stdinStream as unknown as NodeJS.ReadStream,
+          debug: true,
+          patchConsole: false,
+        },
+      )
+
+      await new Promise((r) => setTimeout(r, 50))
+      stdinStream.write('n')
+      await new Promise((r) => setTimeout(r, 100))
+
+      instance.unmount()
+      instance.cleanup()
+
+      expect(onConfirm).toHaveBeenCalledWith(false)
     })
   })
 })
