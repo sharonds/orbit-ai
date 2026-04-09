@@ -93,15 +93,9 @@ export class SqliteStorageAdapter implements StorageAdapter {
   }
 
   beginTransaction(): TransactionScope {
-    const adapter = this
     return {
-      async run<T>(ctx: OrbitAuthContext, fn: (txDb: OrbitDatabase) => Promise<T>): Promise<T> {
-        // SQLite has no RLS / set_config — the orgId is enforced at the
-        // repository layer by appending organization_id to every query.
-        // We still validate the orgId shape so a misformed ctx fails fast.
-        assertOrbitId(ctx.orgId, 'organization')
-        return adapter.unsafeRawDatabase.transaction(fn)
-      },
+      run: <T>(ctx: OrbitAuthContext, fn: (txDb: OrbitDatabase) => Promise<T>): Promise<T> =>
+        this.withTenantContext(ctx, fn),
     }
   }
 
