@@ -3,6 +3,7 @@ import { generateId } from '../../ids/generate-id.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import type { EntityService } from '../../services/entity-service.js'
 import { createOrbitError } from '../../types/errors.js'
+import { MAX_LIST_LIMIT } from '../../query/list-query.js'
 import type { PipelineRepository } from './repository.js'
 import {
   pipelineCreateInputSchema,
@@ -59,7 +60,7 @@ async function demoteOtherDefaults(
   do {
     const page = await repo.list(ctx, {
       filter: { is_default: true },
-      limit: 100,
+      limit: MAX_LIST_LIMIT,
       ...(cursor !== undefined ? { cursor } : {}),
     })
     for (const record of page.data) {
