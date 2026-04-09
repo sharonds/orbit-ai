@@ -130,6 +130,22 @@ function tryRealpath(p: string): string {
   }
 }
 
+/** Collect real paths of all ancestors of dir up to and including home (inclusive). */
+function ancestorRoots(dir: string, home: string): string[] {
+  const roots: string[] = []
+  let current = tryRealpath(dir)
+  const realHome = tryRealpath(home)
+  while (true) {
+    roots.push(current)
+    if (current === realHome) break
+    const parent = path.dirname(current)
+    if (parent === current) break // filesystem root
+    current = parent
+  }
+  if (!roots.includes(realHome)) roots.push(realHome)
+  return roots
+}
+
 export function loadConfig(
   cwd: string = process.cwd(),
   overrideHome?: string,
@@ -137,7 +153,8 @@ export function loadConfig(
   const home = overrideHome ?? os.homedir()
   // Resolve roots through symlinks so canonicalizePath comparisons work on
   // macOS where /tmp → /private/tmp (and similarly for /var/folders).
-  const allowedRoots = [tryRealpath(cwd), tryRealpath(home)]
+  // Include all ancestors of cwd so configs found by walking up are allowed.
+  const allowedRoots = ancestorRoots(cwd, home)
 
   // User config
   const userPath = path.join(home, '.config', 'orbit', 'config.json')
