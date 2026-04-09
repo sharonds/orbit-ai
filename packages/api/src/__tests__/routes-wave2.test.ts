@@ -11,11 +11,13 @@ import { registerRelationshipRoutes } from '../routes/relationships.js'
 import { registerObjectRoutes } from '../routes/objects.js'
 import { orbitErrorHandler } from '../middleware/error-handler.js'
 import { registerOrganizationRoutes } from '../routes/organizations.js'
+import { orbitErrorHandler } from '../middleware/error-handler.js'
 
 // --- Helper: create a minimal Hono app with middleware ---
 
 function createRouteTestApp(scopes: string[] = ['*']) {
   const app = new Hono()
+  app.onError(orbitErrorHandler)
   app.use('*', requestIdMiddleware())
   app.use('/v1/*', versionMiddleware('2026-04-01'))
   app.use('/v1/*', async (c, next) => {
@@ -28,6 +30,65 @@ function createRouteTestApp(scopes: string[] = ['*']) {
   })
   return app
 }
+
+describe('Shared pagination validation at the HTTP layer', () => {
+  it('rejects invalid limit on generic entity list routes', async () => {
+    const services = mockWave2CoreServices()
+    const app = createRouteTestApp()
+    registerPublicEntityRoutes(app, services)
+
+    const res = await app.request('/v1/activities?limit=abc')
+    expect(res.status).toBe(400)
+    const body = await res.json() as { error: { code: string } }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
+  })
+
+  it('rejects invalid limit on admin list routes', async () => {
+    const services = mockWave2CoreServices()
+    const app = createRouteTestApp(['admin:*'])
+    registerPublicEntityRoutes(app, services)
+    const { registerAdminRoutes } = await import('../routes/admin.js')
+    registerAdminRoutes(app, services)
+
+    const res = await app.request('/v1/admin/api_keys?limit=abc')
+    expect(res.status).toBe(400)
+    const body = await res.json() as { error: { code: string } }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
+  })
+
+  it('rejects invalid limit on imports list routes', async () => {
+    const services = mockWave2CoreServices()
+    const app = createRouteTestApp()
+    registerImportRoutes(app, services)
+
+    const res = await app.request('/v1/imports?limit=abc')
+    expect(res.status).toBe(400)
+    const body = await res.json() as { error: { code: string } }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
+  })
+
+  it('rejects invalid limit on webhook list routes', async () => {
+    const services = mockWave2CoreServices()
+    const app = createRouteTestApp()
+    registerWebhookRoutes(app, services)
+
+    const res = await app.request('/v1/webhooks?limit=abc')
+    expect(res.status).toBe(400)
+    const body = await res.json() as { error: { code: string } }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
+  })
+
+  it('rejects invalid limit on webhook deliveries routes', async () => {
+    const services = mockWave2CoreServices()
+    const app = createRouteTestApp()
+    registerWebhookRoutes(app, services)
+
+    const res = await app.request('/v1/webhooks/wh_01/deliveries?limit=abc')
+    expect(res.status).toBe(400)
+    const body = await res.json() as { error: { code: string } }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
+  })
+})
 
 // --- Mock services ---
 

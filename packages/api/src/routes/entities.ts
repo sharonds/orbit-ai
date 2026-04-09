@@ -1,40 +1,13 @@
 import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
+import { resolvePublicEntityServiceKey } from '@orbit-ai/core'
 import { toEnvelope, toError, sanitizePublicRead, sanitizePublicPage } from '../responses.js'
 import { requireScope } from '../scopes.js'
-
-const PUBLIC_ENTITY_CAPABILITIES = {
-  contacts: { read: true, write: true, batch: true },
-  companies: { read: true, write: true, batch: true },
-  deals: { read: true, write: true, batch: true },
-  pipelines: { read: true, write: true, batch: false },
-  stages: { read: true, write: true, batch: false },
-  users: { read: true, write: true, batch: false },
-  // Wave 2 entities
-  activities: { read: true, write: true, batch: true },
-  tasks: { read: true, write: true, batch: true },
-  notes: { read: true, write: true, batch: true },
-  products: { read: true, write: true, batch: true },
-  payments: { read: true, write: true, batch: true },
-  contracts: { read: true, write: true, batch: true },
-  sequences: { read: true, write: true, batch: true },
-  sequence_steps: { read: true, write: true, batch: false },
-  sequence_enrollments: { read: true, write: true, batch: false },
-  sequence_events: { read: true, write: false, batch: false },
-  tags: { read: true, write: true, batch: true },
-  // imports: dedicated routes in imports.ts (not in generic entity loop)
-} as const
-
-type PublicEntityName = keyof typeof PUBLIC_ENTITY_CAPABILITIES
-
-const ENTITY_SERVICE_MAP: Record<string, string> = {
-  sequence_steps: 'sequenceSteps',
-  sequence_enrollments: 'sequenceEnrollments',
-  sequence_events: 'sequenceEvents',
-}
+import { paginationParams } from '../utils/pagination.js'
+import { PUBLIC_ENTITY_CAPABILITIES, type PublicEntityName } from './entity-capabilities.js'
 
 function resolveService(services: CoreServices, entity: PublicEntityName) {
-  const serviceKey = ENTITY_SERVICE_MAP[entity] ?? entity
+  const serviceKey = resolvePublicEntityServiceKey(entity)
   return services[serviceKey as keyof CoreServices] as any
 }
 
@@ -44,8 +17,7 @@ export function registerPublicEntityRoutes(app: Hono, services: CoreServices) {
 
     // GET /v1/<entity> — list
     app.get(`/v1/${entity}`, requireScope(`${entity}:read`), async (c) => {
-      const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined
-      const cursor = c.req.query('cursor') ?? undefined
+      const { limit, cursor } = paginationParams(c)
       const include = c.req.query('include')?.split(',').filter(Boolean)
       const service = resolveService(services, typedEntity)
       const result = await service.list(c.get('orbit'), { limit, cursor, include })

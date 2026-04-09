@@ -79,3 +79,9 @@ export * from './types/entities.js'
 export * from './types/errors.js'
 export * from './types/pagination.js'
 export * from './types/schema.js'
+export {
+  PUBLIC_ENTITY_SERVICE_MAP,
+  PUBLIC_ENTITIES_WITH_UNDERSCORE,
+  resolvePublicEntityServiceKey,
+  type PublicEntityWithUnderscore,
+} from './public-entity-map.js'

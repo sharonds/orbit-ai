@@ -1,4 +1,4 @@
-import { createCoreServices, type OrbitEnvelope, type OrbitAuthContext } from '@orbit-ai/core'
+import { createCoreServices, resolvePublicEntityServiceKey, type OrbitEnvelope, type OrbitAuthContext } from '@orbit-ai/core'
 import type { OrbitClientOptions } from '../config.js'
 import type { OrbitTransport, TransportRequest } from './index.js'
 import { OrbitApiError } from '../errors.js'
@@ -39,6 +39,12 @@ import { OrbitApiError } from '../errors.js'
  * Tracked for refactor: extract the SSRF validation + scope check functions
  * from `@orbit-ai/api` into a shared layer both transports can call.
  */
+
+/** @deprecated Use `resolvePublicEntityServiceKey` from `@orbit-ai/core` directly. */
+export function resolveServiceKey(entity: string): string {
+  return resolvePublicEntityServiceKey(entity)
+}
+
 export class DirectTransport implements OrbitTransport {
   private readonly services: ReturnType<typeof createCoreServices>
   private readonly ctx: OrbitAuthContext
@@ -109,7 +115,8 @@ export class DirectTransport implements OrbitTransport {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const service = (this.services as any)[entity] as
+    const serviceKey = resolvePublicEntityServiceKey(entity)
+    const service = (this.services as any)[serviceKey] as
       | { list?: Function; create?: Function; get?: Function; update?: Function; delete?: Function; search?: Function; batch?: Function }
       | undefined
     if (!service) throw new Error(`Unknown entity: ${entity}`)
