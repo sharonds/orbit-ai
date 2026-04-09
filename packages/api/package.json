@@ -1,15 +1,58 @@
 {
   "name": "@orbit-ai/api",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0-alpha.0",
+  "description": "Hono-based REST API for Orbit AI — multi-tenant CRM server with auth, tenant isolation, and idempotency",
+  "keywords": [
+    "crm",
+    "ai-agents",
+    "orbit-ai",
+    "typescript",
+    "hono",
+    "rest-api",
+    "multi-tenant"
+  ],
+  "author": "Orbit AI Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sharonds/orbit-ai.git",
+    "directory": "packages/api"
+  },
+  "homepage": "https://github.com/sharonds/orbit-ai#readme",
+  "bugs": {
+    "url": "https://github.com/sharonds/orbit-ai/issues"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./node": { "types": "./dist/node.d.ts", "import": "./dist/node.js" },
-    "./vercel": { "types": "./dist/vercel.d.ts", "import": "./dist/vercel.js" },
-    "./cloudflare": { "types": "./dist/cloudflare.d.ts", "import": "./dist/cloudflare.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
+    },
+    "./vercel": {
+      "types": "./dist/vercel.d.ts",
+      "import": "./dist/vercel.js"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare.d.ts",
+      "import": "./dist/cloudflare.js"
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -21,6 +64,6 @@
   "dependencies": {
     "@orbit-ai/core": "workspace:*",
     "hono": "^4.7.0",
-    "zod": "^3.23.0"
+    "zod": "^4.1.11"
   }
 }

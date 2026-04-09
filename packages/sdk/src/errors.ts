@@ -1,4 +1,4 @@
-import type { OrbitErrorShape } from '@orbit-ai/core'
+import type { OrbitErrorShape, OrbitErrorCode } from '@orbit-ai/core'
 
 export class OrbitApiError extends Error {
   constructor(
@@ -7,6 +7,18 @@ export class OrbitApiError extends Error {
   ) {
     super(error.message)
     this.name = 'OrbitApiError'
+  }
+
+  get code(): OrbitErrorCode {
+    return this.error.code
+  }
+
+  get request_id(): string | undefined {
+    return this.error.request_id
+  }
+
+  get retryable(): boolean {
+    return this.error.retryable ?? false
   }
 
   static async fromResponse(response: Response): Promise<OrbitApiError> {

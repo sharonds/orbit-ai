@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import { boolean, customFieldsColumn, index, integer, jsonb, metadata, money, orbit, text, timestamp, timestamps, uniqueIndex } from './helpers.js'
 
 export const organizations = orbit.table(
@@ -123,7 +124,18 @@ export const pipelines = orbit.table(
     description: text('description'),
     ...timestamps,
   },
-  (table) => [uniqueIndex('pipelines_org_name_idx').on(table.organizationId, table.name)],
+  (table) => [
+    uniqueIndex('pipelines_org_name_idx').on(table.organizationId, table.name),
+    // At most one default pipeline per org. Partial unique index so
+    // rows with `is_default = false` don't collide. The service layer
+    // also demotes prior defaults transactionally (L8), but this DB
+    // constraint is the multi-connection race-decider — the
+    // application-level guard alone cannot prevent two concurrent
+    // transactions from both writing their own default.
+    uniqueIndex('pipelines_org_default_unique_idx')
+      .on(table.organizationId)
+      .where(sql`is_default = true`),
+  ],
 )
 
 export const stages = orbit.table(

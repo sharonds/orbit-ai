@@ -1,4 +1,5 @@
-import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import type { OrbitAuthContext, OrbitDatabase, StorageAdapter } from '../../adapters/interface.js'
+import { createTxBoundAdapter } from '../../adapters/tx-bound-adapter.js'
 import {
   createTenantSqliteRepository,
   fromSqliteBoolean,
@@ -23,6 +24,8 @@ export interface StageRepository {
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
   list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<StageRecord>>
   search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<StageRecord>>
+  /** See `SequenceRepository.withDatabase` — same contract. */
+  withDatabase(txDb: OrbitDatabase): StageRepository
 }
 
 export function createInMemoryStageRepository(seed: StageRecord[] = []): StageRepository {
@@ -33,7 +36,7 @@ export function createInMemoryStageRepository(seed: StageRecord[] = []): StageRe
     return [...rows.values()].filter((record) => record.organizationId === orgId)
   }
 
-  return {
+  const repo: StageRepository = {
     async create(ctx, record) {
       const orgId = assertOrgContext(ctx)
       if (record.organizationId !== orgId) {
@@ -105,11 +108,15 @@ export function createInMemoryStageRepository(seed: StageRecord[] = []): StageRe
         defaultSort: [{ field: 'stage_order', direction: 'asc' }],
       })
     },
+    withDatabase() {
+      return repo
+    },
   }
+  return repo
 }
 
 export function createSqliteStageRepository(adapter: StorageAdapter): StageRepository {
-  return createTenantSqliteRepository<StageRecord>(adapter, {
+  const base = createTenantSqliteRepository<StageRecord>(adapter, {
     tableName: 'stages',
     columns: [
       'id',
@@ -168,10 +175,16 @@ export function createSqliteStageRepository(adapter: StorageAdapter): StageRepos
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createSqliteStageRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }
 
 export function createPostgresStageRepository(adapter: StorageAdapter): StageRepository {
-  return createTenantPostgresRepository<StageRecord>(adapter, {
+  const base = createTenantPostgresRepository<StageRecord>(adapter, {
     tableName: 'stages',
     columns: [
       'id',
@@ -230,4 +243,10 @@ export function createPostgresStageRepository(adapter: StorageAdapter): StageRep
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createPostgresStageRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }

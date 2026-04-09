@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { Hono } from 'hono'
+import { z } from 'zod'
 import { OrbitError } from '@orbit-ai/core'
 import { orbitErrorHandler } from '../middleware/error-handler.js'
 import { requestIdMiddleware } from '../middleware/request-id.js'
@@ -74,6 +75,35 @@ describe('orbitErrorHandler logging', () => {
       headers: { 'content-type': 'application/json' },
     })
     expect(res.status).toBe(400)
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('maps ZodError to 400 VALIDATION_FAILED with field-level hints', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const app = new Hono()
+    app.use('*', requestIdMiddleware())
+    app.onError(orbitErrorHandler)
+    // In Zod v4, `new ZodError([...])` no longer extends Error, so Hono's
+    // error boundary won't catch it. Use schema.parse() to produce a real
+    // ZodError that IS an Error instance and will reach onError.
+    const TestSchema = z.object({ name: z.string(), email: z.string() })
+    app.post('/validate', () => {
+      TestSchema.parse({ name: undefined, email: 42 })
+    })
+
+    const res = await app.request('/validate', { method: 'POST' })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as {
+      error: { code: string; message: string; hint: string; retryable: boolean }
+    }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
+    expect(body.error.message).toBe('Request body failed validation')
+    expect(body.error.hint).toContain('name')
+    expect(body.error.hint).toContain('email')
+    expect(body.error.retryable).toBe(false)
+
+    // ZodError is a client-caused validation error — not a server bug, should NOT be logged
     expect(spy).not.toHaveBeenCalled()
   })
 })

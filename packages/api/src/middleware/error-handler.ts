@@ -1,6 +1,7 @@
 import type { ErrorHandler } from 'hono'
 import { OrbitError } from '@orbit-ai/core'
 import type { OrbitErrorCode } from '@orbit-ai/core'
+import { ZodError } from 'zod'
 import '../context.js'
 
 const ERROR_STATUS_MAP: Partial<Record<OrbitErrorCode, number>> = {
@@ -23,6 +24,11 @@ const ERROR_STATUS_MAP: Partial<Record<OrbitErrorCode, number>> = {
   ADAPTER_TRANSACTION_FAILED: 500,
   RLS_GENERATION_FAILED: 500,
   WEBHOOK_DELIVERY_FAILED: 502,
+  // 413 Payload Too Large — the search query would return more than the
+  // per-entity-type row cap and must be refined before retrying.
+  SEARCH_RESULT_TOO_LARGE: 413,
+  // 413 Payload Too Large — the HTTP request body exceeds the configured limit.
+  PAYLOAD_TOO_LARGE: 413,
   INTERNAL_ERROR: 500,
 }
 
@@ -43,6 +49,33 @@ export const orbitErrorHandler: ErrorHandler = (err, c) => {
         },
       },
       status as Parameters<typeof c.json>[1],
+    )
+  }
+  // Use a duck-type guard in addition to instanceof to handle the case where
+  // multiple Zod instances are loaded (e.g. via workspace hoisting). In Zod v4,
+  // `new ZodError()` no longer extends Error, but errors thrown by schema.parse()
+  // do — they carry `name === 'ZodError'`, `_zod`, and `issues`.
+  const isZodError = (e: unknown): e is ZodError =>
+    e instanceof ZodError ||
+    (e instanceof Error &&
+      e.name === 'ZodError' &&
+      Array.isArray((e as { issues?: unknown }).issues))
+  if (isZodError(err)) {
+    const hint = err.issues
+      .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+      .join('; ')
+    return c.json(
+      {
+        error: {
+          code: 'VALIDATION_FAILED' as OrbitErrorCode,
+          message: 'Request body failed validation',
+          request_id: c.get('requestId'),
+          doc_url: 'https://orbit-ai.dev/docs/errors#validation_failed',
+          hint,
+          retryable: false,
+        },
+      },
+      400,
     )
   }
   if (err instanceof SyntaxError && err.message.includes('JSON')) {

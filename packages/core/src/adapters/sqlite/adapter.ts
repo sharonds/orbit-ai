@@ -11,6 +11,7 @@ import {
   type TransactionScope,
   type IUserResolver,
 } from '../interface.js'
+import { initializeAllSqliteSchemas } from './schema.js'
 
 const defaultUserResolver: IUserResolver = {
   async resolveByExternalAuthId() {
@@ -56,7 +57,9 @@ export class SqliteStorageAdapter implements StorageAdapter {
     this.lookupApiKey = config.lookupApiKeyForAuth ?? (async () => null)
     this.connectImpl = config.connect ?? (async () => undefined)
     this.disconnectImpl = config.disconnect ?? (async () => undefined)
-    this.migrateImpl = config.migrate ?? (async () => undefined)
+    this.migrateImpl = config.migrate ?? (async () => {
+      await initializeAllSqliteSchemas(this.unsafeRawDatabase)
+    })
     this.getSchemaSnapshotImpl =
       config.getSchemaSnapshot ??
       (async () => ({

@@ -140,7 +140,11 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
           { name: 'id', in: 'path', required: true, schema: { type: 'string', description: 'Orbit prefixed ULID (e.g. contact_01ARZ...)' } },
         ],
         responses: {
-          '204': { description: `${singular} deleted (no body)` },
+          // Orbit delete operations return a 200 envelope whose data is
+          // { id, deleted: true } — see routes/entities.ts:64. The SDK
+          // consumer already depends on this shape, so the spec must
+          // match the runtime.
+          '200': envelopeResponse(`${singular} deleted`),
           ...STANDARD_GET_ERRORS,
         },
       }

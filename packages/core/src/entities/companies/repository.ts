@@ -1,6 +1,7 @@
 import type { SearchQuery } from '../../types/api.js'
 import type { InternalPaginatedResult } from '../../types/pagination.js'
-import type { OrbitAuthContext, StorageAdapter } from '../../adapters/interface.js'
+import type { OrbitAuthContext, OrbitDatabase, StorageAdapter } from '../../adapters/interface.js'
+import { createTxBoundAdapter } from '../../adapters/tx-bound-adapter.js'
 import { createTenantSqliteRepository, fromSqliteDate, fromSqliteJson, toSqliteDate, toSqliteJson } from '../../repositories/sqlite/shared.js'
 import { createTenantPostgresRepository, fromPostgresDate, fromPostgresJson } from '../../repositories/postgres/shared.js'
 import { assertOrgContext, runArrayQuery } from '../../services/service-helpers.js'
@@ -13,6 +14,8 @@ export interface CompanyRepository {
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
   list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<CompanyRecord>>
   search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<CompanyRecord>>
+  /** See `SequenceRepository.withDatabase` — same contract. */
+  withDatabase(txDb: OrbitDatabase): CompanyRepository
 }
 
 export function createInMemoryCompanyRepository(seed: CompanyRecord[] = []): CompanyRepository {
@@ -23,7 +26,7 @@ export function createInMemoryCompanyRepository(seed: CompanyRecord[] = []): Com
     return [...rows.values()].filter((record) => record.organizationId === orgId)
   }
 
-  return {
+  const repo: CompanyRepository = {
     async create(ctx, record) {
       const orgId = assertOrgContext(ctx)
       if (record.organizationId !== orgId) {
@@ -96,11 +99,15 @@ export function createInMemoryCompanyRepository(seed: CompanyRecord[] = []): Com
         defaultSort: [{ field: 'created_at', direction: 'desc' }],
       })
     },
+    withDatabase() {
+      return repo
+    },
   }
+  return repo
 }
 
 export function createSqliteCompanyRepository(adapter: StorageAdapter): CompanyRepository {
-  return createTenantSqliteRepository<CompanyRecord>(adapter, {
+  const base = createTenantSqliteRepository<CompanyRecord>(adapter, {
     tableName: 'companies',
     columns: [
       'id',
@@ -162,10 +169,16 @@ export function createSqliteCompanyRepository(adapter: StorageAdapter): CompanyR
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createSqliteCompanyRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }
 
 export function createPostgresCompanyRepository(adapter: StorageAdapter): CompanyRepository {
-  return createTenantPostgresRepository<CompanyRecord>(adapter, {
+  const base = createTenantPostgresRepository<CompanyRecord>(adapter, {
     tableName: 'companies',
     columns: [
       'id',
@@ -227,4 +240,10 @@ export function createPostgresCompanyRepository(adapter: StorageAdapter): Compan
       })
     },
   })
+  return {
+    ...base,
+    withDatabase(txDb) {
+      return createPostgresCompanyRepository(createTxBoundAdapter(adapter, txDb))
+    },
+  }
 }

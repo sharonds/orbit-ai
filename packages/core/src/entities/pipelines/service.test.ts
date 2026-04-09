@@ -149,22 +149,83 @@ describe('pipeline, stage, and deal services', () => {
       expect(refreshedA?.isDefault).toBe(false)
     })
 
-    it('only one isDefault: true exists per org after concurrent default creates', async () => {
+    it('serial default creates — each new default demotes the prior', async () => {
       const pipelines = createInMemoryPipelineRepository()
       const pipelineSvc = createPipelineService({ pipelines, tx: createNoopTransactionScope() })
 
-      // Sequential because in-memory is single-threaded — the test still
-      // proves the demote logic runs on every default-create, not the
-      // concurrent semantics (those are exercised by the txn wrapping which
-      // is verified at the spy level for the other T4 services).
       await pipelineSvc.create(orgA, { name: 'A', isDefault: true })
       await pipelineSvc.create(orgA, { name: 'B', isDefault: true })
       await pipelineSvc.create(orgA, { name: 'C', isDefault: true })
 
       const all = await pipelines.list(orgA, { filter: { is_default: true }, limit: 100 })
       expect(all.data.filter((p) => p.isDefault).length).toBe(1)
-      // The most recently-created one wins.
       expect(all.data.find((p) => p.isDefault)?.name).toBe('C')
+    })
+
+    it('concurrent default creates — DB/in-memory partial unique index is the race-decider', async () => {
+      // The application-level `demoteOtherDefaults` closes the same-
+      // transaction race. The multi-transaction race is closed by the
+      // `pipelines_org_default_unique_idx` partial unique index. The
+      // in-memory repo mirrors that index so the test exercises the
+      // real production behavior: when three requests race to become
+      // the default, exactly one succeeds and the others surface as
+      // CONFLICT via `coercePipelineConflict`.
+      const pipelines = createInMemoryPipelineRepository()
+      const pipelineSvc = createPipelineService({ pipelines, tx: createNoopTransactionScope() })
+
+      const results = await Promise.allSettled([
+        pipelineSvc.create(orgA, { name: 'A', isDefault: true }),
+        pipelineSvc.create(orgA, { name: 'B', isDefault: true }),
+        pipelineSvc.create(orgA, { name: 'C', isDefault: true }),
+      ])
+
+      const fulfilled = results.filter((r) => r.status === 'fulfilled')
+      const rejected = results.filter((r) => r.status === 'rejected')
+      expect(fulfilled.length).toBe(1)
+      expect(rejected.length).toBe(2)
+      for (const r of rejected) {
+        if (r.status === 'rejected') {
+          expect(r.reason).toMatchObject({ code: 'CONFLICT', field: 'isDefault' })
+        }
+      }
+
+      const all = await pipelines.list(orgA, { filter: { is_default: true }, limit: 100 })
+      expect(all.data.filter((p) => p.isDefault).length).toBe(1)
+    })
+
+    it('coerces a repository partial-unique-index violation into a typed CONFLICT', async () => {
+      // Mock repo whose create throws the DB-level partial-unique-index
+      // error. This simulates the case where two concurrent Postgres
+      // transactions both pass their own application-level demote
+      // check (because each reads a snapshot without the other's
+      // in-flight write) and then both try to insert a default — the
+      // partial unique index `pipelines_org_default_unique_idx` fires
+      // on the second transaction, and `coercePipelineConflict`
+      // translates the raw DB error into an OrbitError CONFLICT.
+      const base = createInMemoryPipelineRepository()
+      const indexError = new Error(
+        'duplicate key value violates unique constraint "pipelines_org_default_unique_idx" on organization_id where is_default = true',
+      )
+      const pipelines = {
+        ...base,
+        async create() {
+          throw indexError
+        },
+        withDatabase() {
+          return pipelines
+        },
+      }
+      const pipelineSvc = createPipelineService({
+        pipelines,
+        tx: createNoopTransactionScope(),
+      })
+
+      await expect(
+        pipelineSvc.create(orgA, { name: 'Racer', isDefault: true }),
+      ).rejects.toMatchObject({
+        code: 'CONFLICT',
+        field: 'isDefault',
+      })
     })
   })
 })

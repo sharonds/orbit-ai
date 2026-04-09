@@ -94,6 +94,9 @@ const SQLITE_WAVE_1_SCHEMA_STATEMENTS = [
     created_at text not null,
     updated_at text not null
   )`,
+  // L8 partial unique index — SQLite stores booleans as integers so the
+  // WHERE clause uses `is_default = 1` rather than `is_default = true`.
+  `create unique index if not exists pipelines_org_default_unique_idx on pipelines (organization_id) where is_default = 1`,
   `create table if not exists stages (
     id text primary key,
     organization_id text not null,
@@ -484,4 +487,20 @@ export async function initializeSqliteWave2SliceDSchema(db: OrbitDatabase): Prom
   for (const statement of SQLITE_WAVE_2_SLICE_D_SCHEMA_STATEMENTS) {
     await db.execute(sql.raw(statement))
   }
+}
+
+/**
+ * Runs all Orbit schema init functions against an OrbitDatabase in the
+ * correct order (wave 1 → wave 2 slices A-E). This is the default migration
+ * implementation used by SqliteStorageAdapter when no custom `migrate` is
+ * provided. Calling it repeatedly is safe because every init function uses
+ * `create table if not exists`.
+ */
+export async function initializeAllSqliteSchemas(db: OrbitDatabase): Promise<void> {
+  await initializeSqliteWave1Schema(db)
+  await initializeSqliteWave2SliceASchema(db)
+  await initializeSqliteWave2SliceBSchema(db)
+  await initializeSqliteWave2SliceCSchema(db)
+  await initializeSqliteWave2SliceDSchema(db)
+  await initializeSqliteWave2SliceESchema(db)
 }

@@ -24,6 +24,7 @@ import type { InternalPaginatedResult } from '../types/pagination.js'
  * dead defensive code.
  */
 export const MAX_SEARCH_ROWS_PER_TYPE = 5000
+export const MAX_SEARCH_TOTAL_ROWS = 5000
 
 type SearchRecordSummary = Record<string, string | number | boolean | null>
 
@@ -182,6 +183,16 @@ export function createSearchService(deps: {
           ? fetchAllPages((page) => deps.users.search(ctx, page), queryWithoutCursor)
           : Promise.resolve([]),
       ])
+
+      const totalRows = companies.length + contacts.length + deals.length + pipelines.length + stages.length + users.length
+      if (totalRows > MAX_SEARCH_TOTAL_ROWS) {
+        throw createOrbitError({
+          code: 'SEARCH_RESULT_TOO_LARGE',
+          message: `Merged search returned ${totalRows} rows, exceeding MAX_SEARCH_TOTAL_ROWS=${MAX_SEARCH_TOTAL_ROWS}`,
+          hint: 'Pass object_types to narrow the search to specific entity types, or use a more specific query',
+          retryable: false,
+        })
+      }
 
       const rows: SearchResultRecord[] = [
         ...companies.map((record) => ({

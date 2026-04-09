@@ -1,6 +1,6 @@
 import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
-import { toEnvelope, toError } from '../responses.js'
+import { toEnvelope, toError, sanitizePublicRead } from '../responses.js'
 import { requireScope } from '../scopes.js'
 
 function notImplemented(c: any, operation: string) {
@@ -18,7 +18,7 @@ export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
     }
     const body = await c.req.json()
     const result = await service.move(c.get('orbit'), c.req.param('id'), body)
-    return c.json(toEnvelope(c, result))
+    return c.json(toEnvelope(c, sanitizePublicRead('deals', result)))
   })
 
   // GET /v1/deals/pipeline — get deals grouped by pipeline stage
@@ -28,6 +28,7 @@ export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
       return notImplemented(c, 'Deal pipeline view')
     }
     const result = await service.pipeline(c.get('orbit'))
+    // ADHOC: sanitization-safe aggregated pipeline view (not a single entity record)
     return c.json(toEnvelope(c, result))
   })
 
@@ -38,6 +39,7 @@ export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
       return notImplemented(c, 'Deal stats')
     }
     const result = await service.stats(c.get('orbit'))
+    // ADHOC: sanitization-safe status object (aggregate stats, not an entity record)
     return c.json(toEnvelope(c, result))
   })
 
@@ -51,7 +53,7 @@ export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
     }
     const body = await c.req.json()
     const result = await service.enroll(c.get('orbit'), c.req.param('id'), body)
-    return c.json(toEnvelope(c, result), 201)
+    return c.json(toEnvelope(c, sanitizePublicRead('sequence_enrollments', result)), 201)
   })
 
   // POST /v1/sequence_enrollments/:id/unenroll — unenroll from a sequence
@@ -61,7 +63,7 @@ export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
       return notImplemented(c, 'Sequence unenrollment')
     }
     const result = await service.unenroll(c.get('orbit'), c.req.param('id'))
-    return c.json(toEnvelope(c, result))
+    return c.json(toEnvelope(c, sanitizePublicRead('sequence_enrollments', result)))
   })
 
   // --- Tag workflows ---
@@ -74,7 +76,7 @@ export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
     }
     const body = await c.req.json()
     const result = await service.attach(c.get('orbit'), c.req.param('id'), body)
-    return c.json(toEnvelope(c, result))
+    return c.json(toEnvelope(c, sanitizePublicRead('entity_tags', result)))
   })
 
   // POST /v1/tags/:id/detach — detach tag from an entity
@@ -85,6 +87,7 @@ export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
     }
     const body = await c.req.json()
     const result = await service.detach(c.get('orbit'), c.req.param('id'), body)
+    // ADHOC: sanitization-safe status object (detach returns a confirmation, not an entity record)
     return c.json(toEnvelope(c, result))
   })
 
@@ -98,12 +101,12 @@ export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
       if (typeof service.create === 'function') {
         const body = await c.req.json()
         const result = await service.create(c.get('orbit'), body)
-        return c.json(toEnvelope(c, result), 201)
+        return c.json(toEnvelope(c, sanitizePublicRead('activities', result)), 201)
       }
       return notImplemented(c, 'Activity log')
     }
     const body = await c.req.json()
     const result = await service.log(c.get('orbit'), body)
-    return c.json(toEnvelope(c, result), 201)
+    return c.json(toEnvelope(c, sanitizePublicRead('activities', result)), 201)
   })
 }

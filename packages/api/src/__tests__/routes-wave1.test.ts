@@ -489,3 +489,64 @@ describe('Non-public entity routes return 404', () => {
     expect(res.status).toBe(404)
   })
 })
+
+// =============================================================================
+// Body size limit (H-SEC-2)
+// =============================================================================
+
+describe('HTTP body size limit via createApi', () => {
+  it('returns 413 PAYLOAD_TOO_LARGE when POST body exceeds the limit', async () => {
+    const services = mockEntityCoreServices()
+    const app = createApi({
+      adapter: stubAdapter(),
+      version: '2026-04-01',
+      services: services as unknown as CoreServices,
+      maxRequestBodySize: 100, // tiny limit for test
+    })
+
+    // Bypass auth by monkey-patching — the body-limit middleware runs before
+    // auth, so we can observe the 413 from the full createApi stack by adding
+    // an Authorization header that the stub adapter accepts (or we just check
+    // body-limit fires before auth).
+    //
+    // Actually, the bodyLimit middleware is registered BEFORE authMiddleware on
+    // /v1/*, so a huge body will be rejected with 413 before auth runs.
+    const bigBody = JSON.stringify({ data: 'x'.repeat(200) }) // > 100 bytes
+    const res = await app.request('/v1/contacts', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        // Hono's test harness doesn't set content-length automatically;
+        // bodyLimit uses it for the fast-path check before auth runs.
+        'content-length': String(Buffer.byteLength(bigBody, 'utf8')),
+      },
+      body: bigBody,
+    })
+
+    expect(res.status).toBe(413)
+    const body = (await res.json()) as { error: { code: string; message: string } }
+    expect(body.error.code).toBe('PAYLOAD_TOO_LARGE')
+    expect(body.error.message).toMatch(/maximum allowed size/i)
+  })
+
+  it('accepts POST body within the default 1MB limit', async () => {
+    const services = mockEntityCoreServices()
+    const app = createApi({
+      adapter: stubAdapter(),
+      version: '2026-04-01',
+      services: services as unknown as CoreServices,
+    })
+
+    // A request under 1MB passes body-limit and hits auth (which returns 401
+    // because the stub adapter returns null for API key lookup).
+    const smallBody = JSON.stringify({ name: 'Test' })
+    const res = await app.request('/v1/contacts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: smallBody,
+    })
+
+    // Should reach auth middleware (401), not be blocked by body-limit (413)
+    expect(res.status).toBe(401)
+  })
+})

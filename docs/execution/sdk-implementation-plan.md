@@ -27,7 +27,7 @@ Deliver `@orbit-ai/sdk` as the parity client for the accepted Orbit transport co
 3. implement HTTP transport that mirrors the accepted API contract exactly
 4. implement direct transport that maps core services to the same path and envelope semantics
 5. expose resource methods in two waves that follow the API route waves
-6. preserve the public record-first contract while exposing raw envelopes only through `.response()` and `list().firstPage()`
+6. preserve the public record-first contract while exposing raw envelopes only through `.response()` and `list()`
 7. require parity and security review gates before CLI `--json` or MCP work treats SDK helpers as stable
 
 This is an SDK milestone. It is not the CLI milestone, not the MCP milestone, and not the integrations milestone.
@@ -68,7 +68,7 @@ Resource work:
 Contract proof:
 
 - parity tests across HTTP and direct mode
-- response-helper tests for `.response()` and `list().firstPage()`
+- response-helper tests for `.response()` and `list()`
 - final review artifacts under `docs/review/`
 
 ## 4. Out Of Scope
@@ -86,8 +86,8 @@ CLI and MCP can later consume the accepted SDK response helpers. They are not pa
 
 1. The API plan is the parity anchor. The SDK may not reopen route, envelope, or error-shape decisions.
 2. Public resource methods stay record-first.
-3. `.response()` and `list().firstPage()` are the only intentional public escape hatches for raw envelopes.
-4. `list().autoPaginate()` yields records, not envelopes.
+3. `list()` returns the first-page envelope directly, and `pages().autoPaginate()` exposes the AutoPager for multi-page iteration. `.response()` is the other public affordance for raw envelopes.
+4. `pages().autoPaginate()` yields records, not envelopes.
 5. HTTP mode and direct mode must agree on:
    - route semantics
    - success envelope shape
@@ -220,8 +220,8 @@ Required behavior:
 
 - public methods return records
 - `.response()` returns the raw server envelope unchanged
-- `list().firstPage()` preserves raw envelope metadata
-- `list().autoPaginate()` yields records across both transports
+- `list()` preserves raw envelope metadata (first-page envelope returned directly)
+- `pages().autoPaginate()` yields records across both transports
 - resource methods call canonical API paths in both transports
 
 Required review gate:
@@ -296,7 +296,7 @@ Required behavior:
 
 - the same SDK calls produce equivalent record shapes and raw envelopes in HTTP and direct modes
 - typed `OrbitApiError` is used consistently
-- `.response()` and `list().firstPage()` preserve server-owned `meta`, `links`, and `request_id`
+- `.response()` and `list()` preserve server-owned `meta`, `links`, and `request_id`
 - no SDK helper reconstructs or fabricates transport metadata client-side
 - final review confirms the branch did not pull CLI, MCP, or integrations work forward
 
@@ -316,8 +316,8 @@ At minimum, the SDK branch must prove:
 - one `OrbitClient` works in API mode and direct mode
 - HTTP transport matches the accepted API contract for headers, versioning, errors, and envelopes
 - direct transport synthesizes the same envelope and error semantics
-- `list().autoPaginate()` works across both transports
-- `.response()` and `list().firstPage()` preserve raw envelope metadata without client-side reconstruction
+- `pages().autoPaginate()` works across both transports
+- `.response()` and `list()` preserve raw envelope metadata without client-side reconstruction
 - resource methods return sanitized records where the API contract requires redaction
 - resource coverage matches [03-sdk.md](/Users/sharonsciammas/orbit-ai/docs/specs/03-sdk.md) and the accepted API route matrix
 

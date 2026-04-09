@@ -220,7 +220,7 @@ Required outputs:
 Validation rule:
 
 - the skill must confirm:
-  - SDK record-first methods still match API envelopes through `.response()` or `firstPage()`
+  - SDK record-first methods still match API envelopes through `.response()` or `list()`
   - CLI `--json` does not invent metadata
   - non-CRUD routes have an SDK path when exposed publicly
 

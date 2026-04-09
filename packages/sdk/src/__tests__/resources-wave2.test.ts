@@ -319,8 +319,8 @@ describe('SequenceEventResource (read-only)', () => {
     })
   })
 
-  it('list() returns AutoPager', () => {
-    const pager = events.list()
+  it('pages() returns AutoPager', () => {
+    const pager = events.pages()
     expect(pager).toBeInstanceOf(AutoPager)
   })
 
