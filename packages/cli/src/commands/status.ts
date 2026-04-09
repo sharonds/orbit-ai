@@ -24,11 +24,7 @@ async function runStatus(flags: GlobalFlags): Promise<void> {
       process.stdout.write('Status: connected\n')
     }
   } catch (e) {
-    if (isJsonMode()) {
-      process.stdout.write(JSON.stringify({ status: 'error', connected: false, message: (e as Error).message }) + '\n')
-    } else {
-      process.stderr.write(`Status: error — ${(e as Error).message}\n`)
-    }
-    process.exit(1)
+    // Re-throw so run()'s top-level handler applies the standard { error: ... } contract.
+    throw e
   }
 }
