@@ -1,5 +1,6 @@
 import { Command } from 'commander'
 import { resolveClient } from '../config/resolve-context.js'
+import { CliValidationError } from '../errors.js'
 import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 
@@ -17,7 +18,8 @@ export function registerMigrateCommand(program: Command): void {
     .description('Run schema migrations')
     .option('--preview', 'Preview pending migrations')
     .option('--apply', 'Apply pending migrations')
-    .option('--rollback', 'Roll back the last migration (destructive)')
+    .option('--rollback', 'Roll back the migration specified by --id (destructive)')
+    .option('--id <id>', 'Migration ID required for --rollback')
     .option('--yes', 'Confirm destructive operation')
     .action(async (opts) => {
       const flags = program.opts() as GlobalFlags
@@ -27,7 +29,7 @@ export function registerMigrateCommand(program: Command): void {
 
 async function runMigrate(
   flags: GlobalFlags,
-  opts: { preview?: boolean; apply?: boolean; rollback?: boolean; yes?: boolean },
+  opts: { preview?: boolean; apply?: boolean; rollback?: boolean; id?: string; yes?: boolean },
 ): Promise<void> {
   const isDestructive = opts.rollback || opts.apply
   const isTTY = process.stdout.isTTY
@@ -59,16 +61,36 @@ async function runMigrate(
     return
   }
 
-  if (isJsonMode()) {
-    process.stdout.write(JSON.stringify({ success: true, action: opts.rollback ? 'rollback' : 'apply' }) + '\n')
-  } else {
-    process.stdout.write(`Migration ${opts.rollback ? 'rolled back' : 'applied'} successfully.\n`)
+  if (opts.apply) {
+    const result = await client.schema.applyMigration({})
+    if (isJsonMode()) {
+      process.stdout.write(JSON.stringify(result, null, 2) + '\n')
+    } else {
+      process.stdout.write('Migration applied successfully.\n')
+    }
+    return
+  }
+
+  if (opts.rollback) {
+    if (!opts.id) {
+      throw new CliValidationError('--rollback requires --id <migration-id>', {
+        code: 'MISSING_REQUIRED_ARG',
+        path: 'id',
+      })
+    }
+    const result = await client.schema.rollbackMigration(opts.id)
+    if (isJsonMode()) {
+      process.stdout.write(JSON.stringify(result, null, 2) + '\n')
+    } else {
+      process.stdout.write(`Migration ${opts.id} rolled back successfully.\n`)
+    }
+    return
   }
 }
 
 async function confirmAction(prompt: string): Promise<boolean> {
   return new Promise((resolve) => {
-    process.stdout.write(prompt)
+    process.stderr.write(prompt)
     process.stdin.setEncoding('utf8')
     process.stdin.once('data', (data) => {
       resolve(data.toString().trim().toLowerCase() === 'y')
