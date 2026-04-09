@@ -137,7 +137,7 @@ export function normalizeToolError(error: unknown): Required<McpToolErrorShape> 
   if (isZodError(error)) {
     return withDefaults({
       code: 'VALIDATION_FAILED',
-      message: redactSensitiveText((error as { issues: Array<{ message: string }> }).issues.map((issue) => issue.message).join('; ')),
+      message: redactSensitiveText(error.issues.map((issue) => issue.message).join('; ')),
     })
   }
 
@@ -178,6 +178,17 @@ function withDefaults(error: McpToolErrorShape): Required<McpToolErrorShape> {
   }
 }
 
+function isZodError(error: unknown): error is { name: 'ZodError'; issues: Array<{ message: string }> } {
+  return (
+    !!error &&
+    typeof error === 'object' &&
+    'name' in error &&
+    (error as Record<string, unknown>).name === 'ZodError' &&
+    'issues' in error &&
+    Array.isArray((error as Record<string, unknown>).issues)
+  )
+}
+
 function isToolErrorShape(error: unknown): error is McpToolErrorShape {
   return !!error && typeof error === 'object' && 'code' in error && 'message' in error
 }
@@ -194,17 +205,6 @@ function isOrbitApiError(error: unknown): error is OrbitApiError {
       typeof (error as Record<string, unknown>).status === 'number' &&
       'code' in error &&
       'message' in error)
-  )
-}
-
-function isZodError(error: unknown): boolean {
-  return (
-    !!error &&
-    typeof error === 'object' &&
-    'name' in error &&
-    (error as Record<string, unknown>).name === 'ZodError' &&
-    'issues' in error &&
-    Array.isArray((error as Record<string, unknown>).issues)
   )
 }
 
