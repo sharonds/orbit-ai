@@ -230,6 +230,40 @@ describe('idempotency middleware', () => {
     expect(callCount).toBe(2) // handler NOT re-invoked
   })
 
+  it('uses a custom IdempotencyStore when provided via middleware options', async () => {
+    const calls: string[] = []
+    const customStore = {
+      async get(key: string) { calls.push(`get:${key}`); return undefined },
+      async set(key: string, _value: any) { calls.push(`set:${key}`) },
+      async evictExpired() { calls.push('evictExpired') },
+    }
+
+    const app = new Hono()
+    app.onError(orbitErrorHandler)
+    app.use('*', requestIdMiddleware())
+    app.use('*', async (c, next) => {
+      c.set('orbit', { orgId: 'org_test', scopes: ['*'] } as any)
+      await next()
+    })
+    app.use('*', idempotencyMiddleware({ store: customStore as any }))
+
+    app.post('/v1/contacts', async (c) => {
+      return c.json({ id: 'ct_001' }, 201)
+    })
+
+    const res = await app.request('/v1/contacts', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Alice' }),
+      headers: {
+        'idempotency-key': 'idem_custom_001',
+        'content-type': 'application/json',
+      },
+    })
+    expect(res.status).toBe(201)
+    expect(calls.some(c => c.startsWith('get:'))).toBe(true)
+    expect(calls.some(c => c.startsWith('set:'))).toBe(true)
+  })
+
   it('bootstrap skip + cross-tenant isolation compose correctly', async () => {
     // Regression lock from Fix Pass A review: verify that the bootstrap-skip
     // and the cross-tenant replay isolation both hold when combined. Two
