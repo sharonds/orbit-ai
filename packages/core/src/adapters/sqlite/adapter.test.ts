@@ -59,4 +59,59 @@ describe('SqliteStorageAdapter', () => {
     )
     expect(transaction).not.toHaveBeenCalled()
   })
+
+  it('migrate() with no custom config runs all wave init functions and creates tables', async () => {
+    // Track all SQL statements executed by the default migrateImpl.
+    const executedStatements: string[] = []
+    const database = {
+      transaction: async (fn: (tx: OrbitDatabase) => Promise<unknown>) => fn(database),
+      execute: vi.fn(async (stmt: { queryChunks?: Array<{ value: unknown }> }) => {
+        // sql.raw(statement) produces a SQL object whose first queryChunk
+        // holds the raw SQL string. Capture it for assertion.
+        const raw =
+          stmt?.queryChunks?.[0]?.value ??
+          String(stmt)
+        executedStatements.push(String(raw))
+        return undefined
+      }),
+      query: async () => [],
+    } as unknown as OrbitDatabase
+    const adapter = createSqliteStorageAdapter({ database })
+
+    await adapter.migrate()
+
+    // Verify that core Wave 1 and Wave 2 tables were scheduled for creation.
+    // The wave init functions use "create table if not exists <name>", so
+    // we check that each expected table name appears at least once.
+    const allSql = executedStatements.join('\n')
+    for (const tableName of [
+      'organizations',
+      'contacts',
+      'companies',
+      'deals',
+      'activities', // wave 2 slice A
+      'products',   // wave 2 slice B
+      'sequences',  // wave 2 slice C
+      'tags',       // wave 2 slice D
+      'audit_logs', // wave 2 slice E
+    ]) {
+      expect(allSql).toContain(tableName)
+    }
+  })
+
+  it('migrate() respects a custom migrate function when provided', async () => {
+    const customMigrate = vi.fn(async () => undefined)
+    const database = {
+      transaction: async (fn: (tx: OrbitDatabase) => Promise<unknown>) => fn(database),
+      execute: vi.fn(async () => undefined),
+      query: async () => [],
+    } as unknown as OrbitDatabase
+    const adapter = createSqliteStorageAdapter({ database, migrate: customMigrate })
+
+    await adapter.migrate()
+
+    expect(customMigrate).toHaveBeenCalledTimes(1)
+    // When a custom migrate is provided, the default schema init should NOT run.
+    expect((database.execute as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled()
+  })
 })

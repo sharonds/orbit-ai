@@ -174,13 +174,34 @@ export function toWebhookDeliveryRead(
   }
 }
 
+/**
+ * Sanitize a single entity record before returning it to clients.
+ *
+ * For `webhooks`, delegates to `toWebhookRead` which applies a specific
+ * allowlist. For all other entities, strips any field whose key starts
+ * with an underscore — a conservative convention for marking
+ * internal-only columns (billing state, row versions, internal flags).
+ *
+ * This is a stopgap until per-entity allowlists land as part of the
+ * Phase 3 type-contract work. Consumers writing internal fields into
+ * records SHOULD prefix them with `_`; this function then strips them.
+ */
 export function sanitizePublicRead(
   entity: string,
   record: unknown,
 ): unknown {
-  if (entity === 'webhooks')
+  if (entity === 'webhooks') {
     return toWebhookRead(record as Record<string, unknown>)
-  return record
+  }
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    return record
+  }
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(record as Record<string, unknown>)) {
+    if (k.startsWith('_')) continue
+    out[k] = v
+  }
+  return out
 }
 
 export function sanitizePublicPage(
@@ -260,11 +281,42 @@ const ORGANIZATION_PUBLIC_FIELDS = new Set([
   'updated_at',
 ])
 
+/**
+ * Scrub internal keys from the freeform `metadata` blob before returning it
+ * to clients. This is a seam for future callers: today it's a no-op identity
+ * function because no internal keys are known to be stored in metadata, but
+ * if the core service ever starts storing billing state, feature flags, or
+ * similar there, add them to INTERNAL_METADATA_KEYS below and they'll be
+ * stripped automatically. Identified by Fix Pass A security review (2026-04-08).
+ */
+const INTERNAL_METADATA_KEYS = new Set<string>([
+  // Add internal-only metadata keys here as they're discovered.
+  // Examples (for future reference): '_billing_state', '_feature_flags'
+])
+
+export function scrubInternalMetadataKeys(
+  metadata: unknown,
+): Record<string, unknown> | unknown {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return metadata
+  }
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(metadata as Record<string, unknown>)) {
+    if (!INTERNAL_METADATA_KEYS.has(k)) out[k] = v
+  }
+  return out
+}
+
 export function sanitizeOrganizationRead(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object') return {}
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (ORGANIZATION_PUBLIC_FIELDS.has(k)) out[k] = v
+    if (!ORGANIZATION_PUBLIC_FIELDS.has(k)) continue
+    if (k === 'metadata') {
+      out[k] = scrubInternalMetadataKeys(v)
+    } else {
+      out[k] = v
+    }
   }
   return out
 }
@@ -279,6 +331,23 @@ const API_KEY_PUBLIC_FIELDS = new Set([
   'created_at',
   'updated_at',
 ])
+
+/**
+ * Strips underscore-prefixed fields from schema introspection results.
+ * A conservative default for routes that return schema metadata (object
+ * type definitions, column metadata, migration plans) where there is no
+ * fixed public-field allowlist. Underscore-prefixed keys are reserved for
+ * internal use by convention.
+ */
+export function sanitizeSchemaRead(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (k.startsWith('_')) continue // strip internal-only fields by convention
+    out[k] = v
+  }
+  return out
+}
 
 export function sanitizeApiKeyRead(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object') return {}

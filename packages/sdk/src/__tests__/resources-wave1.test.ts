@@ -174,19 +174,18 @@ describe('ContactResource', () => {
     })
   })
 
-  it('list() returns AutoPager with firstPage and autoPaginate', async () => {
-    const pager = contacts.list({ limit: 10 })
+  it('pages() returns AutoPager with firstPage and autoPaginate', async () => {
+    const pager = contacts.pages({ limit: 10 })
 
     expect(pager).toBeDefined()
     expect(typeof pager.firstPage).toBe('function')
     expect(typeof pager.autoPaginate).toBe('function')
   })
 
-  it('list().firstPage() calls transport with correct query', async () => {
+  it('await list() returns the first page envelope directly', async () => {
     transport.request.mockResolvedValue(makeEnvelope([SAMPLE_CONTACT]))
 
-    const pager = contacts.list({ limit: 10 })
-    const page = await pager.firstPage()
+    const page = await contacts.list({ limit: 10 })
 
     expect(page.data).toEqual([SAMPLE_CONTACT])
     expect(transport.request).toHaveBeenCalledWith({
@@ -194,6 +193,38 @@ describe('ContactResource', () => {
       path: '/v1/contacts',
       query: { limit: 10 },
     })
+  })
+
+  it('list() returns a Promise resolving to an envelope with .data array and .meta', async () => {
+    transport.request.mockResolvedValue(makeEnvelope([SAMPLE_CONTACT]))
+
+    const envelope = await contacts.list({ limit: 5 })
+
+    // list() MUST be a Promise — await should resolve to the envelope directly
+    expect(Array.isArray(envelope.data)).toBe(true)
+    expect(envelope.data[0]).toEqual(SAMPLE_CONTACT)
+    expect(envelope.meta).toBeDefined()
+    expect(envelope.meta.has_more).toBe(false)
+    expect(envelope.links.self).toBeDefined()
+  })
+
+  it('pages() returns an AutoPager instance (not a Promise)', () => {
+    const pager = contacts.pages({ limit: 5 })
+    // AutoPager has firstPage and autoPaginate — it is NOT a Promise
+    expect(typeof pager.firstPage).toBe('function')
+    expect(typeof pager.autoPaginate).toBe('function')
+    expect(typeof (pager as unknown as { then?: unknown }).then).toBe('undefined')
+  })
+
+  it('for-await on pages().autoPaginate() iterates all records', async () => {
+    transport.request.mockResolvedValue(makeEnvelope([SAMPLE_CONTACT]))
+
+    const collected: unknown[] = []
+    for await (const row of contacts.pages({ limit: 1 }).autoPaginate()) {
+      collected.push(row)
+    }
+    expect(collected).toHaveLength(1)
+    expect(collected[0]).toEqual(SAMPLE_CONTACT)
   })
 
   it('search() calls POST /v1/contacts/search', async () => {

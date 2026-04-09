@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import { OrbitError } from '@orbit-ai/core'
-import { idempotencyMiddleware, _resetIdempotencyStore } from '../middleware/idempotency.js'
+import { idempotencyMiddleware, _resetIdempotencyStore, type IdempotencyStore, type StoredResponse } from '../middleware/idempotency.js'
 import { orbitErrorHandler } from '../middleware/error-handler.js'
 import { requestIdMiddleware } from '../middleware/request-id.js'
 import '../context.js'
@@ -228,5 +228,99 @@ describe('idempotency middleware', () => {
     expect(bodyA2.org).toBe('org_A')
     expect(resA2.headers.get('x-idempotent-replayed')).toBe('true')
     expect(callCount).toBe(2) // handler NOT re-invoked
+  })
+
+  it('uses a custom IdempotencyStore when provided via middleware options', async () => {
+    const calls: string[] = []
+    const customStore: IdempotencyStore = {
+      async get(key: string) { calls.push(`get:${key}`); return undefined },
+      async set(key: string, _value: StoredResponse) { calls.push(`set:${key}`) },
+      async evictExpired() { calls.push('evictExpired') },
+    }
+
+    const app = new Hono()
+    app.onError(orbitErrorHandler)
+    app.use('*', requestIdMiddleware())
+    app.use('*', async (c, next) => {
+      c.set('orbit', { orgId: 'org_test', scopes: ['*'] })
+      await next()
+    })
+    app.use('*', idempotencyMiddleware({ store: customStore }))
+
+    app.post('/v1/contacts', async (c) => {
+      return c.json({ id: 'ct_001' }, 201)
+    })
+
+    const res = await app.request('/v1/contacts', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Alice' }),
+      headers: {
+        'idempotency-key': 'idem_custom_001',
+        'content-type': 'application/json',
+      },
+    })
+    expect(res.status).toBe(201)
+    expect(calls.some(c => c.startsWith('get:'))).toBe(true)
+    expect(calls.some(c => c.startsWith('set:'))).toBe(true)
+  })
+
+  it('bootstrap skip + cross-tenant isolation compose correctly', async () => {
+    // Regression lock from Fix Pass A review: verify that the bootstrap-skip
+    // and the cross-tenant replay isolation both hold when combined. Two
+    // different orgs hitting /v1/bootstrap/organizations with the same
+    // idempotency-key header must both process fresh (bootstrap is exempt).
+    const app = new Hono()
+    app.onError(orbitErrorHandler)
+    app.use('*', requestIdMiddleware())
+
+    let nextOrgId = 'org_A'
+    app.use('*', async (c, next) => {
+      c.set('orbit', { orgId: nextOrgId, scopes: ['*'] })
+      await next()
+    })
+
+    app.use('*', idempotencyMiddleware())
+
+    let callCount = 0
+    app.post('/v1/bootstrap/organizations', async (c) => {
+      callCount += 1
+      const body = await c.req.json()
+      return c.json({ id: `org_${callCount}`, name: body.name, via: nextOrgId }, 201)
+    })
+
+    const headers = {
+      'idempotency-key': 'idem_bootstrap_cross_tenant_001',
+      'content-type': 'application/json',
+    }
+
+    // Org A's bootstrap call
+    nextOrgId = 'org_A'
+    const resA = await app.request('/v1/bootstrap/organizations', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Acme' }),
+      headers,
+    })
+    expect(resA.status).toBe(201)
+    const bodyA = (await resA.json()) as { id: string; via: string }
+    expect(bodyA.id).toBe('org_1')
+    expect(bodyA.via).toBe('org_A')
+
+    // Org B's bootstrap call with the same key — must process fresh
+    // because bootstrap paths are exempt from idempotency.
+    nextOrgId = 'org_B'
+    const resB = await app.request('/v1/bootstrap/organizations', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Beta Corp' }),
+      headers,
+    })
+    expect(resB.status).toBe(201)
+    const bodyB = (await resB.json()) as { id: string; via: string }
+    expect(bodyB.id).toBe('org_2')
+    expect(bodyB.via).toBe('org_B')
+
+    // Neither response claims replay
+    expect(resA.headers.get('x-idempotent-replayed')).toBeNull()
+    expect(resB.headers.get('x-idempotent-replayed')).toBeNull()
+    expect(callCount).toBe(2)
   })
 })

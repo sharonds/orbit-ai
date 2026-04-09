@@ -76,7 +76,7 @@ export class DirectTransport implements OrbitTransport {
       const result = await this.options.adapter!.withTenantContext(this.ctx, async () => {
         return this.dispatch(input)
       })
-      return this.wrapEnvelope(input.path, result) as OrbitEnvelope<T>
+      return this.wrapEnvelope(input.path, input.query, result) as OrbitEnvelope<T>
     } catch (err: unknown) {
       if (err instanceof OrbitApiError) throw err
       const orbitErr = err as { code?: string; message?: string; field?: string; retryable?: boolean }
@@ -144,7 +144,11 @@ export class DirectTransport implements OrbitTransport {
     throw new Error(`Unhandled dispatch: ${method} ${path}`)
   }
 
-  private wrapEnvelope(path: string, data: unknown): OrbitEnvelope<unknown> {
+  private wrapEnvelope(
+    path: string,
+    query: Record<string, unknown> | undefined,
+    data: unknown,
+  ): OrbitEnvelope<unknown> {
     const paginated = data as { data?: unknown[]; nextCursor?: string | null; hasMore?: boolean }
     if (
       paginated &&
@@ -152,16 +156,25 @@ export class DirectTransport implements OrbitTransport {
       'data' in paginated &&
       'hasMore' in paginated
     ) {
+      const nextCursor = paginated.nextCursor ?? null
+      const links: { self: string; next?: string } = { self: path }
+      if (nextCursor !== null) {
+        const params = new URLSearchParams()
+        if (query?.limit !== undefined) params.set('limit', String(query.limit))
+        if (query?.include !== undefined) params.set('include', String(query.include))
+        params.set('cursor', nextCursor)
+        links.next = `${path}?${params.toString()}`
+      }
       return {
         data: paginated.data as unknown,
         meta: {
           request_id: `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 26)}`,
           cursor: null,
-          next_cursor: paginated.nextCursor ?? null,
+          next_cursor: nextCursor,
           has_more: paginated.hasMore ?? false,
           version: this.options.version ?? '2026-04-01',
         },
-        links: { self: path },
+        links,
       }
     }
     return {
@@ -198,6 +211,7 @@ export class DirectTransport implements OrbitTransport {
       ADAPTER_TRANSACTION_FAILED: 500,
       RLS_GENERATION_FAILED: 500,
       WEBHOOK_DELIVERY_FAILED: 502,
+      SEARCH_RESULT_TOO_LARGE: 413,
       INTERNAL_ERROR: 500,
     }
     return map[code] ?? 500

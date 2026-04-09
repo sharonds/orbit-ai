@@ -153,14 +153,16 @@ export function createSequenceStepService(deps: {
         await assertSequenceExists(ctx, deps.sequences, parsed.sequenceId)
       }
 
-      // Phase 2 gate fix: the `current` get and the
-      // assertStepHistoryMutable check (which decides whether a step
+      // Phase 2 gate fix (+ Codex follow-up): the `current` get and the
+      // `assertStepHistoryMutable` check (which decides whether a step
       // can be reparented based on whether any history events exist)
-      // both run inside the rebound view. Reading current outside the
-      // tx let two concurrent updates both pass the history-mutability
-      // guard against the same stale event count.
+      // both run inside the rebound view. The sequenceEvents repo is
+      // now rebound too so its read sees the outer transaction's view
+      // — without that, a concurrent event insert could still slip
+      // between the history guard and the update.
       return deps.tx.run(ctx, async (txDb) => {
         const txSequenceSteps = deps.sequenceSteps.withDatabase(txDb)
+        const txSequenceEvents = deps.sequenceEvents.withDatabase(txDb)
         const current = assertFound(
           await txSequenceSteps.get(ctx, id),
           `Sequence step ${id} not found`,
@@ -169,7 +171,7 @@ export function createSequenceStepService(deps: {
         const nextStepOrder = parsed.stepOrder ?? current.stepOrder
 
         if (parsed.sequenceId !== undefined && parsed.sequenceId !== current.sequenceId) {
-          await assertStepHistoryMutable(ctx, deps.sequenceEvents, id, 'reparent')
+          await assertStepHistoryMutable(ctx, txSequenceEvents, id, 'reparent')
         }
 
         await assertUniqueStepOrder(ctx, txSequenceSteps, nextSequenceId, nextStepOrder, id)
@@ -196,8 +198,14 @@ export function createSequenceStepService(deps: {
       })
     },
     async delete(ctx, id) {
-      await assertStepHistoryMutable(ctx, deps.sequenceEvents, id, 'delete')
-      assertDeleted(await deps.sequenceSteps.delete(ctx, id), `Sequence step ${id} not found`)
+      // Check + delete share a single transaction so a concurrent event
+      // insert cannot slip between the guard and the delete.
+      return deps.tx.run(ctx, async (txDb) => {
+        const txSequenceSteps = deps.sequenceSteps.withDatabase(txDb)
+        const txSequenceEvents = deps.sequenceEvents.withDatabase(txDb)
+        await assertStepHistoryMutable(ctx, txSequenceEvents, id, 'delete')
+        assertDeleted(await txSequenceSteps.delete(ctx, id), `Sequence step ${id} not found`)
+      })
     },
     async list(ctx, query) {
       return deps.sequenceSteps.list(ctx, query)

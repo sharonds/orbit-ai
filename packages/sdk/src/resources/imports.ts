@@ -1,4 +1,4 @@
-import type { ListQuery } from '@orbit-ai/core'
+import type { ListQuery, OrbitEnvelope } from '@orbit-ai/core'
 import type { OrbitTransport } from '../transport/index.js'
 import { AutoPager } from '../pagination.js'
 
@@ -45,7 +45,18 @@ export class ImportResource {
     return response.data
   }
 
-  list(query: ListQuery = {}): AutoPager<ImportRecord> {
+  /**
+   * Fetch the first page of imports. Returns a Promise of the full envelope.
+   * For multi-page iteration, use `.pages()` instead.
+   */
+  async list(query: ListQuery = {}): Promise<OrbitEnvelope<ImportRecord[]>> {
+    return new AutoPager<ImportRecord>(this.transport, this.basePath, query).firstPage()
+  }
+
+  /**
+   * Get an AutoPager for cursor-based multi-page iteration over imports.
+   */
+  pages(query: ListQuery = {}): AutoPager<ImportRecord> {
     return new AutoPager<ImportRecord>(this.transport, this.basePath, query)
   }
 

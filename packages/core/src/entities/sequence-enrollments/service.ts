@@ -220,17 +220,19 @@ export function createSequenceEnrollmentService(deps: {
     async update(ctx, id, input) {
       const parsed = sequenceEnrollmentUpdateInputSchema.parse(input)
 
-      // Phase 2 gate fix: the `current` get, the
-      // assertEnrollmentHistoryMutable check (which reads sequence_events
-      // to enforce "no reparent after history exists"), the relation
-      // check, and the state check all run inside the rebound view.
-      // Reading current outside the tx let two concurrent updates both
-      // pass the history-mutability guard against the same stale event
-      // count, then both insert events and reparent silently. Order
-      // matches the pre-fix code so existing tests still see the same
-      // error precedence (history-mutable > relation-not-found).
+      // Phase 2 gate fix (+ Codex follow-up): the `current` get, the
+      // `assertEnrollmentHistoryMutable` check (which reads
+      // `sequence_events` to enforce "no reparent after history exists"),
+      // the relation check, and the state check all run inside the
+      // rebound view. Reading current — or the sequence_events history —
+      // outside the tx let two concurrent updates both pass the
+      // history-mutability guard against the same stale event count,
+      // then both insert events and reparent silently. The sequence
+      // events repo is now also rebound via `withDatabase(txDb)` so its
+      // read sees the outer transaction's view.
       return deps.tx.run(ctx, async (txDb) => {
         const txEnrollments = deps.sequenceEnrollments.withDatabase(txDb)
+        const txSequenceEvents = deps.sequenceEvents.withDatabase(txDb)
         const current = assertFound(
           await txEnrollments.get(ctx, id),
           `Sequence enrollment ${id} not found`,
@@ -245,7 +247,7 @@ export function createSequenceEnrollmentService(deps: {
           (parsed.sequenceId !== undefined && parsed.sequenceId !== current.sequenceId) ||
           (parsed.contactId !== undefined && parsed.contactId !== current.contactId)
         ) {
-          await assertEnrollmentHistoryMutable(ctx, deps.sequenceEvents, id, 'reparent')
+          await assertEnrollmentHistoryMutable(ctx, txSequenceEvents, id, 'reparent')
         }
 
         // Relation reads run on the unbound deps — FK constraints at
@@ -292,8 +294,15 @@ export function createSequenceEnrollmentService(deps: {
       })
     },
     async delete(ctx, id) {
-      await assertEnrollmentHistoryMutable(ctx, deps.sequenceEvents, id, 'delete')
-      assertDeleted(await deps.sequenceEnrollments.delete(ctx, id), `Sequence enrollment ${id} not found`)
+      // Same history-mutable race as update: check + delete must share
+      // a single transaction so a concurrent event insert cannot slip
+      // between the guard and the delete.
+      return deps.tx.run(ctx, async (txDb) => {
+        const txEnrollments = deps.sequenceEnrollments.withDatabase(txDb)
+        const txSequenceEvents = deps.sequenceEvents.withDatabase(txDb)
+        await assertEnrollmentHistoryMutable(ctx, txSequenceEvents, id, 'delete')
+        assertDeleted(await txEnrollments.delete(ctx, id), `Sequence enrollment ${id} not found`)
+      })
     },
     async list(ctx, query) {
       return deps.sequenceEnrollments.list(ctx, query)

@@ -1,7 +1,38 @@
 {
   "name": "@orbit-ai/core",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0-alpha.0",
+  "description": "Schema engine, entities, adapters, and shared types for Orbit AI — a CRM infrastructure for AI agents",
+  "keywords": [
+    "crm",
+    "ai-agents",
+    "orbit-ai",
+    "typescript",
+    "schema",
+    "drizzle",
+    "multi-tenant"
+  ],
+  "author": "Orbit AI Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sharonds/orbit-ai.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/sharonds/orbit-ai#readme",
+  "bugs": {
+    "url": "https://github.com/sharonds/orbit-ai/issues"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -12,7 +43,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rm -rf dist && tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "test:postgres-live": "vitest run --config vitest.config.ts src/adapters/postgres/live-bootstrap.test.ts",

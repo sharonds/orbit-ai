@@ -1,6 +1,6 @@
 import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
-import { toEnvelope, toError } from '../responses.js'
+import { toEnvelope, toError, sanitizeOrganizationRead } from '../responses.js'
 import { requireScope } from '../scopes.js'
 
 export function registerOrganizationRoutes(app: Hono, services: CoreServices) {
@@ -12,7 +12,7 @@ export function registerOrganizationRoutes(app: Hono, services: CoreServices) {
     if (!record) {
       return c.json(toError(c, 'RESOURCE_NOT_FOUND', 'Organization not found'), 404)
     }
-    return c.json(toEnvelope(c, record))
+    return c.json(toEnvelope(c, sanitizeOrganizationRead(record)))
   })
 
   // PATCH /v1/organizations/current — updates current org
@@ -24,6 +24,6 @@ export function registerOrganizationRoutes(app: Hono, services: CoreServices) {
     }
     const body = await c.req.json()
     const record = await service.update(ctx, ctx.orgId, body)
-    return c.json(toEnvelope(c, record))
+    return c.json(toEnvelope(c, sanitizeOrganizationRead(record)))
   })
 }

@@ -36,6 +36,20 @@ export function createInMemoryPipelineRepository(seed: PipelineRecord[] = []): P
     return [...rows.values()].filter((record) => record.organizationId === orgId)
   }
 
+  function assertDefaultUniqueness(
+    next: { id: string; organizationId: string; isDefault: boolean },
+  ): void {
+    if (!next.isDefault) return
+    for (const existing of rows.values()) {
+      if (existing.id === next.id) continue
+      if (existing.organizationId !== next.organizationId) continue
+      if (!existing.isDefault) continue
+      throw new Error(
+        'duplicate key value violates unique constraint "pipelines_org_default_unique_idx" on organization_id where is_default = true',
+      )
+    }
+  }
+
   const repo: PipelineRepository = {
     async create(ctx, record) {
       const orgId = assertOrgContext(ctx)
@@ -44,6 +58,10 @@ export function createInMemoryPipelineRepository(seed: PipelineRecord[] = []): P
       }
 
       const parsed = pipelineRecordSchema.parse(record)
+      // Mirror the Postgres partial unique index
+      // `pipelines_org_default_unique_idx` so in-memory tests see the
+      // same concurrent-race behavior as production.
+      assertDefaultUniqueness(parsed)
       rows.set(parsed.id, parsed)
       return parsed
     },
@@ -62,6 +80,7 @@ export function createInMemoryPipelineRepository(seed: PipelineRecord[] = []): P
         ...current,
         ...patch,
       })
+      assertDefaultUniqueness(next)
       rows.set(id, next)
       return next
     },

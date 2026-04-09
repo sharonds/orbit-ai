@@ -171,5 +171,24 @@ describe('OpenAPI spec', () => {
       expect(paginated).toBeDefined()
       expect(paginated.properties.data.type).toBe('array')
     })
+
+    it('generic entity delete responses match the runtime 200-envelope shape (Codex review)', () => {
+      // Runtime: routes/entities.ts returns `c.json(toEnvelope(c, { id, deleted: true }))`
+      // with Hono's default 200 status. The OpenAPI spec must document
+      // the same shape so SDK codegen does not assume a 204 no-body.
+      const deleteOp = spec.paths['/v1/contacts/{id}']?.delete
+      expect(deleteOp).toBeDefined()
+      expect(deleteOp.responses['204']).toBeUndefined()
+      expect(deleteOp.responses['200']).toBeDefined()
+      expect(deleteOp.responses['200'].content?.['application/json']?.schema).toEqual({
+        $ref: '#/components/schemas/Envelope',
+      })
+    })
+
+    it('webhook delete also uses 200 envelope, not 204', () => {
+      const deleteOp = spec.paths['/v1/webhooks/{id}']?.delete
+      expect(deleteOp?.responses?.['204']).toBeUndefined()
+      expect(deleteOp?.responses?.['200']).toBeDefined()
+    })
   })
 })
