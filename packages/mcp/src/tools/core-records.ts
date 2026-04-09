@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { OrbitClient } from '@orbit-ai/sdk'
 import { defineTool, IncludeSchema, LimitSchema, SearchObjectTypeSchema, SortSchema, ObjectTypeSchema, CursorSchema, sanitizeRecordPayload } from './schemas.js'
-import { toToolSuccess } from '../errors.js'
+import { McpToolError, toToolSuccess } from '../errors.js'
 import { sanitizeSecretBearingRecord } from '../output/sensitive.js'
 import { sanitizeStringInput } from '../output/truncation.js'
 import { isDirectModeClient, validateWebhookUrlForDirectMode } from '../server.js'
@@ -179,10 +179,7 @@ type GenericResource = {
 export function getClientResource(client: OrbitClient, objectType: ResourceObjectType): GenericResource {
   const resourceKey = RESOURCE_KEY_MAP[objectType] as ResourceKey | undefined
   if (!resourceKey) {
-    throw {
-      code: 'UNSUPPORTED_OBJECT_TYPE' as const,
-      message: `Unsupported object type: ${objectType}`,
-    }
+    throw new McpToolError('UNSUPPORTED_OBJECT_TYPE', `Unsupported object type: ${objectType}`)
   }
 
   return client[resourceKey] as unknown as GenericResource

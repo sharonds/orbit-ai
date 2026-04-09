@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { OrbitClient } from '@orbit-ai/sdk'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { defineTool } from './schemas.js'
-import { McpNotImplementedError, toToolSuccess } from '../errors.js'
+import { McpNotImplementedError, McpToolError, toToolSuccess } from '../errors.js'
 import { getClientResource } from './core-records.js'
 
 const RelateRecordsInput = z.object({
@@ -79,5 +79,8 @@ function inferEntityType(recordId: string): string {
   if (recordId.startsWith('company_')) return 'companies'
   if (recordId.startsWith('deal_')) return 'deals'
   if (recordId.startsWith('task_')) return 'tasks'
-  return 'contacts'
+  throw new McpToolError(
+    'VALIDATION_FAILED',
+    `Unable to infer entity type from record ID ${recordId}. Provide a supported Orbit record ID prefix.`,
+  )
 }

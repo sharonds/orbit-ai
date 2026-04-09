@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { OrbitClient } from '@orbit-ai/sdk'
 import { defineTool, LimitSchema } from './schemas.js'
 import { toToolSuccess } from '../errors.js'
-import { sanitizeStringInput, truncateUnknownStrings } from '../output/truncation.js'
+import { sanitizeStringInput, truncateUnknownStringsWithMeta } from '../output/truncation.js'
 
 const LogActivityInput = z.object({
   type: z.string(),
@@ -17,6 +17,11 @@ const LogActivityInput = z.object({
 })
 
 const ListActivitiesInput = z.object({
+  contact_id: z.string().optional(),
+  company_id: z.string().optional(),
+  deal_id: z.string().optional(),
+  user_id: z.string().optional(),
+  type: z.string().optional(),
   limit: LimitSchema,
   cursor: z.string().optional(),
 })
@@ -59,8 +64,14 @@ export async function handleLogActivity(client: OrbitClient, rawArgs: unknown) {
 export async function handleListActivities(client: OrbitClient, rawArgs: unknown) {
   const args = ListActivitiesInput.parse(rawArgs)
   const result = await client.activities.list({
+    ...(args.contact_id ? { contact_id: args.contact_id } : {}),
+    ...(args.company_id ? { company_id: args.company_id } : {}),
+    ...(args.deal_id ? { deal_id: args.deal_id } : {}),
+    ...(args.user_id ? { user_id: args.user_id } : {}),
+    ...(args.type ? { type: sanitizeStringInput(args.type) } : {}),
     ...(args.limit !== undefined ? { limit: args.limit } : {}),
     ...(args.cursor ? { cursor: args.cursor } : {}),
   })
-  return toToolSuccess(truncateUnknownStrings(result, 5_000))
+  const truncated = truncateUnknownStringsWithMeta(result, 5_000)
+  return toToolSuccess(truncated.value, truncated.truncated ? { truncated: true } : undefined)
 }

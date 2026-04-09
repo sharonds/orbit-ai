@@ -3,7 +3,7 @@ import { OrbitClient } from '@orbit-ai/sdk'
 import type { RuntimeApiAdapter } from '@orbit-ai/api'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { toToolError } from '../errors.js'
+import { normalizeToolError, toToolError } from '../errors.js'
 import type { StartMcpServerOptions } from '../server.js'
 import { createMcpServer, writeStderrWarning } from '../server.js'
 
@@ -35,23 +35,20 @@ export async function startHttpTransport(options: StartMcpServerOptions): Promis
     try {
       await handleAuthenticatedHttpRequest(req, res, options.client, options.adapter!, bindAddress)
     } catch (error) {
-      const statusCode =
-        error instanceof SyntaxError ? 400 : 500
+      const statusCode = error instanceof SyntaxError ? 400 : 500
+      const normalized = normalizeToolError(
+        statusCode === 400
+          ? { code: 'VALIDATION_FAILED', message: 'Malformed JSON body.' as const }
+          : error,
+      )
+      if (res.headersSent) {
+        writeStderrWarning(`MCP HTTP transport error after headers sent: ${normalized.code}: ${normalized.message}`)
+        return
+      }
+
       if (!res.headersSent) {
         res.writeHead(statusCode, { 'content-type': 'application/json' })
-        res.end(
-          JSON.stringify(
-            toToolError({
-              code: statusCode === 400 ? 'VALIDATION_FAILED' : 'INTERNAL_ERROR',
-              message:
-                statusCode === 400
-                  ? 'Malformed JSON body.'
-                  : error instanceof Error
-                    ? error.message
-                    : 'Internal MCP HTTP transport error.',
-            }),
-          ),
-        )
+        res.end(JSON.stringify(toToolError(normalized)))
       }
     }
   })

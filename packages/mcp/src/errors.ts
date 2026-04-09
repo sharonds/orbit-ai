@@ -49,13 +49,26 @@ const DEFAULT_RECOVERY: Record<McpToolErrorCode, string> = {
   UNKNOWN_TOOL: 'List tools again and select a valid Orbit MCP tool name.',
 }
 
-function redactSensitiveText(input: string): string {
-  let output = input
+function redactSensitiveText(input: string | undefined | null): string {
+  let output = String(input ?? '')
   output = output.replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]')
   output = output.replace(/\bsecret\b/gi, '[redacted]')
   output = output.replace(/[A-Za-z][A-Za-z0-9+.-]*:\/\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]{20,}/g, '[redacted]')
-  output = output.replace(/\b(?:ya29\.[A-Za-z0-9._-]+|[A-Za-z0-9_-]{20,})\b/g, '[redacted]')
+  output = output.replace(/\bya29\.[A-Za-z0-9._-]+\b/g, '[redacted]')
+  output = output.replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+\b/g, '[redacted]')
   return output.slice(0, 500)
+}
+
+export class McpToolError extends Error {
+  constructor(
+    readonly code: McpToolErrorCode,
+    message: string,
+    readonly hint?: string,
+    readonly recovery?: string,
+  ) {
+    super(message)
+    this.name = 'McpToolError'
+  }
 }
 
 export class McpNotImplementedError extends Error {
@@ -106,11 +119,7 @@ export function toToolSuccess(data: unknown, meta?: Record<string, unknown>): Ca
   }
 }
 
-function normalizeToolError(error: unknown): Required<McpToolErrorShape> {
-  if (isToolErrorShape(error)) {
-    return withDefaults(error)
-  }
-
+export function normalizeToolError(error: unknown): Required<McpToolErrorShape> {
   if (error instanceof McpNotImplementedError) {
     return withDefaults(
       error.hint
@@ -133,7 +142,7 @@ function normalizeToolError(error: unknown): Required<McpToolErrorShape> {
     })
   }
 
-  if (error instanceof OrbitApiError) {
+  if (isOrbitApiError(error)) {
     return withDefaults(
       {
         code: mapApiErrorCode(error.code),
@@ -142,6 +151,10 @@ function normalizeToolError(error: unknown): Required<McpToolErrorShape> {
         ...(error.error.recovery ? { recovery: redactSensitiveText(error.error.recovery) } : {}),
       },
     )
+  }
+
+  if (isToolErrorShape(error)) {
+    return withDefaults(error)
   }
 
   if (error instanceof Error) {
@@ -168,6 +181,18 @@ function withDefaults(error: McpToolErrorShape): Required<McpToolErrorShape> {
 
 function isToolErrorShape(error: unknown): error is McpToolErrorShape {
   return !!error && typeof error === 'object' && 'code' in error && 'message' in error
+}
+
+function isOrbitApiError(error: unknown): error is OrbitApiError {
+  return (
+    error instanceof OrbitApiError ||
+    (!!error &&
+      typeof error === 'object' &&
+      'error' in error &&
+      'status' in error &&
+      'code' in error &&
+      'message' in error)
+  )
 }
 
 function mapApiErrorCode(code: string): McpToolErrorCode {
