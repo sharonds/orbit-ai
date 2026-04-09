@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { OrbitApiError } from '../errors.js'
+import { OrbitApiError, ORBIT_ERROR_CODES } from '../index.js'
 import type { OrbitErrorCode } from '../index.js'
 
 describe('OrbitApiError .code getter', () => {
@@ -36,9 +36,10 @@ describe('OrbitApiError .code getter', () => {
 })
 
 describe('@orbit-ai/sdk index exports', () => {
-  it('re-exports OrbitErrorCode type from core', async () => {
-    const sdk = await import('../index.js')
-    expect(sdk).toHaveProperty('OrbitApiError')
-    expect(sdk).toHaveProperty('ORBIT_ERROR_CODES')
+  it('re-exports ORBIT_ERROR_CODES from core', () => {
+    expect(ORBIT_ERROR_CODES).toBeDefined()
+    expect(Array.isArray(ORBIT_ERROR_CODES)).toBe(true)
+    expect(ORBIT_ERROR_CODES).toContain('RATE_LIMITED')
+    expect(ORBIT_ERROR_CODES).toContain('RESOURCE_NOT_FOUND')
   })
 })

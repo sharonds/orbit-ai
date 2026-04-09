@@ -51,6 +51,10 @@ async function demoteOtherDefaults(
   repo: PipelineRepository,
   excludeId: string | null,
 ): Promise<void> {
+  // Collect all IDs first, THEN update. Mutating rows while paginating
+  // with a cursor on the same filtered set (is_default=true) can
+  // invalidate the cursor — the row count changes between pages.
+  const idsToUpdate: string[] = []
   let cursor: string | undefined
   do {
     const page = await repo.list(ctx, {
@@ -60,11 +64,14 @@ async function demoteOtherDefaults(
     })
     for (const record of page.data) {
       if (excludeId !== null && record.id === excludeId) continue
-      if (!record.isDefault) continue
-      await repo.update(ctx, record.id, { isDefault: false, updatedAt: new Date() })
+      if (record.isDefault) idsToUpdate.push(record.id)
     }
     cursor = page.hasMore && page.nextCursor ? page.nextCursor : undefined
   } while (cursor !== undefined)
+
+  for (const id of idsToUpdate) {
+    await repo.update(ctx, id, { isDefault: false, updatedAt: new Date() })
+  }
 }
 
 export function createPipelineService(deps: {
