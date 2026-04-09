@@ -1,6 +1,8 @@
 export { OrbitClient } from './client.js'
 export type { OrbitClientOptions } from './config.js'
 export { OrbitApiError } from './errors.js'
+export { ORBIT_ERROR_CODES } from '@orbit-ai/core'
+export type { OrbitErrorCode, OrbitErrorShape } from '@orbit-ai/core'
 export type { OrbitTransport, TransportRequest } from './transport/index.js'
 export { AutoPager } from './pagination.js'
 export { SearchResource } from './search.js'
