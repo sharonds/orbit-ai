@@ -1,7 +1,26 @@
 {
   "name": "@orbit-ai/sdk",
   "version": "0.0.0",
-  "private": true,
+  "description": "TypeScript client SDK for Orbit AI — type-safe CRM client with HTTP and direct-core transports",
+  "keywords": ["crm", "ai-agents", "orbit-ai", "typescript", "sdk", "type-safe", "pagination"],
+  "author": "Orbit AI Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sharonds/orbit-ai.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/sharonds/orbit-ai#readme",
+  "bugs": {
+    "url": "https://github.com/sharonds/orbit-ai/issues"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
