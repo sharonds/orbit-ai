@@ -1,6 +1,11 @@
 import { Command } from 'commander'
 import { CliValidationError, CliConfigError, CliNotImplementedError } from './errors.js'
 import type { GlobalFlags } from './types.js'
+import { registerInitCommand } from './commands/init.js'
+import { registerStatusCommand } from './commands/status.js'
+import { registerDoctorCommand } from './commands/doctor.js'
+import { registerSeedCommand } from './commands/seed.js'
+import { registerMigrateCommand } from './commands/migrate.js'
 
 let _jsonMode = false
 
@@ -96,12 +101,12 @@ export function createProgram(): Command {
       _jsonMode = opts.json === true || opts.format === 'json'
     })
 
-  // Register all command groups (stubs — commands will be filled in later slices)
-  registerStubCommand(program, 'init', 'Scaffold .orbit/config.json and .env.example')
-  registerStubCommand(program, 'status', 'Show connection and config status')
-  registerStubCommand(program, 'doctor', 'Run environment diagnostics')
-  registerStubCommand(program, 'seed', 'Seed the database with example data')
-  registerStubCommand(program, 'migrate', 'Run schema migrations')
+  // Register all command groups
+  registerInitCommand(program)
+  registerStatusCommand(program)
+  registerDoctorCommand(program)
+  registerSeedCommand(program)
+  registerMigrateCommand(program)
   registerStubCommand(program, 'contacts', 'Manage contacts')
   registerStubCommand(program, 'companies', 'Manage companies')
   registerStubCommand(program, 'deals', 'Manage deals')
