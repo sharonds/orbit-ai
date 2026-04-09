@@ -73,10 +73,8 @@ export function registerFieldsCommand(program: Command): void {
 
       if (!confirmed) {
         if (isJsonMode() || !isTTY) {
-          process.stdout.write(
-            JSON.stringify(DESTRUCTIVE_FIELDS_DELETE_ERROR(entity, fieldName)) + '\n',
-            () => { process.exit(1) },
-          )
+          process.stdout.write(JSON.stringify(DESTRUCTIVE_FIELDS_DELETE_ERROR(entity, fieldName)) + '\n')
+          process.exit(1)
           return
         }
         // TTY mode: prompt
@@ -103,11 +101,19 @@ export function registerFieldsCommand(program: Command): void {
 }
 
 async function confirmAction(prompt: string): Promise<boolean> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     process.stderr.write(prompt)
     process.stdin.setEncoding('utf8')
-    process.stdin.once('data', (data) => {
-      resolve(data.toString().trim().toLowerCase() === 'y')
-    })
+    const onData = (data: Buffer | string) => { cleanup(); resolve(data.toString().trim().toLowerCase() === 'y') }
+    const onEnd = () => { cleanup(); resolve(false) }
+    const onError = (err: Error) => { cleanup(); reject(err) }
+    const cleanup = () => {
+      process.stdin.removeListener('data', onData)
+      process.stdin.removeListener('end', onEnd)
+      process.stdin.removeListener('error', onError)
+    }
+    process.stdin.once('data', onData)
+    process.stdin.once('end', onEnd)
+    process.stdin.once('error', onError)
   })
 }

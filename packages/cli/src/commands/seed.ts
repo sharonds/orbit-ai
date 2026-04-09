@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { loadConfig } from '../config/files.js'
 import { resolveClient } from '../config/resolve-context.js'
+import { CliValidationError } from '../errors.js'
 import { isJsonMode } from '../program.js'
 import type { GlobalFlags } from '../types.js'
 
@@ -11,7 +12,14 @@ export function registerSeedCommand(program: Command): void {
     .option('--count <n>', 'Number of example records to create', '5')
     .action(async (opts) => {
       const flags = program.opts() as GlobalFlags
-      await runSeed(flags, Number(opts.count), process.cwd())
+      const count = Number(opts.count)
+      if (!Number.isInteger(count) || count < 1 || count > 1000) {
+        throw new CliValidationError(
+          `--count must be a positive integer between 1 and 1000, got: '${opts.count}'`,
+          { code: 'INVALID_ARGUMENT', path: 'count' },
+        )
+      }
+      await runSeed(flags, count, process.cwd())
     })
 }
 
@@ -24,14 +32,12 @@ async function runSeed(flags: GlobalFlags, count: number, cwd?: string): Promise
   if (effectiveMode !== 'direct') {
     const msg = 'orbit seed requires direct mode (--mode direct with a local adapter)'
     if (isJsonMode()) {
-      process.stdout.write(JSON.stringify({ error: { code: 'DIRECT_MODE_REQUIRED', message: msg } }) + '\n', () => {
-        process.exit(2)
-      })
-      return
+      process.stdout.write(JSON.stringify({ error: { code: 'DIRECT_MODE_REQUIRED', message: msg } }) + '\n')
     } else {
       process.stderr.write(msg + '\n')
     }
     process.exit(2)
+    return
   }
 
   const client = resolveClient({ flags })
@@ -43,10 +49,11 @@ async function runSeed(flags: GlobalFlags, count: number, cwd?: string): Promise
       created.push(contact)
     }
   } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
     if (isJsonMode()) {
-      process.stdout.write(JSON.stringify({ seeded: created.length, total: count, error: (e as Error).message }) + '\n')
+      process.stdout.write(JSON.stringify({ seeded: created.length, total: count, error: msg }) + '\n')
     } else {
-      process.stderr.write(`Seeded ${created.length}/${count} contacts before error: ${(e as Error).message}\n`)
+      process.stderr.write(`Seeded ${created.length}/${count} contacts before error: ${msg}\n`)
     }
     process.exit(1)
   }
