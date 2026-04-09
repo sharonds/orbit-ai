@@ -155,26 +155,31 @@ function sanitizeProjectProfile(profile: ProfileEntry): ProfileEntry {
 function sanitizeProjectConfig(config: OrbitConfig | null): OrbitConfig | null {
   if (!config) return null
 
-  const profiles =
-    config.profiles && typeof config.profiles === 'object'
-      ? Object.fromEntries(
-          Object.entries(config.profiles).map(([profileName, profile]) => {
-            if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
-              throw new CliConfigError(
-                `Profile '${profileName}' must be a JSON object in Orbit config.`,
-                { code: 'CONFIG_PARSE_ERROR', profile: profileName },
-              )
-            }
+  if (config.profiles !== undefined && (typeof config.profiles !== 'object' || Array.isArray(config.profiles))) {
+    throw new CliConfigError('`profiles` must be a JSON object in Orbit config.', {
+      code: 'CONFIG_PARSE_ERROR',
+      path: 'profiles',
+    })
+  }
 
-            return [profileName, sanitizeProjectProfile(profile as ProfileEntry)]
-          }),
-        )
-      : undefined
+  const profiles = config.profiles
+    ? Object.fromEntries(
+        Object.entries(config.profiles).map(([profileName, profile]) => {
+          if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+            throw new CliConfigError(
+              `Profile '${profileName}' must be a JSON object in Orbit config.`,
+              { code: 'CONFIG_PARSE_ERROR', profile: profileName },
+            )
+          }
+
+          return [profileName, sanitizeProjectProfile(profile as ProfileEntry)]
+        }),
+      )
+    : undefined
 
   return {
     ...(config.orgId !== undefined ? { orgId: config.orgId } : {}),
     ...(config.userId !== undefined ? { userId: config.userId } : {}),
-    ...(config.profile !== undefined ? { profile: config.profile } : {}),
     ...(profiles !== undefined ? { profiles } : {}),
   }
 }

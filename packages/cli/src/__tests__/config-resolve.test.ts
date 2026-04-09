@@ -393,6 +393,31 @@ describe('config resolution — resolveClient', () => {
     expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'user-key' }))
   })
 
+  it('19: project config cannot force a user profile selection', () => {
+    const cwd = makeTmpDir()
+    const home = makeTmpDir()
+    makeUserConfig(home, {
+      mode: 'api',
+      apiKey: 'default-key',
+      profiles: {
+        prod: {
+          apiKey: 'prod-key',
+          baseUrl: 'https://prod.example.com',
+        },
+      },
+    })
+    makeProjectConfig(cwd, { profile: 'prod' })
+
+    resolveClient({
+      flags: {},
+      env: {},
+      cwd,
+      overrideHome: home,
+    })
+
+    expect(OrbitClient).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'default-key' }))
+  })
+
   // Test D3a: reads api key from env var named by apiKeyEnv in user config
   it('reads api key from env var named by apiKeyEnv in user config', () => {
     const tmp = makeTmpDir()
@@ -495,7 +520,7 @@ describe('loadConfig sanitization', () => {
     })
 
     const loaded = loadConfig(cwd, home)
-    expect(loaded.profile).toBe('workspace')
+    expect(loaded.profile).toBeUndefined()
     expect(loaded.profiles?.workspace).toEqual({ orgId: 'org_project' })
   })
 
@@ -512,6 +537,21 @@ describe('loadConfig sanitization', () => {
       expect.objectContaining({
         name: 'CliConfigError',
         details: expect.objectContaining({ code: 'CONFIG_PARSE_ERROR', profile: 'broken' }),
+      }),
+    )
+  })
+
+  it('rejects non-object project profiles containers with CliConfigError', () => {
+    const cwd = makeTmpDir()
+    const home = makeTmpDir()
+    makeProjectConfig(cwd, {
+      profiles: [],
+    })
+
+    expect(() => loadConfig(cwd, home)).toThrowError(
+      expect.objectContaining({
+        name: 'CliConfigError',
+        details: expect.objectContaining({ code: 'CONFIG_PARSE_ERROR', path: 'profiles' }),
       }),
     )
   })
