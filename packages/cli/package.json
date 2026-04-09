@@ -1,0 +1,27 @@
+{
+  "name": "@orbit-ai/cli",
+  "version": "0.1.0-alpha.0",
+  "description": "Terminal interface for Orbit AI CRM",
+  "type": "module",
+  "bin": { "orbit": "./dist/index.js" },
+  "files": ["dist/", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "rm -rf dist && tsc && chmod +x dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@orbit-ai/sdk": "workspace:*",
+    "commander": "^12.0.0",
+    "ink": "^5.0.0",
+    "react": "^18.0.0",
+    "cli-table3": "^0.6.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "tsx": "^4.0.0"
+  }
+}
