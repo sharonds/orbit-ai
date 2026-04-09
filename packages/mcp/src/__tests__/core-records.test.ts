@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { executeTool } from '../tools/registry.js'
 import { createMcpServer, resolveDeleteConfirmation, safeReadResource } from '../server.js'
+import { McpToolError } from '../errors.js'
 import { makeMockClient, parseTextResult } from './helpers.js'
 
 describe('core record tools', () => {
@@ -258,9 +259,13 @@ describe('core record tools', () => {
 
 describe('safeReadResource', () => {
   it('sanitizes sensitive content in thrown errors', async () => {
-    await expect(
-      safeReadResource(() => Promise.reject(new Error('Bearer ya29.LEAKED_TOKEN internal error'))),
-    ).rejects.toMatchObject({ name: 'McpToolError', code: 'INTERNAL_ERROR' })
+    const err = await safeReadResource(
+      () => Promise.reject(new Error('Bearer ya29.LEAKED_TOKEN internal error')),
+    ).catch((e: unknown) => e) as McpToolError
+    expect(err.name).toBe('McpToolError')
+    expect(err.code).toBe('INTERNAL_ERROR')
+    expect(err.message).not.toContain('ya29.LEAKED_TOKEN')
+    expect(err.message).not.toContain('LEAKED_TOKEN')
   })
 
   it('wraps reader errors as McpToolError', async () => {
