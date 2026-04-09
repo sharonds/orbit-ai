@@ -46,10 +46,8 @@ export async function startHttpTransport(options: StartMcpServerOptions): Promis
         return
       }
 
-      if (!res.headersSent) {
-        res.writeHead(statusCode, { 'content-type': 'application/json' })
-        res.end(JSON.stringify(toToolError(normalized)))
-      }
+      res.writeHead(statusCode, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(toToolError(normalized)))
     }
   })
 
