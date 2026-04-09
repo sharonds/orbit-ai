@@ -70,7 +70,6 @@ describe('toToolError', () => {
   })
 
   it('preserves custom hint and recovery from McpToolError through normalizeToolError', () => {
-    // McpToolError is a class — import it
     const error = new McpToolError('VALIDATION_FAILED', 'something went wrong', 'custom hint text', 'custom recovery text')
     const normalized = normalizeToolError(error)
     expect(normalized.code).toBe('VALIDATION_FAILED')
