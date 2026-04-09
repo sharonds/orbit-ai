@@ -158,6 +158,7 @@ export function writeDirectModeAuditLog(payload: Record<string, unknown>): void 
   process.stderr.write(`${JSON.stringify(payload)}\n`)
 }
 
+// Exported for in-package use and unit testing only — not part of the public API surface.
 export async function safeReadResource<T>(reader: () => Promise<T>): Promise<T> {
   try {
     return await reader()
