@@ -5,18 +5,9 @@ export { ORBIT_ERROR_CODES } from '@orbit-ai/core'
 export type { OrbitErrorCode, OrbitErrorShape } from '@orbit-ai/core'
 export type { OrbitTransport, TransportRequest } from './transport/index.js'
 export { AutoPager } from './pagination.js'
-export { SearchResource } from './search.js'
 export type { SearchInput } from './search.js'
 
-// Wave 1 resources
-export { BaseResource } from './resources/base-resource.js'
-export { ContactResource } from './resources/contacts.js'
-export { CompanyResource } from './resources/companies.js'
-export { DealResource } from './resources/deals.js'
-export { PipelineResource } from './resources/pipelines.js'
-export { StageResource } from './resources/stages.js'
-export { UserResource } from './resources/users.js'
-
+// Wave 1 resource types
 export type { ContactRecord, CreateContactInput, UpdateContactInput } from './resources/contacts.js'
 export type { CompanyRecord, CreateCompanyInput, UpdateCompanyInput } from './resources/companies.js'
 export type { DealRecord, CreateDealInput, UpdateDealInput } from './resources/deals.js'
@@ -24,22 +15,7 @@ export type { PipelineRecord, CreatePipelineInput, UpdatePipelineInput } from '.
 export type { StageRecord, CreateStageInput, UpdateStageInput } from './resources/stages.js'
 export type { UserRecord, CreateUserInput, UpdateUserInput } from './resources/users.js'
 
-// Wave 2 resources
-export { ActivityResource } from './resources/activities.js'
-export { TaskResource } from './resources/tasks.js'
-export { NoteResource } from './resources/notes.js'
-export { ProductResource } from './resources/products.js'
-export { PaymentResource } from './resources/payments.js'
-export { ContractResource } from './resources/contracts.js'
-export { SequenceResource } from './resources/sequences.js'
-export { SequenceStepResource } from './resources/sequence-steps.js'
-export { SequenceEnrollmentResource } from './resources/sequence-enrollments.js'
-export { SequenceEventResource } from './resources/sequence-events.js'
-export { TagResource } from './resources/tags.js'
-export { SchemaResource } from './resources/schema.js'
-export { WebhookResource } from './resources/webhooks.js'
-export { ImportResource } from './resources/imports.js'
-
+// Wave 2 resource types
 export type { ActivityRecord, CreateActivityInput, UpdateActivityInput } from './resources/activities.js'
 export type { TaskRecord, CreateTaskInput, UpdateTaskInput } from './resources/tasks.js'
 export type { NoteRecord, CreateNoteInput, UpdateNoteInput } from './resources/notes.js'
