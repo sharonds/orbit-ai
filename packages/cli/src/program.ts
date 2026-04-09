@@ -1,5 +1,5 @@
 import { Command } from 'commander'
-import { CliValidationError, CliConfigError, CliUnsupportedAdapterError } from './errors.js'
+import { CliValidationError, CliConfigError, CliNotImplementedError } from './errors.js'
 import type { GlobalFlags } from './types.js'
 
 let _jsonMode = false
@@ -8,8 +8,23 @@ export function isJsonMode(): boolean {
   return _jsonMode
 }
 
+// test-only
+export function _resetJsonMode(): void {
+  _jsonMode = false
+}
+
 function classifyError(error: unknown): { code: number; payload: Record<string, unknown> } {
-  if (error instanceof CliValidationError || error instanceof CliUnsupportedAdapterError) {
+  if (error instanceof CliNotImplementedError) {
+    return {
+      code: 2,
+      payload: {
+        code: error.details?.code ?? 'NOT_IMPLEMENTED',
+        message: error.message,
+        ...error.details,
+      },
+    }
+  }
+  if (error instanceof CliValidationError) {
     return {
       code: 2,
       payload: {
@@ -115,7 +130,7 @@ function registerStubCommand(program: Command, name: string, description: string
 
 export async function run(): Promise<void> {
   // Handle SIGINT
-  process.on('SIGINT', () => {
+  process.once('SIGINT', () => {
     process.exit(130)
   })
 
