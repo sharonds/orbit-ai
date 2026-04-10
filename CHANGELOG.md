@@ -21,6 +21,9 @@ First public pre-release of the Orbit AI monorepo. All 5 packages: `@orbit-ai/co
 - `McpIntegrationConnectionRead.object` made required (was incorrectly optional)
 - Dead unreachable code removed from HTTP transport error handler
 - `safeReadResource` now logs via `writeStderrWarning` before re-throwing, re-throws as `McpToolError` (preserving `code`/`hint`/`recovery`), and is exported for unit testing
+- `redactSensitiveText` expanded to redact `key=value` formats: `api_key=`, `refresh_token=`, `client_secret=`, `access_token=`, `client_id=` (both `=` and `:` separators)
+- `isZodError` usage in `normalizeToolError` hardened against malformed lookalikes (e.g. `{ name: 'ZodError', issues: [null] }`) — now degrades safely instead of throwing
+- `sanitizeSecretBearingRecord` now recursively strips sensitive keys at all nesting depths (arrays and nested objects), not just the top level
 
 ### Added
 
