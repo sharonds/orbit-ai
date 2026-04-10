@@ -55,6 +55,10 @@ function redactSensitiveText(input: string | undefined | null): string {
   output = output.replace(/[A-Za-z][A-Za-z0-9+.-]*:\/\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]{20,}/g, '[redacted]')
   output = output.replace(/\bya29\.[A-Za-z0-9._-]+\b/g, '[redacted]')
   output = output.replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+\b/g, '[redacted]')
+  output = output.replace(
+    /\b(api[_-]?key|refresh_token|client_secret|access_token|client[_-]?id)[=:]\s*[^\s,&"'\]]+/gi,
+    '$1=[redacted]',
+  )
   return output.slice(0, 500)
 }
 
@@ -135,9 +139,15 @@ export function normalizeToolError(error: unknown): Required<McpToolErrorShape> 
   }
 
   if (isZodError(error)) {
+    const messages = error.issues
+      .filter((issue): issue is { message: string } =>
+        !!issue && typeof issue === 'object' && typeof (issue as Record<string, unknown>).message === 'string',
+      )
+      .map((issue) => issue.message)
+      .join('; ')
     return withDefaults({
       code: 'VALIDATION_FAILED',
-      message: redactSensitiveText(error.issues.map((issue) => issue.message).join('; ')),
+      message: redactSensitiveText(messages || 'Validation failed.'),
     })
   }
 
