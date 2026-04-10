@@ -36,9 +36,16 @@ export async function startHttpTransport(options: StartMcpServerOptions): Promis
       await handleAuthenticatedHttpRequest(req, res, options.client, options.adapter!, bindAddress)
     } catch (error) {
       const statusCode = error instanceof SyntaxError ? 400 : 500
+      const isBodyTooLarge =
+        error instanceof SyntaxError && error.message === 'Request body too large.'
       const normalized = normalizeToolError(
         statusCode === 400
-          ? { code: 'VALIDATION_FAILED', message: 'Malformed JSON body.' as const }
+          ? {
+              code: 'VALIDATION_FAILED' as const,
+              message: isBodyTooLarge
+                ? 'Request body exceeds the 1 MB limit.'
+                : 'Malformed JSON body.',
+            }
           : error,
       )
       writeStderrWarning(`MCP HTTP ${statusCode} error: ${normalized.code}: ${normalized.message}`)
@@ -94,6 +101,15 @@ export async function handleAuthenticatedHttpRequest(
   await transport.handleRequest(req, res, body)
 }
 
+/**
+ * Authenticates an HTTP request against the adapter's API-key store.
+ *
+ * On success, returns the resolved key record. The raw bearer token is
+ * intentionally NOT included in the result — do not re-extract it from
+ * req.headers for logging or forwarding, as that would defeat redaction.
+ *
+ * Checks: header presence, non-empty token, SHA-256 lookup, revocation, expiry.
+ */
 export async function authenticateRequest(
   req: IncomingMessage,
   adapter: RuntimeApiAdapter,
