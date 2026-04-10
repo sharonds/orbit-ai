@@ -53,6 +53,5 @@ export async function handleUnenrollFromSequence(client: OrbitClient, rawArgs: u
   // but the current SDK unenroll() method does not expose these parameters yet.
   void args.reason
   void args.idempotency_key
-  // The current SDK seam accepts only the enrollment ID.
   return toToolSuccess(sanitizeObjectDeep(await client.sequenceEnrollments.unenroll(args.enrollment_id)))
 }

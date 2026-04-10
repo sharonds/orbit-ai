@@ -238,6 +238,18 @@ describe('core record tools', () => {
     expect(parseTextResult(result).error.code).toBe('DEPENDENCY_NOT_AVAILABLE')
   })
 
+  it('search_records handles flat-array search result (non-envelope)', async () => {
+    const client = makeMockClient()
+    vi.mocked(client.contacts.search).mockResolvedValueOnce([
+      { id: 'contact_01', name: 'Jane' },
+    ] as never)
+    const result = await executeTool(client, 'search_records', { object_type: 'contacts', query: 'jane' })
+    expect(result.isError).toBeFalsy()
+    const text = getTextContent(result)
+    const parsed = JSON.parse(text) as { ok: boolean; data: unknown }
+    expect(parsed.ok).toBe(true)
+  })
+
   it('search_records truncates oversized queries before dispatch', async () => {
     const client = makeMockClient()
     await executeTool(client, 'search_records', { object_type: 'contacts', query: 'x'.repeat(12_000) })

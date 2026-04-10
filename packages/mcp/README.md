@@ -11,8 +11,8 @@ Runtime requirement:
 Direct mode trust boundary:
 
 - Direct mode is for trusted local embeddings only.
-- It bypasses API-layer authentication, per-org rate limiting, scope enforcement, and API webhook SSRF protections.
-- The server emits a stderr warning when started against a DirectTransport-backed SDK client.
+- It bypasses API-layer authentication, per-org rate limiting, scope enforcement, and API-layer webhook SSRF validation. API-layer webhook SSRF validation is bypassed, but direct-mode SSRF checks are applied locally before any webhook create/update operation.
+- The server emits a stderr warning whenever the SDK client is adapter-backed without an API key (direct mode). In HTTP transport mode this warning fires per authenticated request, because each request constructs a per-request OrbitClient with adapter and orgId but no apiKey.
 
 HTTP transport:
 
