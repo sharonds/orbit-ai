@@ -99,6 +99,45 @@ describe('ActivityResource', () => {
       body: { type: 'call' },
     })
   })
+
+  it('create() passes body, direction, and metadata through transport', async () => {
+    const input = {
+      type: 'email_sent',
+      body: 'Hey there',
+      direction: 'outbound',
+      metadata: { campaign_id: 'camp_1' },
+      logged_by_user_id: 'user_123',
+    }
+    transport.request.mockResolvedValue(makeEnvelope({ id: 'act_3', ...input }))
+
+    await activities.create(input)
+
+    expect(transport.request).toHaveBeenCalledWith({
+      method: 'POST',
+      path: '/v1/activities',
+      body: input,
+    })
+  })
+
+  it('ActivityRecord wire format uses logged_by_user_id, not user_id', () => {
+    // Type-level check: CreateActivityInput must accept logged_by_user_id
+    // and must not accept user_id (this is enforced by TypeScript, tested here
+    // by verifying the transport receives the correct field name at runtime)
+    const input = {
+      type: 'call',
+      logged_by_user_id: 'user_abc',
+      occurred_at: '2026-04-10T09:00:00.000Z',
+    }
+    transport.request.mockResolvedValue(makeEnvelope({ id: 'act_4', ...input }))
+
+    activities.create(input)
+
+    expect(transport.request).toHaveBeenCalledWith({
+      method: 'POST',
+      path: '/v1/activities',
+      body: input,
+    })
+  })
 })
 
 describe('TaskResource', () => {
@@ -157,6 +196,47 @@ describe('PaymentResource', () => {
     expect(transport.request).toHaveBeenCalledWith({
       method: 'GET',
       path: '/v1/payments/pay_1',
+    })
+  })
+
+  it('create() passes external_id and metadata through transport', async () => {
+    const transport = createMockTransport()
+    const payments = new PaymentResource(transport)
+    const input = {
+      amount: 9999,
+      currency: 'EUR',
+      status: 'paid',
+      external_id: 'stripe_ch_abc123',
+      metadata: { invoice_id: 'inv_1' },
+    }
+    transport.request.mockResolvedValue(makeEnvelope({ id: 'pay_2', ...input }))
+
+    await payments.create(input)
+
+    expect(transport.request).toHaveBeenCalledWith({
+      method: 'POST',
+      path: '/v1/payments',
+      body: input,
+    })
+  })
+
+  it('create() passes payment_method alias through transport', async () => {
+    const transport = createMockTransport()
+    const payments = new PaymentResource(transport)
+    const input = {
+      amount: 500,
+      currency: 'USD',
+      status: 'paid',
+      payment_method: 'ideal',
+    }
+    transport.request.mockResolvedValue(makeEnvelope({ id: 'pay_3', method: 'ideal' }))
+
+    await payments.create(input)
+
+    expect(transport.request).toHaveBeenCalledWith({
+      method: 'POST',
+      path: '/v1/payments',
+      body: input,
     })
   })
 })

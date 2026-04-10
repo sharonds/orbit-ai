@@ -23,7 +23,7 @@ export function registerLogCommand(program: Command): void {
       if (opts.contact) body.contact_id = opts.contact
       if (opts.company) body.company_id = opts.company
       if (opts.deal) body.deal_id = opts.deal
-      if (opts.note) body.description = opts.note
+      if (opts.note) body.body = opts.note
       if (opts.subject) body.subject = opts.subject
       if (opts.occurredAt) body.occurred_at = opts.occurredAt
 

@@ -4,6 +4,7 @@ import { createNoopTransactionScope } from '../../adapters/noop-transaction-scop
 import { generateId } from '../../ids/generate-id.js'
 import { createInMemoryPaymentRepository, type PaymentRepository } from './repository.js'
 import { createPaymentService } from './service.js'
+import { paymentCreateInputSchema, paymentUpdateInputSchema } from './validators.js'
 import { createInMemoryCompanyRepository } from '../companies/repository.js'
 import { createCompanyService } from '../companies/service.js'
 import { createInMemoryContactRepository } from '../contacts/repository.js'
@@ -343,5 +344,54 @@ describe('payment service', () => {
       await paymentService.create(ctx, { amount: '5.00', status: 'pending' })
       expect(withDatabaseSpy).toHaveBeenCalledTimes(1)
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// payment_method → method transform (MEDIUM-3 fix)
+// ---------------------------------------------------------------------------
+
+describe('paymentCreateInputSchema payment_method transform', () => {
+  it('maps payment_method to method when method is absent', () => {
+    const result = paymentCreateInputSchema.parse({
+      amount: '100.00',
+      currency: 'USD',
+      status: 'pending',
+      payment_method: 'stripe',
+    })
+    expect((result as Record<string, unknown>).method).toBe('stripe')
+    expect((result as Record<string, unknown>).payment_method).toBeUndefined()
+  })
+
+  it('preserves explicit method when both payment_method and method are provided', () => {
+    const result = paymentCreateInputSchema.parse({
+      amount: '100.00',
+      currency: 'USD',
+      status: 'pending',
+      method: 'manual',
+      payment_method: 'stripe',
+    })
+    // method takes precedence over payment_method when both present
+    expect((result as Record<string, unknown>).method).toBe('manual')
+    expect((result as Record<string, unknown>).payment_method).toBeUndefined()
+  })
+
+  it('strips payment_method when no method is provided', () => {
+    const result = paymentCreateInputSchema.parse({
+      amount: '100.00',
+      currency: 'USD',
+      status: 'pending',
+    })
+    expect((result as Record<string, unknown>).payment_method).toBeUndefined()
+  })
+})
+
+describe('paymentUpdateInputSchema payment_method transform', () => {
+  it('maps payment_method to method for updates', () => {
+    const result = paymentUpdateInputSchema.parse({
+      payment_method: 'ideal',
+    })
+    expect((result as Record<string, unknown>).method).toBe('ideal')
+    expect((result as Record<string, unknown>).payment_method).toBeUndefined()
   })
 })

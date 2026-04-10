@@ -7,12 +7,16 @@ export interface ActivityRecord {
   organization_id: string
   type: string
   subject: string | null
-  description: string | null
+  body?: string | null
+  direction?: string | null
+  duration_minutes?: number | null
+  metadata?: Record<string, unknown> | null
+  outcome?: string | null
   contact_id: string | null
   company_id: string | null
   deal_id: string | null
-  user_id: string | null
-  occurred_at: string | null
+  logged_by_user_id: string | null
+  occurred_at: string
   custom_fields: Record<string, unknown>
   created_at: string
   updated_at: string
@@ -21,11 +25,15 @@ export interface ActivityRecord {
 export interface CreateActivityInput {
   type: string
   subject?: string
-  description?: string
+  body?: string
+  direction?: string
+  duration_minutes?: number
+  metadata?: Record<string, unknown>
+  outcome?: string
   contact_id?: string
   company_id?: string
   deal_id?: string
-  user_id?: string
+  logged_by_user_id?: string
   occurred_at?: string
   custom_fields?: Record<string, unknown>
 }
