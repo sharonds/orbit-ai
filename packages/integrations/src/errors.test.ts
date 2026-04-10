@@ -135,24 +135,19 @@ describe('fromIntegrationError', () => {
   it('returns a string with error code for cli target', () => {
     const result = fromIntegrationError(base, 'cli')
     expect(typeof result).toBe('string')
-    expect(result as string).toContain('AUTH_EXPIRED')
-    expect(result as string).toContain('Token is expired')
+    expect(result).toContain('AUTH_EXPIRED')
+    expect(result).toContain('Token is expired')
   })
 
   it('returns an object with type and error for mcp target', () => {
-    const result = fromIntegrationError(base, 'mcp') as {
-      type: string
-      error: { code: string; message: string }
-    }
+    const result = fromIntegrationError(base, 'mcp')
     expect(result.type).toBe('error')
     expect(result.error.code).toBe('AUTH_EXPIRED')
     expect(result.error.message).toBe('Token is expired')
   })
 
   it('returns an object with error property for api target', () => {
-    const result = fromIntegrationError(base, 'api') as {
-      error: { code: string; message: string }
-    }
+    const result = fromIntegrationError(base, 'api')
     expect(result.error.code).toBe('AUTH_EXPIRED')
     expect(result.error.message).toBe('Token is expired')
   })

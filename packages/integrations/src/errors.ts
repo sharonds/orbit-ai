@@ -9,7 +9,6 @@ export type IntegrationErrorCode =
   | 'WEBHOOK_SIGNATURE_INVALID'
   | 'PROVIDER_ERROR'
   | 'INTERNAL_ERROR'
-  | 'DEPENDENCY_NOT_AVAILABLE'
 
 export interface IntegrationError {
   readonly _type: 'IntegrationError'
@@ -44,7 +43,13 @@ export function createIntegrationError(
   }
 }
 
-// Normalize any thrown value to IntegrationError
+/**
+ * Heuristic normalizer for use in catch blocks.
+ * Maps common HTTP status codes and error messages to semantic IntegrationErrorCode values.
+ * Note: AUTH_REVOKED, INVALID_INPUT, and WEBHOOK_SIGNATURE_INVALID cannot be inferred
+ * heuristically — create them directly via createIntegrationError() when the specific
+ * condition is known.
+ */
 export function toIntegrationError(err: unknown, provider?: string): IntegrationError {
   if (isIntegrationError(err)) return err
   const message = err instanceof Error ? err.message : String(err)
@@ -70,10 +75,19 @@ export function toIntegrationError(err: unknown, provider?: string): Integration
 }
 
 // Convert IntegrationError to the appropriate downstream error type
+export function fromIntegrationError(err: IntegrationError, target: 'cli'): string
+export function fromIntegrationError(
+  err: IntegrationError,
+  target: 'mcp',
+): { type: 'error'; error: { code: string; message: string } }
+export function fromIntegrationError(
+  err: IntegrationError,
+  target: 'api',
+): { error: { code: string; message: string } }
 export function fromIntegrationError(
   err: IntegrationError,
   target: 'mcp' | 'api' | 'cli',
-): unknown {
+): string | { type: 'error'; error: { code: string; message: string } } | { error: { code: string; message: string } } {
   switch (target) {
     case 'mcp':
       // Returns a shape compatible with McpToolError
