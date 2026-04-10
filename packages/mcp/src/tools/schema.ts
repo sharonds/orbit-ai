@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { OrbitClient } from '@orbit-ai/sdk'
 import { defineTool } from './schemas.js'
 import { McpNotImplementedError, toToolSuccess } from '../errors.js'
+import { sanitizeObjectDeep } from '../output/sensitive.js'
 
 const GetSchemaInput = z.object({
   object_type: z.string().optional(),
@@ -47,12 +48,12 @@ export async function handleGetSchema(client: OrbitClient, rawArgs: unknown) {
 
 export async function handleCreateCustomField(client: OrbitClient, rawArgs: unknown) {
   const args = CustomFieldInput.parse(rawArgs)
-  return toToolSuccess(await client.schema.addField(args.object_type, args.field))
+  return toToolSuccess(sanitizeObjectDeep(await client.schema.addField(args.object_type, args.field)))
 }
 
 export async function handleUpdateCustomField(client: OrbitClient, rawArgs: unknown) {
   const args = CustomFieldInput.extend({ field_name: z.string() }).parse(rawArgs)
   return toToolSuccess(
-    await client.schema.updateField(args.object_type, args.field_name, args.field),
+    sanitizeObjectDeep(await client.schema.updateField(args.object_type, args.field_name, args.field)),
   )
 }

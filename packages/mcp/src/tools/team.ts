@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { OrbitClient } from '@orbit-ai/sdk'
 import { defineTool } from './schemas.js'
 import { toToolSuccess } from '../errors.js'
+import { sanitizeObjectDeep } from '../output/sensitive.js'
 import { getClientResource } from './core-records.js'
 
 const AssignRecordInput = z.object({
@@ -22,8 +23,10 @@ export const assignRecordTool = defineTool({
 export async function handleAssignRecord(client: OrbitClient, rawArgs: unknown) {
   const args = AssignRecordInput.parse(rawArgs)
   return toToolSuccess(
-    await getClientResource(client, args.object_type).update(args.record_id, {
-      assigned_to_user_id: args.user_id,
-    }),
+    sanitizeObjectDeep(
+      await getClientResource(client, args.object_type).update(args.record_id, {
+        assigned_to_user_id: args.user_id,
+      }),
+    ),
   )
 }

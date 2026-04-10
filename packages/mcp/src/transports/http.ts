@@ -131,14 +131,17 @@ export async function authenticateRequest(
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
+  let totalLength = 0
+  const MAX_BODY = 1_048_576 // 1 MB
   for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string)
+    totalLength += buf.length
+    if (totalLength > MAX_BODY) {
+      throw new SyntaxError('Request body too large.')
+    }
+    chunks.push(buf)
   }
-
-  if (chunks.length === 0) {
-    return undefined
-  }
-
+  if (chunks.length === 0) return undefined
   return JSON.parse(Buffer.concat(chunks).toString('utf8'))
 }
 

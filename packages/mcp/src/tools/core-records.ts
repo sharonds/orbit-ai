@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { OrbitClient } from '@orbit-ai/sdk'
 import { defineTool, IncludeSchema, LimitSchema, SearchObjectTypeSchema, SortSchema, ObjectTypeSchema, CursorSchema, sanitizeRecordPayload } from './schemas.js'
 import { McpToolError, toToolSuccess } from '../errors.js'
-import { sanitizeSecretBearingRecord } from '../output/sensitive.js'
+import { sanitizeObjectDeep, sanitizeSecretBearingRecord } from '../output/sensitive.js'
 import { sanitizeStringInput } from '../output/truncation.js'
 import { isDirectModeClient, validateWebhookUrlForDirectMode } from '../server.js'
 
@@ -115,13 +115,12 @@ export async function handleSearchRecords(client: OrbitClient, rawArgs: unknown)
   const query = args.query ? sanitizeStringInput(args.query) : undefined
 
   if (args.object_type === 'all') {
-    return toToolSuccess(
-      await client.search.query({
-        ...(query ? { query } : { query: '' }),
-        ...(args.limit ? { limit: args.limit } : {}),
-        ...(args.cursor ? { cursor: args.cursor } : {}),
-      }),
-    )
+    const rawResult = await client.search.query({
+      ...(query ? { query } : { query: '' }),
+      ...(args.limit ? { limit: args.limit } : {}),
+      ...(args.cursor ? { cursor: args.cursor } : {}),
+    })
+    return toToolSuccess(sanitizeObjectDeep(rawResult))
   }
 
   const resource = getClientResource(client, args.object_type)
@@ -135,7 +134,7 @@ export async function handleSearchRecords(client: OrbitClient, rawArgs: unknown)
   })
   const sanitizedData = Array.isArray((rawResult as Record<string, unknown>)?.data)
     ? { ...(rawResult as Record<string, unknown>), data: ((rawResult as Record<string, unknown>).data as unknown[]).map((r: unknown) => sanitizeSecretBearingRecord(String(args.object_type), r)) }
-    : rawResult
+    : sanitizeObjectDeep(rawResult)
   return toToolSuccess(sanitizedData)
 }
 

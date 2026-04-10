@@ -1,4 +1,4 @@
-import { OrbitApiError } from '@orbit-ai/sdk'
+import type { OrbitApiError } from '@orbit-ai/sdk'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 
 export type McpToolErrorCode =
@@ -199,7 +199,7 @@ function withDefaults(error: McpToolErrorShape): Required<McpToolErrorShape> {
   }
 }
 
-function isZodError(error: unknown): error is { name: 'ZodError'; issues: Array<{ message: string }> } {
+function isZodError(error: unknown): error is { name: 'ZodError'; issues: unknown[] } {
   return (
     !!error &&
     typeof error === 'object' &&
@@ -210,7 +210,7 @@ function isZodError(error: unknown): error is { name: 'ZodError'; issues: Array<
   )
 }
 
-const VALID_MCP_CODES = new Set<string>([
+const VALID_MCP_CODES = new Set<McpToolErrorCode>([
   'RESOURCE_NOT_FOUND',
   'VALIDATION_FAILED',
   'AUTH_INVALID',
@@ -228,23 +228,23 @@ function isToolErrorShape(error: unknown): error is McpToolErrorShape {
     typeof error === 'object' &&
     'code' in error &&
     typeof (error as Record<string, unknown>).code === 'string' &&
-    VALID_MCP_CODES.has((error as Record<string, unknown>).code as string) &&
+    VALID_MCP_CODES.has((error as Record<string, unknown>).code as McpToolErrorCode) &&
     'message' in error
   )
 }
 
 function isOrbitApiError(error: unknown): error is OrbitApiError {
+  if (!error || typeof error !== 'object') return false
+  const e = error as Record<string, unknown>
   return (
-    error instanceof OrbitApiError ||
-    (!!error &&
-      typeof error === 'object' &&
-      'error' in error &&
-      typeof (error as Record<string, unknown>).error === 'object' &&
-      (error as Record<string, unknown>).error !== null &&
-      'status' in error &&
-      typeof (error as Record<string, unknown>).status === 'number' &&
-      'code' in error &&
-      'message' in error)
+    'error' in e &&
+    typeof e.error === 'object' &&
+    e.error !== null &&
+    'code' in (e.error as Record<string, unknown>) &&
+    'status' in e &&
+    typeof e.status === 'number' &&
+    'code' in e &&
+    'message' in e
   )
 }
 
