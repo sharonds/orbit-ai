@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { authenticateRequest, resolveHttpOptions } from '../transports/http.js'
+import { authenticateRequest, resolveHttpOptions, startHttpTransport } from '../transports/http.js'
 import { makeMockClient } from './helpers.js'
 
 describe('http transport', () => {
@@ -80,5 +80,46 @@ describe('http transport', () => {
 
   it('binds to 127.0.0.1 by default', async () => {
     expect(resolveHttpOptions({ port: 0 }).bindAddress).toBe('127.0.0.1')
+  })
+
+  it('returns 400 when request body exceeds 1 MB', async () => {
+    const adapter = {
+      lookupApiKeyForAuth: async () => ({
+        id: 'key_01',
+        organizationId: 'org_01',
+        scopes: ['*'],
+        revokedAt: null,
+        expiresAt: null,
+      }),
+    }
+    const runtime = await startHttpTransport({
+      client: makeMockClient(),
+      transport: 'http',
+      port: 0,
+      adapter: adapter as never,
+    })
+
+    const addr = runtime.server.address() as import('node:net').AddressInfo
+    const actualPort = addr.port
+
+    try {
+      const largeBody = JSON.stringify({ query: 'x'.repeat(1_100_000) })
+      const response = await fetch(`http://127.0.0.1:${actualPort}/`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: largeBody,
+      })
+      expect(response.status).toBe(400)
+      // The HTTP handler serializes a CallToolResult: { isError: true, content: [{ type: 'text', text: '{"ok":false,"error":{...}}' }] }
+      const outer = await response.json() as { isError?: boolean; content?: Array<{ type: string; text?: string }> }
+      const textBlock = outer.content?.find((b) => b.type === 'text' && typeof b.text === 'string')
+      const inner = JSON.parse(textBlock?.text ?? '{}') as { error?: { code?: string } }
+      expect(inner.error?.code).toBe('VALIDATION_FAILED')
+    } finally {
+      await new Promise<void>((resolve) => runtime.server.close(() => resolve()))
+    }
   })
 })
