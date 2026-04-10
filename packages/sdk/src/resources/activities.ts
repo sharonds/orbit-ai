@@ -8,6 +8,11 @@ export interface ActivityRecord {
   type: string
   subject: string | null
   description: string | null
+  body?: string | null
+  direction?: string | null
+  duration_minutes?: number | null
+  metadata?: Record<string, unknown> | null
+  outcome?: string | null
   contact_id: string | null
   company_id: string | null
   deal_id: string | null
@@ -22,6 +27,11 @@ export interface CreateActivityInput {
   type: string
   subject?: string
   description?: string
+  body?: string
+  direction?: string
+  duration_minutes?: number
+  metadata?: Record<string, unknown>
+  outcome?: string
   contact_id?: string
   company_id?: string
   deal_id?: string

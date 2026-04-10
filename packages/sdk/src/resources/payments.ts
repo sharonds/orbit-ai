@@ -11,6 +11,8 @@ export interface PaymentRecord {
   deal_id: string | null
   contact_id: string | null
   payment_method: string | null
+  external_id?: string | null
+  metadata?: Record<string, unknown> | null
   paid_at: string | null
   custom_fields: Record<string, unknown>
   created_at: string
@@ -24,6 +26,8 @@ export interface CreatePaymentInput {
   deal_id?: string
   contact_id?: string
   payment_method?: string
+  external_id?: string
+  metadata?: Record<string, unknown>
   paid_at?: string
   custom_fields?: Record<string, unknown>
 }
