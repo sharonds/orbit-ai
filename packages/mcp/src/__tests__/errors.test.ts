@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { OrbitApiError } from '@orbit-ai/sdk'
-import { McpToolError, normalizeToolError, toToolError, toToolSuccess } from '../errors.js'
+import { McpNotImplementedError, McpToolError, normalizeToolError, toToolError, toToolSuccess } from '../errors.js'
 import { getTextContent, parseTextResult } from './helpers.js'
 
 describe('toToolError', () => {
@@ -148,6 +148,49 @@ describe('toToolError', () => {
     const result = normalizeToolError(error)
     expect(result.message).not.toContain('[redacted]]')
     expect(result.message).toContain('access_token=[redacted]remaining')
+  })
+
+  it('normalizeToolError preserves custom hint on McpNotImplementedError', () => {
+    const result = normalizeToolError(new McpNotImplementedError('Not ready', 'Check changelog'))
+    expect(result.code).toBe('DEPENDENCY_NOT_AVAILABLE')
+    expect(result.hint).toBe('Check changelog')
+  })
+
+  it('normalizeToolError maps RATE_LIMITED OrbitApiError to RATE_LIMITED code', () => {
+    const apiErrorLike = {
+      error: { code: 'RATE_LIMITED', message: 'Too many requests' },
+      status: 429,
+      code: 'RATE_LIMITED',
+      message: 'Too many requests',
+    }
+    const result = normalizeToolError(apiErrorLike)
+    expect(result.code).toBe('RATE_LIMITED')
+    expect(result.hint).toContain('backing off')
+    expect(result.recovery).toContain('exponential backoff')
+  })
+
+  it('normalizeToolError maps CONFLICT OrbitApiError to CONFLICT code', () => {
+    const apiErrorLike = {
+      error: { code: 'CONFLICT', message: 'Record already exists' },
+      status: 409,
+      code: 'CONFLICT',
+      message: 'Record already exists',
+    }
+    const result = normalizeToolError(apiErrorLike)
+    expect(result.code).toBe('CONFLICT')
+    expect(result.hint).toContain('conflicting record')
+    expect(result.recovery).toContain('update it instead')
+  })
+
+  it('normalizeToolError maps IDEMPOTENCY_CONFLICT OrbitApiError to CONFLICT code', () => {
+    const apiErrorLike = {
+      error: { code: 'IDEMPOTENCY_CONFLICT', message: 'Duplicate idempotency key' },
+      status: 409,
+      code: 'IDEMPOTENCY_CONFLICT',
+      message: 'Duplicate idempotency key',
+    }
+    const result = normalizeToolError(apiErrorLike)
+    expect(result.code).toBe('CONFLICT')
   })
 })
 
