@@ -16,14 +16,24 @@ First public pre-release of the Orbit AI monorepo. All 5 packages: `@orbit-ai/co
 **`@orbit-ai/mcp`**
 - `ZodError` handling switched from `instanceof` to duck-type guard (`name === 'ZodError' && Array.isArray(issues)`) per project convention
 - `isOrbitApiError` duck-type guard tightened to require `typeof error.error === 'object'` and `typeof error.status === 'number'`, preventing misclassification of unrelated objects
-- `McpToolError` constructor now defaults `hint`/`recovery` from lookup tables so invariant holds at class construction, not only after normalization
-- `isSensitiveKey` regex expanded to cover `api_key` / `apiKey` fields
+- `McpToolError` constructor now defaults `hint`/`recovery` from lookup tables so invariant holds at class construction; added defensive fallbacks for code values coerced through `as` casts
+- `isSensitiveKey` regex expanded to cover `api_key` / `apiKey` and all camelCase OAuth credential fields (`accessToken`, `refreshToken`, `clientSecret`, `clientId`, `privateKey`)
 - `McpIntegrationConnectionRead.object` made required (was incorrectly optional)
 - Dead unreachable code removed from HTTP transport error handler
 - `safeReadResource` now logs via `writeStderrWarning` before re-throwing, re-throws as `McpToolError` (preserving `code`/`hint`/`recovery`), and is exported for unit testing
 - `redactSensitiveText` expanded to redact `key=value` formats: `api_key=`, `refresh_token=`, `client_secret=`, `access_token=`, `client_id=` (both `=` and `:` separators)
 - `isZodError` usage in `normalizeToolError` hardened against malformed lookalikes (e.g. `{ name: 'ZodError', issues: [null] }`) — now degrades safely instead of throwing
 - `sanitizeSecretBearingRecord` now recursively strips sensitive keys at all nesting depths (arrays and nested objects), not just the top level
+- `validateWebhookUrlForDirectMode` now throws `VALIDATION_FAILED` (not `INTERNAL_ERROR`) for non-URL strings
+- `BodyTooLargeError` discriminated by `instanceof` class check (replaced fragile string sentinel `isBodyTooLarge`)
+- HTTP transport auth failure path: bare catch now logs the error code before destroying the half-open connection
+- HTTP transport `transport.close()` cleanup: errors are now logged rather than silently swallowed
+- HTTP transport `authenticateRequest`: defensive `err instanceof Error` check before casting to `.message`
+- `assertNeverRelationshipType` exhaustiveness guard added to `handleRelateRecords` — compile-time proof all relationship types are handled
+- `RATE_LIMITED` and `CONFLICT` added to `McpToolErrorCode` union; `mapApiErrorCode` now maps API-layer rate-limit and conflict/idempotency codes to semantically correct MCP codes
+- `isToolErrorShape` now type-checks `typeof message === 'string'` (not just key existence)
+- `resourceWithFallback` helper extracted — deduplicates resource registration error handling in `server.ts`
+- Unused `JsonTextContent` interface and unused `McpServer` import removed
 
 ### Added
 

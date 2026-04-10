@@ -161,7 +161,7 @@ pnpm -r test        # must be ≥ current baseline (update baseline below after 
 pnpm -r lint
 ```
 
-**Test baseline**: 1133 tests (update this number after each merge to main)
+**Test baseline**: 1145 tests (update this number after each merge to main)
 
 **Before any npm-publish branch**: verify `CHANGELOG.md` is updated and `files` field in each `package.json` is correct (`dist/`, `README.md`, `LICENSE` only).
 
@@ -174,6 +174,14 @@ pnpm -r lint
 | After PR is open on GitHub | `code-review:code-review` | Posts structured comment to the PR |
 
 Do not substitute one for another — they serve different points in the pipeline.
+
+### Review Stopping Criterion
+
+Stop the review loop when:
+- All 6 agents report zero MEDIUM, HIGH, or CRITICAL issues
+- Only suggestions (cosmetic, optional improvements) remain
+
+**Never** skip `superpowers:requesting-code-review` after each task slice during execution — skipping this during implementation is the root cause of multi-round catch-up review loops. Every small commit during execution must be reviewed before the next task begins.
 
 ### Keeping This File Current
 
