@@ -2,14 +2,14 @@
 
 ## Project
 
-Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). All 5 packages implemented: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`. 1,133 tests passing. Not yet published to npm.
+Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). All 5 packages implemented: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`. 1,145 tests passing. Not yet published to npm.
 
 ## Commands
 
 ```bash
 pnpm install              # Install all workspace dependencies
 pnpm -r build             # Build all packages (core must build first)
-pnpm -r test              # Run all tests (vitest) — expect 1133 passing
+pnpm -r test              # Run all tests (vitest) — expect 1145 passing
 pnpm -r typecheck         # TypeScript type checking
 pnpm -r lint              # Lint all packages
 
@@ -54,6 +54,33 @@ docs/             # Strategy, specs, security, review artifacts, implementation 
 - Zod v4: use `z.record(z.string(), z.unknown())` not `z.record(z.unknown())`
 - ZodError handling: use duck-type guard (`name === 'ZodError' && Array.isArray(issues)`), not `instanceof`
 - IdempotencyStore: in-memory default is single-instance only; multi-instance needs custom store via `CreateApiOptions.idempotencyStore`
+
+## Coding Conventions
+
+**These rules apply to every implementation task. Include them verbatim in every sub-agent brief.**
+
+### Error handling
+- Always bind the error variable: `catch (err)` — never bare `catch {}`
+- Always log before swallowing: `writeStderrWarning(...)` or `console.error(...)` inside every catch
+- Defensive cast before accessing `.message`: `err instanceof Error ? err.message : String(err)`
+- Duck-type guards for cross-boundary errors (ZodError, OrbitApiError) — never `instanceof` for these
+
+### Tests
+- Tests ship in the same commit as the feature — never in a separate pass
+- Every new code path gets at least one test: happy path + the most likely failure mode
+- Tests assert behavior (inputs/outputs), not implementation (which function was called)
+
+### No deferrals
+- Any issue found on this branch is fixed on this branch — "pre-existing" is not a reason to skip
+- No "non-blocking" items left open — if it's worth noting, it's worth fixing now
+
+### Lint gates
+- `pnpm -r lint` must pass before committing — not just before the PR
+- Lint failures are convention violations, not style suggestions — fix them, don't suppress them
+
+### Sensitive data
+- `sanitizeObjectDeep` must be applied to all tool output that may contain user records
+- `isSensitiveKey` covers both snake_case (`api_key`, `refresh_token`) and camelCase (`accessToken`, `clientSecret`) — if adding a new sensitive field name, add it to both branches
 
 ## Adding an Entity
 
@@ -113,6 +140,8 @@ Every feature follows this pipeline — no skipping steps:
 
 4. EXECUTE      superpowers:subagent-driven-development
                 → One sub-agent per task; ~100-line slices; commit after each slice
+                → Every implementer brief MUST include the Coding Conventions section above
+                → Every implementer brief MUST define "done": build + tests + lint pass
                 → After each task: superpowers:requesting-code-review
                 → At trigger points: run the orbit-specific skill (see below)
 
@@ -177,11 +206,15 @@ Do not substitute one for another — they serve different points in the pipelin
 
 ### Review Stopping Criterion
 
-Stop the review loop when:
-- All 6 agents report zero MEDIUM, HIGH, or CRITICAL issues
-- Only suggestions (cosmetic, optional improvements) remain
+A task is **done** when: `pnpm -r build && pnpm -r test && pnpm -r lint` all pass, tests cover the new path, and `superpowers:requesting-code-review` finds no MEDIUM+ issues.
 
-**Never** skip `superpowers:requesting-code-review` after each task slice during execution — skipping this during implementation is the root cause of multi-round catch-up review loops. Every small commit during execution must be reviewed before the next task begins.
+The final `pr-review-toolkit:review-pr` should **confirm** quality, not **discover** it for the first time. If conventions are followed and commit-level reviews were run, one round of all 6 agents should be sufficient.
+
+Stop the PR review loop when:
+- All 6 agents report zero MEDIUM, HIGH, or CRITICAL issues
+- Only cosmetic suggestions remain — file these as issues, don't block the PR
+
+**Never** skip `superpowers:requesting-code-review` after each task slice — this is the root cause of multi-round catch-up loops. Conventions in sub-agent briefs prevent systematic violations. Commit-level review catches the remainder. The final review catches edge cases only.
 
 ### Keeping This File Current
 
