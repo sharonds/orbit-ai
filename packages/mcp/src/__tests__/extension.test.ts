@@ -1,8 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+
+// Must be hoisted before the module under test is imported so the mock is in
+// place when extension.ts evaluates CORE_TOOL_NAMES at module scope.
+vi.mock('../tools/registry.js', () => ({
+  buildTools: vi.fn(() => []),
+}))
+
 import { registerExtensionTools } from '../extension.js'
 import type { ExtensionTool } from '../extension.js'
+import { buildTools } from '../tools/registry.js'
 
 function makeMcpServer(): McpServer {
   return new McpServer(
@@ -100,5 +108,42 @@ describe('registerExtensionTools', () => {
     expect(() => registerExtensionTools(server, [validTool, invalidTool])).toThrow(
       /must start with the 'integrations\.' prefix/,
     )
+  })
+
+})
+
+/**
+ * Isolated module test for the shadow guard.
+ *
+ * CORE_TOOL_NAMES is built once at extension.ts module scope, so we need a fresh
+ * module import (via vi.resetModules + dynamic import) with the registry mock
+ * pre-configured to return a tool whose name starts with 'integrations.' —
+ * which can never happen in production but lets us exercise the shadow-check branch.
+ */
+describe('registerExtensionTools — shadow guard (isolated module)', () => {
+  it('throws when an extension tool name conflicts with a core tool name', async () => {
+    // Reset module registry so extension.ts will re-execute its module scope.
+    vi.resetModules()
+
+    // Override the registry mock before re-importing extension.ts.
+    vi.doMock('../tools/registry.js', () => ({
+      buildTools: vi.fn(() => [{ name: 'integrations.conflict.test' }]),
+    }))
+
+    // Dynamically import extension so CORE_TOOL_NAMES is built with the mock active.
+    const { registerExtensionTools: freshRegister } = await import('../extension.js')
+
+    const server = new McpServer(
+      { name: '@orbit-ai/mcp-test', version: '0.0.0' },
+      { capabilities: { tools: {} } },
+    )
+    const conflictingTool: ExtensionTool = {
+      name: 'integrations.conflict.test',
+      description: 'Tool whose name shadows a core tool',
+      inputSchema: z.object({}),
+      execute: vi.fn(async () => ({ ok: true })),
+    }
+
+    expect(() => freshRegister(server, [conflictingTool])).toThrow(/conflicts with a core tool/)
   })
 })
