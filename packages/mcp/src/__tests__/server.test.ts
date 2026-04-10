@@ -35,6 +35,32 @@ describe('server', () => {
     expect(() => validateWebhookUrlForDirectMode('https://example.com/hook')).not.toThrow()
   })
 
+  it.each([
+    ['http://10.0.0.1/webhook', '10.x private range'],
+    ['http://192.168.1.1/webhook', '192.168.x private range'],
+    ['http://169.254.1.1/webhook', '169.254.x link-local'],
+    ['http://172.16.0.1/webhook', '172.16.x first of private range'],
+    ['http://172.31.255.255/webhook', '172.31.x last of private range'],
+    ['http://localhost/webhook', 'localhost hostname'],
+  ] as const)(
+    'validateWebhookUrlForDirectMode blocks %s (%s)',
+    (url) => {
+      expect(() => validateWebhookUrlForDirectMode(url)).toThrow(
+        expect.objectContaining({ code: 'SSRF_BLOCKED' }),
+      )
+    },
+  )
+
+  it.each([
+    ['http://172.15.0.1/webhook', 'just below 172.16 range'],
+    ['http://172.32.0.1/webhook', 'just above 172.31 range'],
+  ] as const)(
+    'validateWebhookUrlForDirectMode allows %s (%s)',
+    (url) => {
+      expect(() => validateWebhookUrlForDirectMode(url)).not.toThrow()
+    },
+  )
+
   it('validateWebhookUrlForDirectMode rejects IPv6 loopback destinations', () => {
     expect(() => validateWebhookUrlForDirectMode('http://[::1]/hook')).toThrow()
   })

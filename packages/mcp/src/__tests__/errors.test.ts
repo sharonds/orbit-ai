@@ -15,7 +15,7 @@ describe('toToolError', () => {
   it('fills default hint and recovery', () => {
     const result = toToolError({ code: 'VALIDATION_FAILED', message: 'Invalid' })
     const parsed = parseTextResult(result)
-    expect(parsed.error.hint).toBeTruthy()
+    expect(parsed.error.hint).toContain('Review the tool input')
     expect(parsed.error.recovery).toBeTruthy()
   })
 
@@ -89,6 +89,18 @@ describe('toToolError', () => {
       const text = getTextContent(result)
       expect(text).not.toContain(secret)
     }
+  })
+
+  it('normalizes duck-typed OrbitApiError shape into mapped code', () => {
+    const apiErrorLike = {
+      error: { code: 'not_found', message: 'Record not found', hint: undefined, recovery: undefined },
+      status: 404,
+      code: 'not_found',
+      message: 'Record not found',
+    }
+    const result = normalizeToolError(apiErrorLike)
+    // 'not_found' falls through mapApiErrorCode to INTERNAL_ERROR
+    expect(result.code).toBe('INTERNAL_ERROR')
   })
 
   it('normalizeToolError degrades safely on malformed ZodError lookalike with null issues', () => {
