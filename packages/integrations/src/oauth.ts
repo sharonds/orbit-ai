@@ -97,7 +97,7 @@ export class GoogleOAuthHelper {
         ...(credentials.expiry_date != null ? { expiresAt: credentials.expiry_date } : {}),
       }
       // Save refreshed credentials (userId not known here — use default)
-      await credentialStore.saveCredentials(orgId, provider, '__refresh__', updated)
+      await credentialStore.saveCredentials(orgId, provider, '__default__', updated)
 
       if (connectionTracker) {
         await connectionTracker.recordSuccess(orgId, provider)
