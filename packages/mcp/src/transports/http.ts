@@ -42,7 +42,7 @@ export async function startHttpTransport(options: StartMcpServerOptions): Promis
           ? {
               code: 'VALIDATION_FAILED' as const,
               message: error instanceof BodyTooLargeError
-                ? 'Request body exceeds the 1 MB limit.'
+                ? error.message  // BODY_TOO_LARGE_MESSAGE
                 : 'Malformed JSON body.',
             }
           : error,
@@ -83,8 +83,12 @@ export async function handleAuthenticatedHttpRequest(
 ): Promise<void> {
   const auth = await authenticateRequest(req, adapter)
   if (!auth.ok) {
-    res.writeHead(401, { 'content-type': 'application/json' })
-    res.end(JSON.stringify(toToolError({ code: 'AUTH_INVALID', message: auth.message })))
+    try {
+      res.writeHead(401, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ ok: false, error: { code: 'AUTH_INVALID', message: auth.message } }))
+    } catch {
+      res.destroy()
+    }
     return
   }
 
@@ -103,7 +107,11 @@ export async function handleAuthenticatedHttpRequest(
   })
   const transport = new StreamableHTTPServerTransport()
   await server.connect(transport as never)
-  await transport.handleRequest(req, res, body)
+  try {
+    await transport.handleRequest(req, res, body)
+  } finally {
+    try { await transport.close?.() } catch { /* best-effort */ }
+  }
 }
 
 /**
@@ -136,7 +144,13 @@ export async function authenticateRequest(
   }
 
   const hash = await sha256Hex(token)
-  const key = await adapter.lookupApiKeyForAuth(hash)
+  let key: Awaited<ReturnType<RuntimeApiAdapter['lookupApiKeyForAuth']>>
+  try {
+    key = await adapter.lookupApiKeyForAuth(hash)
+  } catch (err) {
+    writeStderrWarning(`MCP HTTP: API key lookup failed: ${(err as Error).message}`)
+    return { ok: false, message: 'Authentication service unavailable.' }
+  }
   if (!key) {
     return { ok: false, message: 'Invalid API key' }
   }
@@ -150,11 +164,13 @@ export async function authenticateRequest(
   return { ok: true, key }
 }
 
+const BODY_TOO_LARGE_MESSAGE = 'Request body exceeds the 1 MB limit.'
+
 // Must extend SyntaxError: the catch block uses `instanceof SyntaxError` to
-// produce a 400 status. `isBodyTooLarge` then distinguishes this from a JSON parse failure.
+// produce a 400 status. `instanceof BodyTooLargeError` then distinguishes this
+// from a JSON parse failure.
 class BodyTooLargeError extends SyntaxError {
-  readonly isBodyTooLarge = true as const
-  constructor() { super('Request body exceeds the 1 MB limit.') }
+  constructor() { super(BODY_TOO_LARGE_MESSAGE) }
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
