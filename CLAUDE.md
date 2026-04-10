@@ -82,31 +82,9 @@ docs/             # Strategy, specs, security, review artifacts, implementation 
 - `sanitizeObjectDeep` must be applied to all tool output that may contain user records
 - `isSensitiveKey` covers both snake_case (`api_key`, `refresh_token`) and camelCase (`accessToken`, `clientSecret`) — if adding a new sensitive field name, add it to both branches
 
-## Adding an Entity
+## Extension Reference
 
-1. Drizzle schema in `packages/core/src/schema/<entity>.ts`
-2. Types in `packages/core/src/types.ts`
-3. Repository in `packages/core/src/entities/<entity>/repository.ts`
-4. Service in `packages/core/src/entities/<entity>/service.ts`
-5. Wire into `packages/core/src/services/index.ts` (createCoreServices)
-6. REST routes in `packages/api/src/routes/<entity>.ts`
-7. Register in `packages/api/src/create-api.ts`
-8. Resource in `packages/sdk/src/resources/<entity>.ts`
-9. Wire into `packages/sdk/src/client.ts`
-10. Export types (NOT class) from `packages/sdk/src/index.ts`
-
-## Adding a Storage Adapter
-
-1. Create `packages/core/src/adapters/<name>/adapter.ts`
-2. Implement `StorageAdapter` interface from `packages/core/src/adapters/interface.ts`
-3. Create database + schema setup files
-4. Export from `packages/core/src/index.ts`
-
-## Base Entities (12)
-
-contacts, companies, deals, pipeline_stages, activities, products, payments, contracts, channels, sequences, tags, notes
-
-Plus: users, webhooks, imports, schema-migrations, idempotency-keys, api-keys, organizations, organization-memberships, audit-logs, custom-field-definitions, webhook-deliveries
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for step-by-step guides on adding entities, adding storage adapters, and the full entity list.
 
 ## Environment Variables
 
@@ -220,7 +198,7 @@ Stop the PR review loop when:
 
 Update this file when:
 - A new architectural rule is established (add to **Key Architecture Rules**)
-- A new entity or adapter pattern is added (update **Adding an Entity / Adapter**)
+- A new entity or adapter is added (update step lists and entity name list in `docs/CONTRIBUTING.md`)
 - The test baseline changes after merges (update the number in **Pre-PR Checklist**)
 - The workflow itself changes based on what works / doesn't work
 
