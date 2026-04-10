@@ -41,9 +41,9 @@ export const updateCustomFieldTool = defineTool({
 export async function handleGetSchema(client: OrbitClient, rawArgs: unknown) {
   const args = GetSchemaInput.parse(rawArgs)
   if (args.object_type) {
-    return toToolSuccess(await client.schema.describeObject(args.object_type))
+    return toToolSuccess(sanitizeObjectDeep(await client.schema.describeObject(args.object_type)))
   }
-  return toToolSuccess(await client.schema.listObjects())
+  return toToolSuccess(sanitizeObjectDeep(await client.schema.listObjects()))
 }
 
 export async function handleCreateCustomField(client: OrbitClient, rawArgs: unknown) {

@@ -50,10 +50,10 @@ export const getPipelineStatsTool = defineTool({
 export async function handleGetPipelines(client: OrbitClient, rawArgs: unknown) {
   const args = GetPipelinesInput.parse(rawArgs)
   return toToolSuccess(
-    await client.pipelines.list({
+    sanitizeObjectDeep(await client.pipelines.list({
       ...(args.limit !== undefined ? { limit: args.limit } : {}),
       ...(args.cursor ? { cursor: args.cursor } : {}),
-    }),
+    })),
   )
 }
 
@@ -65,5 +65,5 @@ export async function handleMoveDealStage(client: OrbitClient, rawArgs: unknown)
 
 export async function handleGetPipelineStats(client: OrbitClient, rawArgs: unknown) {
   const args = PipelineStatsInput.parse(rawArgs)
-  return toToolSuccess(await client.deals.stats(args))
+  return toToolSuccess(sanitizeObjectDeep(await client.deals.stats(args)))
 }
