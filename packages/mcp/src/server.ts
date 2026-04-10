@@ -72,13 +72,43 @@ export function createMcpServer(options: StartMcpServerOptions): McpServer {
     'orbit-team-members',
     'orbit://team-members',
     { title: 'Orbit team members', mimeType: 'application/json' },
-    async () => safeReadResource(() => readTeamMembers(options.client)),
+    async () => {
+      try {
+        return await safeReadResource(() => readTeamMembers(options.client))
+      } catch (error) {
+        const normalized = normalizeToolError(error)
+        return {
+          contents: [
+            {
+              uri: 'orbit://team-members',
+              mimeType: 'application/json',
+              text: JSON.stringify({ ok: false, error: normalized }, null, 2),
+            },
+          ],
+        }
+      }
+    },
   )
   server.registerResource(
     'orbit-schema',
     'orbit://schema',
     { title: 'Orbit schema', mimeType: 'application/json' },
-    async () => safeReadResource(() => readSchema(options.client)),
+    async () => {
+      try {
+        return await safeReadResource(() => readSchema(options.client))
+      } catch (error) {
+        const normalized = normalizeToolError(error)
+        return {
+          contents: [
+            {
+              uri: 'orbit://schema',
+              mimeType: 'application/json',
+              text: JSON.stringify({ ok: false, error: normalized }, null, 2),
+            },
+          ],
+        }
+      }
+    },
   )
 
   return server
@@ -166,7 +196,9 @@ export function writeDirectModeAuditLog(payload: Record<string, unknown>): void 
 }
 
 // Exported for use within this package and unit tests only. Not re-exported from
-// index.ts and must not become part of the public API surface.
+// index.ts and must not become part of the public API surface — it accepts an
+// arbitrary reader function and normalizes errors in a way that is only safe when
+// called by the resource registration wrappers in createMcpServer.
 export async function safeReadResource<T>(reader: () => Promise<T>): Promise<T> {
   try {
     return await reader()
