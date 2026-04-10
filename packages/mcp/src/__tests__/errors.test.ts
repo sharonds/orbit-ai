@@ -126,6 +126,16 @@ describe('toToolError', () => {
     expect(result.code).toBe('VALIDATION_FAILED')
   })
 
+  it('normalizeToolError falls through to INTERNAL_ERROR when OrbitApiError-shaped but code is numeric', () => {
+    const result = normalizeToolError({
+      code: 404,
+      message: 'not found',
+      status: 404,
+      error: { code: 'RESOURCE_NOT_FOUND' },
+    })
+    expect(result.code).toBe('INTERNAL_ERROR')
+  })
+
   it('normalizeToolError degrades safely on malformed ZodError lookalike with null issues', () => {
     const malformed = { name: 'ZodError', issues: [null, { message: 'Required' }, undefined] }
     const result = normalizeToolError(malformed)

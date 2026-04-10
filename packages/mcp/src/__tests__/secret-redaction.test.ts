@@ -114,4 +114,11 @@ describe('sanitizeObjectDeep direct', () => {
     const shortString = 'hello world'
     expect(sanitizeObjectDeep(shortString)).toBe(shortString)
   })
+
+  it('removes client_id key from objects', () => {
+    const result = sanitizeObjectDeep({ id: 'conn_01', client_id: 'my_oauth_client_id', name: 'integration' })
+    expect(result).not.toHaveProperty('client_id')
+    expect(result).toHaveProperty('id', 'conn_01')
+    expect(result).toHaveProperty('name', 'integration')
+  })
 })
