@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { executeTool } from '../tools/registry.js'
 import { createMcpServer, resolveDeleteConfirmation, safeReadResource } from '../server.js'
 import { McpToolError } from '../errors.js'
-import { makeMockClient, parseTextResult } from './helpers.js'
+import { makeMockClient, parseTextResult, getTextContent } from './helpers.js'
 
 describe('core record tools', () => {
   beforeEach(() => {
@@ -251,7 +251,7 @@ describe('core record tools', () => {
       data: [{ id: 'webhook_01', signing_secret: 'whsec_SUPER_SECRET' }],
     } as never)
     const result = await executeTool(client, 'search_records', { object_type: 'webhooks', query: 'test' })
-    const text = result.content.find((b: { type: string }) => b.type === 'text')?.text ?? ''
+    const text = getTextContent(result)
     expect(text).not.toContain('whsec_SUPER_SECRET')
   })
 
@@ -264,7 +264,7 @@ describe('core record tools', () => {
       object_type: 'contacts',
       operations: [{ action: 'create', record: { name: 'Test' } }],
     })
-    const text = result.content.find((b: { type: string }) => b.type === 'text')?.text ?? ''
+    const text = getTextContent(result)
     expect(text).not.toContain('sk_live_SECRET')
   })
 
