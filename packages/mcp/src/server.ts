@@ -151,7 +151,12 @@ export function isDirectModeClient(client: OrbitClient): boolean {
 }
 
 export function validateWebhookUrlForDirectMode(url: string): void {
-  const parsed = new URL(url)
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw new McpToolError('VALIDATION_FAILED', `Webhook URL "${url}" is not a valid URL.`)
+  }
   const hostname = parsed.hostname.toLowerCase()
 
   if (
@@ -197,8 +202,9 @@ export function writeDirectModeAuditLog(payload: Record<string, unknown>): void 
 
 // Exported for use within this package and unit tests only. Not re-exported from
 // index.ts and must not become part of the public API surface — it accepts an
-// arbitrary reader function and normalizes errors in a way that is only safe when
-// called by the resource registration wrappers in createMcpServer.
+// arbitrary reader function and normalizes errors in a way that is only intended for
+// use within this package. Not re-exported from index.ts — callers outside createMcpServer's
+// resource wrappers should use normalizeToolError directly rather than this helper.
 export async function safeReadResource<T>(reader: () => Promise<T>): Promise<T> {
   try {
     return await reader()
