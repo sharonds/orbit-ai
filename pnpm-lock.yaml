@@ -128,6 +128,9 @@ importers:
       '@orbit-ai/sdk':
         specifier: workspace:*
         version: link:../sdk
+      drizzle-orm:
+        specifier: ^0.44.5
+        version: 0.44.7(@types/pg@8.20.0)(pg@8.20.0)
       google-auth-library:
         specifier: ^9.0.0
         version: 9.15.1
