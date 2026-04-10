@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { executeTool } from '../tools/registry.js'
 import { toToolError } from '../errors.js'
-import { sanitizeSecretBearingRecord, toMcpIntegrationConnectionRead } from '../output/sensitive.js'
+import { sanitizeObjectDeep, sanitizeSecretBearingRecord, toMcpIntegrationConnectionRead } from '../output/sensitive.js'
 import { getTextContent, makeMockClient } from './helpers.js'
 
 describe('secret redaction', () => {
@@ -81,5 +81,37 @@ describe('secret redaction', () => {
     const connections = result.connections as Array<Record<string, unknown>>
     expect(connections[0]).not.toHaveProperty('api_key')
     expect(connections[0]?.provider).toBe('google')
+  })
+})
+
+describe('sanitizeObjectDeep direct', () => {
+  it('recursively sanitizes a top-level array', () => {
+    const input = [
+      { id: 'contact_01', api_key: 'sk_live_SECRET' },
+      { id: 'contact_02', name: 'Jane' },
+    ]
+    const result = sanitizeObjectDeep(input) as Array<Record<string, unknown>>
+    expect(result[0]).not.toHaveProperty('api_key')
+    expect(result[0]).toHaveProperty('id', 'contact_01')
+    expect(result[1]).toHaveProperty('name', 'Jane')
+  })
+
+  it('passes through null, numbers, and booleans unchanged', () => {
+    expect(sanitizeObjectDeep(null)).toBeNull()
+    expect(sanitizeObjectDeep(42)).toBe(42)
+    expect(sanitizeObjectDeep(true)).toBe(true)
+    expect(sanitizeObjectDeep(undefined)).toBeUndefined()
+  })
+
+  it('truncates strings at exactly 5,000 characters', () => {
+    const longString = 'a'.repeat(5_001)
+    const result = sanitizeObjectDeep(longString) as string
+    expect(result.length).toBeLessThanOrEqual(5_000)
+    expect(result).toContain('[truncated]')
+  })
+
+  it('passes through strings under 5,000 characters unchanged', () => {
+    const shortString = 'hello world'
+    expect(sanitizeObjectDeep(shortString)).toBe(shortString)
   })
 })

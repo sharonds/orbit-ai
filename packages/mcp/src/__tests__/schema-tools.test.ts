@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { executeTool } from '../tools/registry.js'
-import { makeMockClient, parseTextResult } from './helpers.js'
+import { getTextContent, makeMockClient, parseTextResult } from './helpers.js'
 
 describe('schema tools', () => {
   it('get_schema lists all objects when object_type is omitted', async () => {
@@ -41,5 +41,12 @@ describe('schema tools', () => {
     } as never)
     expect(result.isError).toBe(true)
     expect(parseTextResult(result).error.code).toBe('VALIDATION_FAILED')
+  })
+
+  it('get_schema sanitizes sensitive fields in response', async () => {
+    const client = makeMockClient()
+    vi.mocked(client.schema.describeObject).mockResolvedValueOnce({ object: 'contacts', api_key: 'sk_SECRET' } as never)
+    const result = await executeTool(client, 'get_schema', { object_type: 'contacts' })
+    expect(getTextContent(result)).not.toContain('sk_SECRET')
   })
 })

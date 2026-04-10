@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { executeTool } from '../tools/registry.js'
-import { makeMockClient, parseTextResult } from './helpers.js'
+import { getTextContent, makeMockClient, parseTextResult } from './helpers.js'
 
 describe('workflow tools', () => {
   it('move_deal_stage calls deals.move not deals.update', async () => {
@@ -87,5 +87,26 @@ describe('workflow tools', () => {
       operations: [{ action: 'delete', record_id: 'contact_01', confirm: true }],
     })
     expect(spy).toHaveBeenCalled()
+  })
+
+  it('get_pipelines sanitizes sensitive fields in response', async () => {
+    const client = makeMockClient()
+    vi.mocked(client.pipelines.list).mockResolvedValueOnce({ data: [{ id: 'pipeline_01', api_key: 'sk_live_SECRET' }] } as never)
+    const result = await executeTool(client, 'get_pipelines', {})
+    expect(getTextContent(result)).not.toContain('sk_live_SECRET')
+  })
+
+  it('enroll_in_sequence sanitizes sensitive fields in response', async () => {
+    const client = makeMockClient()
+    vi.mocked(client.sequences.enroll).mockResolvedValueOnce({ id: 'enroll_01', api_key: 'sk_live_SECRET' } as never)
+    const result = await executeTool(client, 'enroll_in_sequence', { contact_id: 'contact_01', sequence_id: 'seq_01' })
+    expect(getTextContent(result)).not.toContain('sk_live_SECRET')
+  })
+
+  it('assign_record sanitizes sensitive fields in response', async () => {
+    const client = makeMockClient()
+    vi.mocked(client.contacts.update).mockResolvedValueOnce({ id: 'contact_01', api_key: 'sk_live_SECRET' } as never)
+    const result = await executeTool(client, 'assign_record', { object_type: 'contacts', record_id: 'contact_01', user_id: 'user_01' })
+    expect(getTextContent(result)).not.toContain('sk_live_SECRET')
   })
 })
