@@ -82,6 +82,7 @@ describe('toToolError', () => {
       { input: 'api_key=sk_live_secret123', secret: 'sk_live_secret123' },
       { input: 'refresh_token=rt_abc_def', secret: 'rt_abc_def' },
       { input: 'client_secret=cs_xyz', secret: 'cs_xyz' },
+      { input: 'client_id=my_oauth_client', secret: 'my_oauth_client' },
       { input: 'access_token=ya29.sometoken', secret: 'sometoken' },
     ]
     for (const { input, secret } of cases) {
@@ -101,6 +102,28 @@ describe('toToolError', () => {
     const result = normalizeToolError(apiErrorLike)
     // 'not_found' falls through mapApiErrorCode to INTERNAL_ERROR
     expect(result.code).toBe('INTERNAL_ERROR')
+  })
+
+  it('maps RESOURCE_NOT_FOUND API code to RESOURCE_NOT_FOUND MCP code', () => {
+    const apiErrorLike = {
+      error: { code: 'RESOURCE_NOT_FOUND', message: 'Not found' },
+      status: 404,
+      code: 'RESOURCE_NOT_FOUND',
+      message: 'Not found',
+    }
+    const result = normalizeToolError(apiErrorLike)
+    expect(result.code).toBe('RESOURCE_NOT_FOUND')
+  })
+
+  it('maps VALIDATION_FAILED API code to VALIDATION_FAILED MCP code', () => {
+    const apiErrorLike = {
+      error: { code: 'VALIDATION_FAILED', message: 'Invalid input' },
+      status: 422,
+      code: 'VALIDATION_FAILED',
+      message: 'Invalid input',
+    }
+    const result = normalizeToolError(apiErrorLike)
+    expect(result.code).toBe('VALIDATION_FAILED')
   })
 
   it('normalizeToolError degrades safely on malformed ZodError lookalike with null issues', () => {
