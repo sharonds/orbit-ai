@@ -36,6 +36,10 @@ export const listRelatedRecordsTool = defineTool({
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
 })
 
+function assertNeverRelationshipType(x: never): never {
+  throw new McpToolError('UNSUPPORTED_OBJECT_TYPE', `Unsupported relationship type: ${String(x)}`)
+}
+
 export async function handleRelateRecords(client: OrbitClient, rawArgs: unknown) {
   const args = RelateRecordsInput.parse(rawArgs)
 
@@ -78,10 +82,7 @@ export async function handleRelateRecords(client: OrbitClient, rawArgs: unknown)
     )
   }
 
-  throw new McpToolError(
-    'UNSUPPORTED_OBJECT_TYPE',
-    `Unsupported relationship type: ${String(args.relationship_type)}`,
-  )
+  return assertNeverRelationshipType(args.relationship_type)
 }
 
 export async function handleListRelatedRecords(): Promise<CallToolResult> {
