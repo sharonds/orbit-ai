@@ -114,6 +114,25 @@ describe('core record tools', () => {
     expect(client.contacts.update).toHaveBeenCalledWith('contact_01', { company_id: 'company_01' })
   })
 
+  it.each([
+    ['contact_company', 'contact_01', 'company_01', 'contacts', { company_id: null }] as const,
+    ['contact_deal', 'contact_01', 'deal_01', 'deals', { contact_id: null }] as const,
+    ['company_deal', 'company_01', 'deal_01', 'deals', { company_id: null }] as const,
+  ])(
+    'relate_records %s with detach=true sets relationship to null',
+    async (relationshipType, sourceId, targetId, resource, expectedPatch) => {
+      const client = makeMockClient()
+      await executeTool(client, 'relate_records', {
+        relationship_type: relationshipType,
+        source_record_id: sourceId,
+        target_record_id: targetId,
+        detach: true,
+      })
+      const updateId = resource === 'contacts' ? sourceId : targetId
+      expect(client[resource].update).toHaveBeenCalledWith(updateId, expectedPatch)
+    },
+  )
+
   it('relate_records tag detach path calls tags.detach', async () => {
     const client = makeMockClient()
     await executeTool(client, 'relate_records', {
