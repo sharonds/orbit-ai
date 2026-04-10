@@ -68,12 +68,19 @@ export async function handleRelateRecords(client: OrbitClient, rawArgs: unknown)
     )
   }
 
-  return toToolSuccess(
-    sanitizeObjectDeep(
-      await getClientResource(client, 'deals').update(args.target_record_id, {
-        company_id: args.detach ? null : args.source_record_id,
-      }),
-    ),
+  if (args.relationship_type === 'company_deal') {
+    return toToolSuccess(
+      sanitizeObjectDeep(
+        await getClientResource(client, 'deals').update(args.target_record_id, {
+          company_id: args.detach ? null : args.source_record_id,
+        }),
+      ),
+    )
+  }
+
+  throw new McpToolError(
+    'UNSUPPORTED_OBJECT_TYPE',
+    `Unsupported relationship type: ${String(args.relationship_type)}`,
   )
 }
 
