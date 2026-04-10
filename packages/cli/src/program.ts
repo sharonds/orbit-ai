@@ -31,6 +31,7 @@ import { registerReportCommand } from './commands/report.js'
 import { registerDashboardCommand } from './commands/dashboard.js'
 import { registerMcpCommand } from './commands/mcp.js'
 import { registerIntegrationsCommand } from './commands/integrations.js'
+import { registerCalendarAliasCommand } from './commands/calendar-alias.js'
 
 let _jsonMode = false
 let _sigintHandler: (() => void) | null = null
@@ -171,6 +172,7 @@ export function createProgram(): Command {
   registerDashboardCommand(program)
   registerMcpCommand(program)
   registerIntegrationsCommand(program)
+  registerCalendarAliasCommand(program)
 
   return program
 }

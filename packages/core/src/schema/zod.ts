@@ -357,13 +357,13 @@ export const paymentInsertSchema = createInsertSchema(payments, {
   dealId: orbitId('deal').optional().nullable(),
   contactId: orbitId('contact').optional().nullable(),
   currency: z.string().length(3).transform((value) => value.toUpperCase()).optional(),
-})
+}).extend({ payment_method: z.string().optional() })
 export const paymentUpdateSchema = createUpdateSchema(payments, {
   organizationId: orbitId('organization').optional(),
   dealId: orbitId('deal').optional().nullable(),
   contactId: orbitId('contact').optional().nullable(),
   currency: z.string().length(3).transform((value) => value.toUpperCase()).optional(),
-})
+}).extend({ payment_method: z.string().optional() })
 
 export const contractSelectSchema = createSelectSchema(contracts, {
   id: orbitId('contract'),
