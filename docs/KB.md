@@ -1,8 +1,8 @@
 # Orbit AI KB
 
-Date: 2026-04-10
+Date: 2026-04-10 (revised)
 Status: Active working hub
-Current baseline commit: `032cebf` (main) / `feat/mcp-closeout` (local MCP implementation and integrations planning)
+Current baseline commit: `59d3205` (main) — all 5 packages merged, no stale branches
 
 ## What Orbit Is
 
@@ -48,16 +48,21 @@ Completed:
 
 Current focus:
 
-- maintain the repo knowledge base as the live hub
-- `@orbit-ai/cli` is complete and reviewed: 7 implementation slices (A–G), 4 rounds of code review (Codex + 3 agent-panel rounds), 161 tests passing, merged to main
-- CLI package adds: Commander CLI with 30 commands, JSON/table/CSV/TSV output, direct SQLite + API modes, config file resolution (profiles, apiKeyEnv, nested cwd), `orbit init/status/doctor/seed/migrate`, structured `{ error }` contract throughout, `utils/prompt.ts` shared TTY confirmation utility
-- `@orbit-ai/mcp` is implemented locally on `feat/mcp-closeout`: 23 core tools, stdio + HTTP transport seams, `_untrusted` resources, structured MCP errors, gated stubs for unavailable capabilities, and 93 passing tests
-- the next package track is `packages/integrations`, with the execution baseline now written in [integrations-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/integrations-implementation-plan.md)
-- keep execution docs and skills aligned with implementation progress
+- **All 5 core packages are complete and merged to main:**
+  - `@orbit-ai/core` — 328 tests
+  - `@orbit-ai/api` — 281 tests
+  - `@orbit-ai/sdk` — 194 tests
+  - `@orbit-ai/cli` — 170 tests (30 commands, JSON/table/CSV/TSV output, direct SQLite + API modes)
+  - `@orbit-ai/mcp` — 173 tests (23 core tools, stdio + HTTP transport, SSRF protection, secret redaction)
+- **Full suite: 1,145 tests passing.** Build + typecheck: clean. All stale branches deleted.
+- **Next package track is `packages/integrations`** — Gmail, Google Calendar, Stripe connectors
+  - Execution plan: [integrations-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/integrations-implementation-plan.md)
+  - Plan revised 2026-04-10 applying MCP review-loop lessons: 17 small slices, tests in every commit, code review after every commit, sub-agent briefs include Coding Conventions
 
 Not started yet:
 
 - `packages/integrations`
+- CLI/MCP wiring for integration connectors (after integrations package is stable)
 
 ## Frozen Decisions
 
@@ -124,23 +129,13 @@ Use these files first:
 
 ## What Is Next
 
-Immediate next actions:
-
-1. All five core packages are implemented:
-   - `@orbit-ai/core` — Wave 1 + Wave 2 + tenant hardening on main
-   - `@orbit-ai/api` — Hono REST API on main
-   - `@orbit-ai/sdk` — TypeScript client SDK on main
-   - `@orbit-ai/cli` — Commander CLI on main
-   - `@orbit-ai/mcp` — implemented locally on `feat/mcp-closeout`, verified, pending PR/review/merge
-2. Execution plans in place for all remaining work:
-   - [cli-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/cli-implementation-plan.md) — complete and reviewed
-   - [mcp-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/mcp-implementation-plan.md) — executed locally with the 92-test minimum exceeded
-   - [integrations-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/integrations-implementation-plan.md) — execution-ready baseline for the next package track
-3. Next:
-   - push `feat/mcp-closeout`, run external review, fix any findings, and merge MCP to main
-   - execute `packages/integrations` from [integrations-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/integrations-implementation-plan.md)
-   - wire stable CLI/MCP surfaces to integrations only after the package contract is real
-   - publish all 5 core packages together as `0.1.0-alpha.0` to npm, then continue with integrations exposure
+1. **Execute `packages/integrations`** from [integrations-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/integrations-implementation-plan.md)
+   - 17 slices: foundation → Gmail → Calendar → Stripe → schema → closeout
+   - Dependencies: `googleapis`, `google-auth-library`, `stripe`
+   - OAuth2 token lifecycle with `CredentialStore` interface
+   - Every slice: tests included, code review after, lint before commit
+2. **Wire CLI/MCP to integrations** — only after the package contract is stable
+3. **Publish all 6 packages** together as `0.1.0-alpha.0` to npm
 
 ## Open Items
 
