@@ -61,6 +61,7 @@ function redactSensitiveText(input: string | undefined | null): string {
     /\b(api[_-]?key|refresh_token|client_secret|access_token|client[_-]?id)[=:]\s*[^\s,&"'\]]+/gi,
     '$1=[redacted]',
   )
+  output = output.replace(/\[redacted\]]+/g, '[redacted]')
   return output.slice(0, 500)
 }
 
@@ -210,8 +211,9 @@ function isZodError(error: unknown): error is { name: 'ZodError'; issues: unknow
   )
 }
 
-// Compile-time exhaustiveness check — adding a code to McpToolErrorCode without
-// adding it here is a type error. This ensures isToolErrorShape stays in sync.
+// Compile-time exhaustiveness guard: `{ [K in McpToolErrorCode]: true }` forces
+// every union member to appear as a key here. `VALID_MCP_CODES` is built from
+// these keys, so `isToolErrorShape` automatically covers the full union.
 const _VALID_MCP_CODES_MAP: { [K in McpToolErrorCode]: true } = {
   RESOURCE_NOT_FOUND: true,
   VALIDATION_FAILED: true,
