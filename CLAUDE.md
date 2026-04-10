@@ -2,14 +2,14 @@
 
 ## Project
 
-Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). All 5 packages implemented: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`. 1,088 tests passing. Not yet published to npm.
+Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). All 5 packages implemented: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`. 1,122 tests passing. Not yet published to npm.
 
 ## Commands
 
 ```bash
 pnpm install              # Install all workspace dependencies
 pnpm -r build             # Build all packages (core must build first)
-pnpm -r test              # Run all tests (vitest) — expect 1092 passing
+pnpm -r test              # Run all tests (vitest) — expect 1122 passing
 pnpm -r typecheck         # TypeScript type checking
 pnpm -r lint              # Lint all packages
 
@@ -161,7 +161,7 @@ pnpm -r test        # must be ≥ current baseline (update baseline below after 
 pnpm -r lint
 ```
 
-**Test baseline**: 1112 tests (update this number after each merge to main)
+**Test baseline**: 1122 tests (update this number after each merge to main)
 
 **Before any npm-publish branch**: verify `CHANGELOG.md` is updated and `files` field in each `package.json` is correct (`dist/`, `README.md`, `LICENSE` only).
 
