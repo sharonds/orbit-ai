@@ -6,7 +6,7 @@ describe('program', () => {
     'init', 'status', 'doctor', 'seed', 'migrate',
     'contacts', 'companies', 'deals', 'context', 'search', 'users',
     'log', 'tasks', 'notes', 'sequences', 'fields', 'schema', 'report',
-    'dashboard', 'mcp', 'integrations',
+    'dashboard', 'mcp', 'integrations', 'calendar',
   ]
 
   it('registers all expected commands', () => {
