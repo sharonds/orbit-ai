@@ -93,9 +93,8 @@ export function toMcpIntegrationConnectionRead(record: Record<string, unknown>):
  * - Arrays: each element is sanitized recursively.
  * - Objects: keys matching {@link isSensitiveKey} are removed; remaining values
  *   are sanitized recursively.
- * - Strings longer than 5,000 characters are replaced with a 4,986-character
- *   prefix followed by `...[truncated]`, keeping the total output at 5,000
- *   characters.
+ * - Strings longer than 5,000 characters are truncated to 5,000 characters
+ *   with a `...[truncated]` suffix.
  * - Numbers, booleans, null, and undefined pass through unchanged.
  */
 export function sanitizeObjectDeep(value: unknown): unknown {
@@ -116,5 +115,12 @@ export function sanitizeObjectDeep(value: unknown): unknown {
 }
 
 function isSensitiveKey(key: string): boolean {
-  return /^(.*[_-])?(token|secret|password|credentials?|private[_-]?key|client[_-]?secret|client[_-]?id|api[_-]?key)$/i.test(key)
+  // Snake_case / hyphenated pattern (anchored — prevents false positives like token_count)
+  if (/^(.*[_-])?(token|secret|password|credentials?|private[_-]?key|client[_-]?secret|client[_-]?id|api[_-]?key)$/i.test(key)) {
+    return true
+  }
+  // camelCase pattern — common OAuth / SDK response field names.
+  // Anchored on both ends: matches keys that END with a credential word to
+  // avoid false positives on prefixed fields like tokenCount or secretCreatedAt.
+  return /^(?:access|refresh|bearer|id|auth)Token$|^(?:client|api|private)Secret$|^(?:api|private)Key$|^clientId$/i.test(key)
 }

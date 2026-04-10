@@ -151,4 +151,32 @@ describe('sanitizeObjectDeep direct', () => {
     expect(result).not.toHaveProperty('credential')
     expect(result).toHaveProperty('id', 'conn_01')
   })
+
+  it('strips camelCase OAuth credential keys from objects', () => {
+    const result = sanitizeObjectDeep({
+      id: 'oauth_01',
+      accessToken: 'ya29.SECRET',
+      refreshToken: 'refresh_SECRET',
+      clientSecret: 'client_SECRET',
+      apiKey: 'key_SECRET',
+      name: 'test-connection',
+    })
+    expect(result).not.toHaveProperty('accessToken')
+    expect(result).not.toHaveProperty('refreshToken')
+    expect(result).not.toHaveProperty('clientSecret')
+    expect(result).not.toHaveProperty('apiKey')
+    expect(result).toHaveProperty('id', 'oauth_01')
+    expect(result).toHaveProperty('name', 'test-connection')
+  })
+
+  it('does not strip camelCase fields with sensitive substrings that are not credential keys', () => {
+    const result = sanitizeObjectDeep({
+      tokenCount: 42,
+      tokenType: 'bearer',
+      secretCreatedAt: '2026-01-01',
+    })
+    expect(result).toHaveProperty('tokenCount', 42)
+    expect(result).toHaveProperty('tokenType', 'bearer')
+    expect(result).toHaveProperty('secretCreatedAt', '2026-01-01')
+  })
 })
