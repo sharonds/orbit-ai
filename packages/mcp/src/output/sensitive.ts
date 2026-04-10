@@ -47,11 +47,7 @@ export function sanitizeSecretBearingRecord(objectType: string, record: unknown)
     }
   }
 
-  return Object.fromEntries(
-    Object.entries(record as Record<string, unknown>)
-      .filter(([key]) => !isSensitiveKey(key))
-      .map(([key, value]) => [key, truncateUnknownStrings(value, 5_000)]),
-  )
+  return sanitizeObjectDeep(record)
 }
 
 export function toMcpIntegrationConnectionRead(record: Record<string, unknown>): McpIntegrationConnectionRead {
@@ -84,6 +80,24 @@ export function toMcpIntegrationConnectionRead(record: Record<string, unknown>):
     ...(record.created_at ? { created_at: String(record.created_at) } : {}),
     ...(record.updated_at ? { updated_at: String(record.updated_at) } : {}),
   }
+}
+
+function sanitizeObjectDeep(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeObjectDeep(item))
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => !isSensitiveKey(key))
+        .map(([entryKey, entryValue]) => [entryKey, sanitizeObjectDeep(entryValue)]),
+    )
+  }
+  // Primitives (strings, numbers, booleans, null) — truncate strings
+  if (typeof value === 'string') {
+    return value.length > 5_000 ? `${value.slice(0, 5_000 - 14)}...[truncated]` : value
+  }
+  return value
 }
 
 function isSensitiveKey(key: string): boolean {
