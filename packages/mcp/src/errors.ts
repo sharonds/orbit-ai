@@ -51,10 +51,12 @@ const DEFAULT_RECOVERY: Record<McpToolErrorCode, string> = {
 function redactSensitiveText(input: string | undefined | null): string {
   let output = String(input ?? '')
   output = output.replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]')
-  output = output.replace(/\bsecret\b/gi, '[redacted]')
+  output = output.replace(/\bsecret[=:]\s*\S+/gi, 'secret=[redacted]')
   output = output.replace(/[A-Za-z][A-Za-z0-9+.-]*:\/\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]{20,}/g, '[redacted]')
   output = output.replace(/\bya29\.[A-Za-z0-9._-]+\b/g, '[redacted]')
   output = output.replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+\b/g, '[redacted]')
+  // client_id is included here for internal service clients; standard OAuth client_id
+  // values are public, but we keep them out of user-facing error strings.
   output = output.replace(
     /\b(api[_-]?key|refresh_token|client_secret|access_token|client[_-]?id)[=:]\s*[^\s,&"'\]]+/gi,
     '$1=[redacted]',
@@ -123,6 +125,15 @@ export function toToolSuccess(data: unknown, meta?: Record<string, unknown>): Ca
 }
 
 export function normalizeToolError(error: unknown): Required<McpToolErrorShape> {
+  if (error instanceof McpToolError) {
+    return {
+      code: error.code,
+      message: redactSensitiveText(error.message),
+      hint: redactSensitiveText(error.hint),
+      recovery: redactSensitiveText(error.recovery),
+    }
+  }
+
   if (error instanceof McpNotImplementedError) {
     return withDefaults(
       error.hint
@@ -199,8 +210,27 @@ function isZodError(error: unknown): error is { name: 'ZodError'; issues: Array<
   )
 }
 
+const VALID_MCP_CODES = new Set<string>([
+  'RESOURCE_NOT_FOUND',
+  'VALIDATION_FAILED',
+  'AUTH_INVALID',
+  'DESTRUCTIVE_CONFIRM_REQUIRED',
+  'UNSUPPORTED_OBJECT_TYPE',
+  'DEPENDENCY_NOT_AVAILABLE',
+  'INTERNAL_ERROR',
+  'SSRF_BLOCKED',
+  'UNKNOWN_TOOL',
+])
+
 function isToolErrorShape(error: unknown): error is McpToolErrorShape {
-  return !!error && typeof error === 'object' && 'code' in error && 'message' in error
+  return (
+    !!error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    typeof (error as Record<string, unknown>).code === 'string' &&
+    VALID_MCP_CODES.has((error as Record<string, unknown>).code as string) &&
+    'message' in error
+  )
 }
 
 function isOrbitApiError(error: unknown): error is OrbitApiError {

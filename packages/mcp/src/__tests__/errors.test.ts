@@ -20,10 +20,10 @@ describe('toToolError', () => {
   })
 
   it('redacts token-like strings', () => {
-    const result = toToolError({ code: 'INTERNAL_ERROR', message: 'access_token: ya29.FAKETOKEN secret' })
+    const result = toToolError({ code: 'INTERNAL_ERROR', message: 'access_token: ya29.FAKETOKEN secret=sk_live_xyz' })
     const text = getTextContent(result)
     expect(text).not.toContain('ya29.FAKETOKEN')
-    expect(text).not.toContain('secret')
+    expect(text).not.toContain('sk_live_xyz')
   })
 
   it('uses text content blocks', () => {
@@ -65,7 +65,7 @@ describe('toToolError', () => {
     const normalized = normalizeToolError(error)
     expect(normalized.code).toBe('AUTH_INVALID')
     expect(normalized.message).not.toContain('leakedtoken')
-    expect(normalized.hint).not.toContain('secret')
+    expect(normalized.hint).not.toContain('eyJabc')
     expect(normalized.recovery).not.toContain('eyJabc.def.ghi')
   })
 

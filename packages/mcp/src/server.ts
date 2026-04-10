@@ -7,7 +7,7 @@ import { createStdioTransport } from './transports/stdio.js'
 import { startHttpTransport } from './transports/http.js'
 import { readTeamMembers } from './resources/team-members.js'
 import { readSchema } from './resources/schema.js'
-import { McpToolError, normalizeToolError } from './errors.js'
+import { McpToolError, normalizeToolError, toToolError } from './errors.js'
 
 export interface StartMcpServerOptions {
   client: OrbitClient
@@ -55,11 +55,15 @@ export function createMcpServer(options: StartMcpServerOptions): McpServer {
         annotations: tool.annotations ?? {},
       },
       async (args): Promise<CallToolResult> => {
-        const toolArgs =
-          tool.name === 'delete_record'
-            ? await resolveDeleteConfirmation(server, args as Record<string, unknown>)
-            : args
-        return executeTool(options.client, tool.name, (toolArgs ?? {}) as Record<string, unknown>)
+        try {
+          const toolArgs =
+            tool.name === 'delete_record'
+              ? await resolveDeleteConfirmation(server, args as Record<string, unknown>)
+              : args
+          return await executeTool(options.client, tool.name, (toolArgs ?? {}) as Record<string, unknown>)
+        } catch (error) {
+          return toToolError(error)
+        }
       },
     )
   }
@@ -146,7 +150,7 @@ function is172PrivateRange(hostname: string): boolean {
 
 export function emitDirectModeWarning(): void {
   writeStderrWarning(
-    'Orbit MCP direct mode bypasses API-layer authentication, per-org rate limiting, scope enforcement, and SSRF webhook destination checks.',
+    'Orbit MCP direct mode bypasses API-layer authentication, per-org rate limiting, and scope enforcement. SSRF webhook destination checks are applied locally as a compensating control.',
   )
 }
 
@@ -158,7 +162,8 @@ export function writeDirectModeAuditLog(payload: Record<string, unknown>): void 
   process.stderr.write(`${JSON.stringify(payload)}\n`)
 }
 
-// Exported for in-package use and unit testing only — not part of the public API surface.
+// Exported for use within this package and unit tests only. Not re-exported from
+// index.ts and must not become part of the public API surface.
 export async function safeReadResource<T>(reader: () => Promise<T>): Promise<T> {
   try {
     return await reader()
