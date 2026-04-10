@@ -241,10 +241,12 @@ function isOrbitApiError(error: unknown): error is OrbitApiError {
     typeof e.error === 'object' &&
     e.error !== null &&
     'code' in (e.error as Record<string, unknown>) &&
+    typeof (e.error as Record<string, unknown>).code === 'string' &&
     'status' in e &&
     typeof e.status === 'number' &&
     'code' in e &&
-    'message' in e
+    'message' in e &&
+    typeof e.message === 'string'
   )
 }
 

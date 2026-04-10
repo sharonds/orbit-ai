@@ -166,7 +166,7 @@ export async function handleUpdateRecord(client: OrbitClient, rawArgs: unknown) 
 export async function handleDeleteRecord(client: OrbitClient, rawArgs: unknown) {
   const args = DeleteRecordInput.parse(rawArgs)
   const resource = getClientResource(client, args.object_type)
-  return toToolSuccess(await resource.delete(args.record_id))
+  return toToolSuccess(sanitizeObjectDeep(await resource.delete(args.record_id)))
 }
 
 type GenericResource = {
