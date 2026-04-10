@@ -245,6 +245,29 @@ describe('core record tools', () => {
     expect(query.length).toBeLessThanOrEqual(10_000)
   })
 
+  it('search_records sanitizes sensitive fields in envelope-shaped results', async () => {
+    const client = makeMockClient()
+    vi.mocked(client.webhooks.search).mockResolvedValueOnce({
+      data: [{ id: 'webhook_01', signing_secret: 'whsec_SUPER_SECRET' }],
+    } as never)
+    const result = await executeTool(client, 'search_records', { object_type: 'webhooks', query: 'test' })
+    const text = result.content.find((b: { type: string }) => b.type === 'text')?.text ?? ''
+    expect(text).not.toContain('whsec_SUPER_SECRET')
+  })
+
+  it('bulk_operation sanitizes sensitive fields in batch results', async () => {
+    const client = makeMockClient()
+    vi.mocked(client.contacts.batch).mockResolvedValueOnce([
+      { id: 'contact_01', api_key: 'sk_live_SECRET' },
+    ] as never)
+    const result = await executeTool(client, 'bulk_operation', {
+      object_type: 'contacts',
+      operations: [{ action: 'create', record: { name: 'Test' } }],
+    })
+    const text = result.content.find((b: { type: string }) => b.type === 'text')?.text ?? ''
+    expect(text).not.toContain('sk_live_SECRET')
+  })
+
   it('create_record blocks webhook SSRF URLs in direct mode', async () => {
     const client = makeMockClient({ direct: true })
     const result = await executeTool(client, 'create_record', {
