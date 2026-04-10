@@ -2,6 +2,16 @@ import { describe, expect, it, vi } from 'vitest'
 import { createMcpServer, emitDirectModeWarning, resolveDeleteConfirmation, startMcpServer, validateWebhookUrlForDirectMode } from '../server.js'
 import { makeMockClient } from './helpers.js'
 
+vi.mock('../resources/team-members.js', () => ({
+  readTeamMembers: vi.fn(),
+}))
+vi.mock('../resources/schema.js', () => ({
+  readSchema: vi.fn(),
+}))
+
+import { readTeamMembers } from '../resources/team-members.js'
+import { readSchema } from '../resources/schema.js'
+
 describe('server', () => {
   it('createMcpServer constructs with stdio transport options', () => {
     expect(() => createMcpServer({ client: makeMockClient(), transport: 'stdio' })).not.toThrow()
@@ -75,5 +85,34 @@ describe('server', () => {
       object_type: 'contacts',
       record_id: 'contact_01',
     })
+  })
+
+  it('orbit-team-members resource returns structured error when readTeamMembers throws', async () => {
+    vi.mocked(readTeamMembers).mockRejectedValueOnce(new Error('upstream failure'))
+
+    const server = createMcpServer({ client: makeMockClient(), transport: 'stdio' })
+    // Access the registered resource callback via the SDK's internal store.
+    const registered = (server as unknown as { _registeredResources: Record<string, { readCallback: () => Promise<unknown> }> })
+      ._registeredResources['orbit://team-members']
+    expect(registered).toBeDefined()
+
+    const result = await registered.readCallback() as { contents: Array<{ text: string }> }
+    const parsed = JSON.parse(result.contents[0]!.text) as { ok: boolean; error: { code: string } }
+    expect(parsed.ok).toBe(false)
+    expect(parsed.error.code).toBe('INTERNAL_ERROR')
+  })
+
+  it('orbit-schema resource returns structured error when readSchema throws', async () => {
+    vi.mocked(readSchema).mockRejectedValueOnce(new Error('schema unavailable'))
+
+    const server = createMcpServer({ client: makeMockClient(), transport: 'stdio' })
+    const registered = (server as unknown as { _registeredResources: Record<string, { readCallback: () => Promise<unknown> }> })
+      ._registeredResources['orbit://schema']
+    expect(registered).toBeDefined()
+
+    const result = await registered.readCallback() as { contents: Array<{ text: string }> }
+    const parsed = JSON.parse(result.contents[0]!.text) as { ok: boolean; error: { code: string } }
+    expect(parsed.ok).toBe(false)
+    expect(parsed.error.code).toBe('INTERNAL_ERROR')
   })
 })
