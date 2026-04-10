@@ -109,7 +109,7 @@ export function sanitizeObjectDeep(value: unknown): unknown {
         .map(([entryKey, entryValue]) => [entryKey, sanitizeObjectDeep(entryValue)]),
     )
   }
-  // Primitives: strings are truncated at 5,000 chars; numbers, booleans, null, and undefined pass through unchanged.
+  // Primitives: strings longer than 5,000 chars are truncated; numbers, booleans, null, and undefined pass through unchanged.
   if (typeof value === 'string') {
     return value.length > 5_000 ? `${value.slice(0, 5_000 - 14)}...[truncated]` : value
   }
@@ -117,5 +117,5 @@ export function sanitizeObjectDeep(value: unknown): unknown {
 }
 
 function isSensitiveKey(key: string): boolean {
-  return /^(.*[_-])?(token|secret|password|credential|private[_-]?key|client[_-]?secret|client[_-]?id|api[_-]?key)$/i.test(key)
+  return /^(.*[_-])?(token|secret|password|credentials?|private[_-]?key|client[_-]?secret|client[_-]?id|api[_-]?key)$/i.test(key)
 }
