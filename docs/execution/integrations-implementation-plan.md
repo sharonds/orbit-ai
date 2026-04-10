@@ -1,6 +1,6 @@
 # Orbit AI Integrations Implementation Plan
 
-Date: 2026-04-10 (revised v3 — incorporates Codex deep review findings)
+Date: 2026-04-10 (revised v5 — incorporates MCP process learnings: per-slice review discipline, multi-perspective milestones, known failure patterns)
 Status: Execution-ready baseline
 Package: `@orbit-ai/integrations`
 Depends on:
@@ -37,6 +37,8 @@ Per spec section 13: extract bounded capabilities from `~/smb-sale-crm-app` (Gma
 
 These must be completed BEFORE the integrations branch starts. Each is a separate PR to main.
 
+**Ordering:** Prerequisite A must merge first (it is a hard compile dependency for Slices 10/11/14/15/18 which use `body`, `direction`, `metadata` on activities and `external_id`/`metadata` on payments). Prerequisites B and C are independent of each other and can be completed in parallel. All three must be merged to main before Phase 3 begins.
+
 ### Prerequisite A: SDK/API field parity for activities and payments
 
 The current SDK types are missing fields that the sync code needs. These exist in `@orbit-ai/core` schema but aren't exposed in SDK types.
@@ -52,7 +54,7 @@ Missing from `CreatePaymentInput` / `PaymentRecord`:
 - `external_id?: string` — Stripe session/payment intent ID
 - `metadata?: Record<string, unknown>` — provider metadata
 
-**Pre-existing naming bug:** SDK uses `payment_method` but core schema column is `method`. The API passes raw body to core, so if SDK sends `{ payment_method: 'stripe' }`, the core Zod schema receives the wrong field name and silently drops it. This must be reconciled: either rename the SDK field to `method` or add a `payment_method` alias in the core Zod schema.
+**Pre-existing naming bug:** SDK uses `payment_method` but core schema column is `method`. The API passes raw body to core, so if SDK sends `{ payment_method: 'stripe' }`, the core Zod schema receives the wrong field name and silently drops it. **Resolution: add `payment_method` as an accepted alias in the core `paymentInsertSchema` Zod schema (non-breaking; preserves the existing SDK spelling and CLI usage which already uses `payment_method`).** Do NOT rename the SDK field — that is a breaking change.
 
 Required changes:
 - `packages/sdk/src/resources/activities.ts` — add missing fields to types
@@ -79,7 +81,8 @@ The current CLI (`packages/cli/src/commands/integrations.ts`) throws `CliNotImpl
 
 Required change:
 - Replace the stub with a dynamic loader: `registerIntegrationSubcommands(program, plugins)` that accepts `IntegrationCommand[]` and registers each as a subcommand under `orbit integrations`
-- Also register top-level aliases where the spec defines them (`orbit calendar`, `orbit payments`)
+- Register `orbit calendar` as a top-level alias for `orbit integrations google-calendar` (Calendar connector only — no conflict with any existing core command)
+- Do NOT register `orbit payments` as an alias — that namespace is already owned by the core `payments` command tree
 
 ## 3. Technology Decisions
 
@@ -113,10 +116,22 @@ interface EncryptionProvider {
 - The table is created in Phase 1 (Slice 3) BEFORE OAuth slices that need it
 - `userId` parameter is required on `saveCredentials` and optional on `getCredentials`/`deleteCredentials` (when omitted, returns the org-level default connection). This prevents ambiguity when multiple users in the same org connect the same provider.
 
+**`StoredCredentials` type:**
+```typescript
+interface StoredCredentials {
+  accessToken: string
+  refreshToken: string
+  expiresAt?: number      // epoch millis
+  scopes?: string[]
+  providerAccountId?: string
+}
+```
+
 Fields mapping:
 - `StoredCredentials.refreshToken` → encrypted via `EncryptionProvider` → `integration_connections.refresh_token_encrypted`
 - `StoredCredentials.accessToken` → not persisted (ephemeral, refreshed on demand)
-- Encryption key sourced from `ORBIT_CREDENTIAL_KEY` env var. Default implementation: AES-256-GCM with random IV prepended to ciphertext.
+- `credentials_encrypted` — stores the full `StoredCredentials` object (minus `refreshToken`) as encrypted JSON: `{ accessToken, expiresAt, scopes, providerAccountId }`. Used as a recovery fallback if ephemeral access token is unavailable. If a simpler design is preferred, this column may be omitted and only `refresh_token_encrypted` kept — but the column must be decided in Slice 3 and held consistent across all slices.
+- Encryption key sourced from `ORBIT_CREDENTIAL_KEY` env var. Expected format: 64-character hex string (32 bytes = 256 bits for AES-256). Startup must validate: if the key is absent or not 64 hex characters, throw immediately rather than failing silently at first encrypt/decrypt call. Default implementation: AES-256-GCM with random IV prepended to ciphertext.
 
 ### 3.3 Connector Order
 
@@ -128,7 +143,13 @@ Fields mapping:
 
 Each slice: one commit, production code + tests, followed by `superpowers:requesting-code-review`. Every implementer brief includes CLAUDE.md Coding Conventions verbatim.
 
-**"Done" per slice:** `pnpm --filter @orbit-ai/integrations build && test && typecheck` pass.
+**"Done" per slice:** All four commands must pass:
+```bash
+pnpm --filter @orbit-ai/integrations build
+pnpm --filter @orbit-ai/integrations test
+pnpm --filter @orbit-ai/integrations typecheck
+pnpm --filter @orbit-ai/integrations lint
+```
 
 ---
 
@@ -149,8 +170,18 @@ Create `src/types.ts` and `src/errors.ts`:
 - `OrbitIntegrationPlugin` — per spec section 3 (slug, title, version, commands, tools, outboundEventHandlers, install, uninstall, healthcheck)
 - `IntegrationCommand`, `IntegrationTool`, `IntegrationWebhookHandler` — per spec
 - `IntegrationRuntime` — adapter, client, config, eventBus
-- `OrbitIntegrationEventBus` — publish, subscribe (per spec)
-- `IntegrationError`, `IntegrationErrorCode` union, `toIntegrationError()`
+- `OrbitIntegrationEventBus` — publish, subscribe (per spec). Pattern matching for MVP: exact string match only (e.g. `"contact.created"`). Wildcard support is not in scope for v0.1.
+- `IntegrationResult<T>`:
+  ```typescript
+  interface IntegrationResult<T> {
+    data: T
+    provider: string
+    rawResponse?: unknown
+  }
+  ```
+- `IntegrationError`, `IntegrationErrorCode` union
+- `toIntegrationError(err)` — normalize any thrown error to `IntegrationError` (inbound)
+- `fromIntegrationError(err, target: 'mcp' | 'api' | 'cli')` — convert `IntegrationError` to the appropriate downstream error type: `McpToolError` for MCP consumers, `OrbitError` for API route responses, human-readable message string for CLI output
 
 Tests: error construction, normalization, plugin contract shape.
 
@@ -160,11 +191,17 @@ Commit: `feat(integrations): add plugin contract and error model`
 
 Create `src/schema.ts` and `src/schema-extension.ts`:
 - `integrationConnections` table — per spec section 8 (id, organizationId, provider, connectionType, userId, status, credentialsEncrypted, refreshTokenEncrypted, accessTokenExpiresAt, providerAccountId, providerWebhookId, scopes, failureCount, lastSuccessAt, lastFailureAt, metadata)
-- `integrationSyncState` table — per spec section 8
+- `integrationSyncState` table — per spec section 8, plus a `processedEventIds` column (`jsonb`/`text[]`) for Stripe webhook dedup (stores processed Stripe event IDs for idempotency; capped at 1000 most-recent event IDs per connection using FIFO eviction — drop the oldest entry when inserting past the cap; at ~27 chars per Stripe event ID this is ~27KB max per connection row)
 - `integrationSchemaExtension` — registers both in core plugin system
 - Both tables include `organizationId`, are tenant-scoped
 
-Tests: schema extension registration, column completeness vs spec, tenant scoping assertion.
+**Database indexes** (must be included in the migration for query performance):
+- `integration_connections`: unique index on `(organization_id, provider, user_id)` for connection lookup; index on `(organization_id, provider)` for list-by-provider; index on `(organization_id, status)` for list-by-status
+- `integration_sync_state`: index on `(connection_id, stream)` for sync state lookup
+
+**RLS confirmation**: `PluginSchemaExtension` does not auto-generate RLS policies — the migration SQL for `integration_connections` and `integration_sync_state` must explicitly include `CREATE POLICY` statements scoped to `organization_id` for Postgres adapters (consistent with all other tenant-scoped tables in the project).
+
+Tests: schema extension registration, column completeness vs spec, tenant scoping assertion, index existence.
 
 Commit: `feat(integrations): add integration connection and sync state tables`
 
@@ -180,8 +217,9 @@ Create `src/credentials.ts`, `src/encryption.ts`, and `src/redaction.ts`:
 - `StoredCredentials` type
 - `TableBackedCredentialStore` — wraps `integration_connections` table, encrypts via `EncryptionProvider` before writing to `_encrypted` columns, decrypts on read
 - `InMemoryCredentialStore` — test-only (uses `NoopEncryptionProvider`)
-- `redactProviderError()` — strip tokens/secrets
-- `sanitizeIntegrationMetadata()` — per spec section 3.1
+- `redactProviderError()` — strip tokens/secrets. Follow `packages/mcp/src/errors.ts` approach: target specific known patterns (`Bearer` tokens, `ya29.` Google tokens, `eyJ.` JWTs, `key=value` secret pairs). Do NOT use a length-based regex like `/[A-Za-z0-9._-]{24,}/g` — it will match ULIDs, Gmail message IDs, and sync cursors.
+- `sanitizeIntegrationMetadata()` — per spec section 3.1. Key filter must use exact boundary matching, not substring: `/^(token|secret|signature|credential|password|private_key|refresh_token|access_token)$/i`. Keys like `authorized_at`, `auth_provider`, `authorization_type` must NOT be redacted.
+- `toIntegrationConnectionRead()` / `toIntegrationSyncStateRead()` — use `.toISOString()` for all timestamp fields, not `String(...)` (which produces locale-dependent output or `"[object Object]"` on wrapped Date types).
 - `toIntegrationConnectionRead()` — sanitized DTO
 - `toIntegrationSyncStateRead()` — sanitized DTO
 
@@ -199,8 +237,8 @@ Skill trigger: `orbit-tenant-safety-review`
 
 Create `src/retry.ts` and `src/idempotency.ts`:
 - `withBoundedRetry(fn, options)` — max 3, exponential backoff, jitter
-- `isRetryableError(error)` — HTTP 429/500/502/503
-- `IdempotencyHelper` — key generation + dedup check
+- `isRetryableError(error)` — HTTP 429/500/502/503 plus network-level errors: `ECONNREFUSED`, `ETIMEDOUT`, `ECONNRESET`, `ENOTFOUND` (these are common during OAuth token refresh against provider APIs)
+- `IdempotencyHelper` — key generation + dedup check. Uses the core `idempotency_keys` table (already implemented in Wave 2) as the backing store — do not create a new table or in-memory mechanism. Stripe event-level dedup uses `integration_sync_state.processedEventIds` instead (see Slice 3).
 
 Tests: retry exhaustion, backoff (mocked), non-retryable pass-through.
 
@@ -227,6 +265,7 @@ Create `src/oauth.ts`:
 - `getValidAccessToken(orgId, provider, credentialStore)` — auto-refresh (5-min margin)
 - `revokeToken(orgId, provider, credentialStore)` — revoke + delete
 - Errors map to `IntegrationError` (`AUTH_EXPIRED`, `AUTH_REVOKED`)
+- **Auth failure tracking**: on each auth failure, increment `integration_connections.failureCount` and record timestamp in `lastFailureAt`. On success, reset `failureCount` to 0 and update `lastSuccessAt`. At `failureCount >= 5` consecutive failures, set `status = 'disabled'` and stop refresh attempts (requires manual re-auth). Status progression: `active → error` (first failure) → `disabled` (5th failure).
 
 Tests: refresh when expired (mocked), revocation, exchange, invalid grant mapping.
 
@@ -263,15 +302,20 @@ Commit: `feat(integrations): add Gmail OAuth flow`
 
 #### Slice 10: Gmail send + list operations
 
+**Requires Prerequisite A merged** — `CreateActivityInput` must have `body`, `direction`, `metadata` before this slice compiles correctly.
+
 Create `src/gmail/operations.ts`:
 - `listMessages`, `getMessage`, `sendMessage`
 - All return `IntegrationResult<T>`, errors via `toIntegrationError()`
+- `sendMessage` requires constructing a raw RFC 2822 MIME message, then base64url-encoding it per Gmail API spec (`message.raw = Buffer.from(mimeString).toString('base64url')`). This is not a simple JSON body POST.
 
 Tests: list/send with mocked Gmail API, error mapping (auth failure, rate limit, not found).
 
 Commit: `feat(integrations): add Gmail send and list operations`
 
 #### Slice 11: Gmail sync + contact dedupe
+
+**Requires Prerequisite A merged** — `CreateActivityInput.body`, `.direction`, `.metadata` must exist.
 
 Create `src/gmail/sync.ts` and `src/shared/contacts.ts`:
 - `syncGmailMessage(runtime, input)` — per spec section 5.2
@@ -329,6 +373,8 @@ Commit: `feat(integrations): scaffold Google Calendar connector`
 
 #### Slice 14: Calendar event operations
 
+**Requires Prerequisite A merged** — operations return shapes that feed into `CreateActivityInput`.
+
 Create `src/google-calendar/operations.ts`:
 - `listEvents`, `createEvent`, `updateEvent`, `deleteEvent`, `checkAvailability`
 
@@ -337,6 +383,8 @@ Tests: list/create mocked, error mapping, freebusy parsing.
 Commit: `feat(integrations): add Calendar event operations`
 
 #### Slice 15: Calendar sync + polling
+
+**Requires Prerequisite A merged** — `CreateActivityInput.duration_minutes`, `.metadata` must exist. Also requires `src/shared/contacts.ts` from Slice 11.
 
 Create `src/google-calendar/sync.ts` and `src/google-calendar/polling.ts`:
 - `syncCalendarEvent(runtime, input)` — per spec section 6
@@ -355,6 +403,8 @@ Skill trigger: `orbit-tenant-safety-review`
 
 #### Slice 16: Calendar MCP tools + CLI commands
 
+**Requires Prerequisite C merged** — `orbit calendar` top-level alias and `registerIntegrationSubcommands` loader must exist before these commands have a registration path.
+
 Create `src/google-calendar/mcp-tools.ts`:
 - `integrations.google_calendar.list_events`, `integrations.google_calendar.create_event` — MCP tools
 - CLI: `orbit calendar list`, `orbit calendar create`, `orbit calendar sync`
@@ -371,7 +421,8 @@ Phase 4 milestone: `orbit-core-slice-review`
 
 #### Slice 17: Stripe connector scaffold + config
 
-Create `src/stripe/connector.ts`:
+Create `src/stripe/connector.ts` and `src/stripe/types.ts`:
+- `src/stripe/types.ts` — webhook event envelope types, payment link input/output types, checkout session sync types (parallel to `src/gmail/types.ts`)
 - `stripePlugin: OrbitIntegrationPlugin`
 - `StripeConnectorConfig` — Zod (secretKeyEnv, webhookSecretEnv)
 - Secret key from env — never in config file
@@ -384,6 +435,8 @@ Skill trigger: `orbit-tenant-safety-review`
 
 #### Slice 18: Stripe payment operations + sync
 
+**Requires Prerequisite A merged** — `CreatePaymentInput.external_id` and `.metadata` must exist.
+
 Create `src/stripe/operations.ts`, `src/stripe/sync.ts`:
 - `createPaymentLink`, `getPaymentStatus`
 - `syncStripeCheckoutSession(runtime, stripeClient, sessionId)` — per spec section 7
@@ -395,10 +448,9 @@ Commit: `feat(integrations): add Stripe payment operations and sync`
 #### Slice 19: Stripe webhook handler + security
 
 Create `src/stripe/webhooks.ts`:
-- `verifyStripeWebhook(payload, signature, secret)` — signature verification
+- `verifyStripeWebhook(payload, signature, secret)` — signature verification via Stripe's `constructEvent(payload, sig, secret, tolerance)`. The `tolerance` parameter (default: 300 seconds = 5 min) is the sole replay-window enforcement mechanism. Do NOT add a separate timestamp check — it creates double validation with potentially different windows and ambiguity about which is authoritative.
 - `handleStripeEvent(runtime, event)` — route by type
-- **Replay-window enforcement**: reject events older than configurable window (default 5 min) per threat model
-- **Receipt persistence**: store webhook delivery ID in `integration_sync_state` for dedup
+- **Receipt persistence**: store processed Stripe event ID in `integration_sync_state.processedEventIds` (see Slice 3)
 - Idempotency: same event ID processed at most once
 - **Provider events must NOT route through outbound customer webhook delivery** (per spec section 11.3)
 
@@ -414,9 +466,11 @@ Commit: `feat(integrations): add Stripe webhook handler with replay and dedup`
 
 #### Slice 20: Stripe MCP tools + CLI commands
 
+**Requires Prerequisite C merged** — `registerIntegrationSubcommands` loader must exist before `orbit integrations stripe ...` commands have a registration path.
+
 Create `src/stripe/mcp-tools.ts`:
 - `integrations.stripe.create_payment_link`, `integrations.stripe.get_payment_status` — MCP tools
-- CLI: `orbit payments link create`, `orbit payments sync stripe`
+- CLI: `orbit integrations stripe link-create`, `orbit integrations stripe sync` — kept under the `integrations` namespace to avoid collision with the existing core `orbit payments` command tree (`packages/cli/src/commands/payments.ts` already owns `orbit payments`). Do NOT register top-level `orbit payments` aliases from this package.
 
 Tests: tool/command registration, execution.
 
@@ -475,29 +529,51 @@ Commit: `docs(integrations): record execution and review closeout`
 Every implementer brief MUST include:
 1. CLAUDE.md **Coding Conventions** section verbatim
 2. Slice description from this plan
-3. "Done" definition: build + tests + lint pass
+3. "Done" definition: build + tests + typecheck + lint pass (all four commands)
 4. Specific orbit skill trigger (if any)
 5. Relevant canonical spec section references
 
-### 5.2 Review After Every Commit
+### 5.2 Review After Every Commit (non-negotiable)
 
-`superpowers:requesting-code-review` after each slice. Fix all findings before next slice.
+Run `superpowers:requesting-code-review` after each slice. Fix ALL findings before starting the next slice. This step cannot be deferred, batched, or skipped.
 
-### 5.3 No Deferrals
+**Why this is mandatory:** The MCP package (`feat/mcp-closeout`) skipped per-slice review. All issues accumulated until the final PR gate, where 6 agents found a backlog. Each fix round introduced new code that generated new findings, creating a compounding loop — 10 rounds, ~4 hours to reach zero issues. The `pr-review-toolkit` at PR time should confirm quality, not discover it for the first time.
 
-Any issue found is fixed immediately. No "non-blocking" items.
+### 5.3 Multi-Perspective Review at Phase Milestones
 
-### 5.4 Lint Before Commit
+At the end of each phase (Phases 2–5), in addition to `orbit-core-slice-review`, run a second deeper review using a different agent or model to catch what a single reviewer misses. The MCP plan benefited from having both a structural reviewer (Copilot-style) and a deep implementation reviewer (Codex-style) — they caught different classes of issues.
+
+Recommended at each phase milestone:
+1. `orbit-core-slice-review` — orbit-specific patterns, spec coverage
+2. `superpowers:requesting-code-review` with `subagent_type: feature-dev:code-reviewer` — implementation-level issues (types, edge cases, redaction, error mapping)
+
+### 5.4 No Deferrals
+
+Any issue found is fixed immediately. No "non-blocking" items. "Pre-existing" is not a reason to skip — if the review finds it, fix it.
+
+### 5.5 Lint Before Commit
 
 `pnpm --filter @orbit-ai/integrations lint` before every commit.
+
+### 5.6 Known Patterns to Watch (from MCP lessons)
+
+These are the specific failure modes that caused the most review rounds in MCP. Sub-agent briefs should call these out explicitly:
+
+- **Bare catch blocks**: every catch must log before swallowing — `catch (err) { writeStderrWarning(...) }`, never bare `catch {}` or silent `catch { /* best-effort */ }`
+- **Duck-type guards**: use type predicates (`isXxx(e): e is T`) not `instanceof` for cross-boundary error classes (`IntegrationError`, `ZodError`, `OrbitApiError`)
+- **Redaction is recursive**: `sanitizeObjectDeep` on all output that may contain user records — top-level-only sanitization leaks nested secrets
+- **camelCase sensitive keys**: `isSensitiveKey` must cover both snake_case (`api_key`, `refresh_token`) and camelCase (`accessToken`, `clientSecret`, `apiKey`)
+- **Semantic error codes**: do not collapse `AUTH_EXPIRED`, `RATE_LIMITED`, `CONFLICT` into `INTERNAL_ERROR` — AI agents need the signal to react correctly (backoff vs. re-auth vs. fetch-and-update)
+- **Exhaustiveness guards**: every switch/if-chain over a union type must end with `assertNever(x)` so future union members cause a compile error, not a silent no-op
 
 ## 6. Final Review Gate
 
 After all 23 slices + individual reviews:
 1. `pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm -r lint`
 2. `pr-review-toolkit:review-pr all` — all 6 agents
-3. Stop when zero MEDIUM/HIGH/CRITICAL across all 6
-4. Cosmetic suggestions → file as issues, don't block
+3. **Stopping rule: zero MEDIUM/HIGH/CRITICAL across all 6 agents.** "Nothing above HIGH" is not the bar — MEDIUM issues are real issues. Stop only when everything remaining is LOW or cosmetic suggestions.
+4. Cosmetic suggestions → file as issues, don't block the PR
+5. If a fix round introduces new code: re-run the affected agents only, not all 6
 
 ## 7. Orbit Skill Triggers
 
