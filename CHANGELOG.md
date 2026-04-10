@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### @orbit-ai/integrations
+- **Added**: Package scaffold with plugin contract and error model
+- **Added**: Integration tables (integration_connections, integration_sync_state) with RLS
+- **Added**: Credential store with AES-256-GCM encryption
+- **Added**: OAuth2 token lifecycle with auth failure tracking
+- **Added**: Gmail connector (OAuth, send/list/get, sync, MCP tools, polling)
+- **Added**: Google Calendar connector (OAuth, CRUD events, availability, sync, MCP tools, CLI commands)
+- **Added**: Stripe connector (payment links, checkout sync, webhook handler with replay/dedup, MCP tools, CLI commands)
+- **Added**: Event bus with routing enforcement (provider ≠ customer events)
+- **Added**: Dynamic CLI and MCP tool registration
+- **Added**: Retry with exponential backoff and idempotency helpers
+
+### @orbit-ai/sdk
+- **Added**: Missing activity fields (body, direction, duration_minutes, metadata, outcome)
+- **Added**: Missing payment fields (external_id, metadata)
+- **Fixed**: payment_method/method naming with Zod transform alias
+
+### @orbit-ai/mcp
+- **Added**: Extension tool seam (`registerExtensionTools`) for integration plugins
+
+### @orbit-ai/cli
+- **Added**: Integration command seam with dynamic subcommand registration
+- **Added**: `orbit calendar` top-level alias
+
+---
+
 ## [0.1.0-alpha.0] — Unreleased
 
 First public pre-release of the Orbit AI monorepo. All 5 packages: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`.
