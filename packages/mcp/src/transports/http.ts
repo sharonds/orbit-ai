@@ -63,7 +63,8 @@ export async function startHttpTransport(options: StartMcpServerOptions): Promis
     server.listen(port, bindAddress, () => {
       server.off('error', reject)
       server.on('error', (err) => {
-        writeStderrWarning(`MCP HTTP server error: ${err.message}`)
+        const code = (err as NodeJS.ErrnoException).code ?? 'UNKNOWN'
+        writeStderrWarning(`MCP HTTP server error [${code}]: ${err.message}`)
       })
       resolve()
     })
