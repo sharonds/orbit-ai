@@ -145,4 +145,10 @@ describe('sanitizeObjectDeep direct', () => {
     expect(result).toHaveProperty('id', 'conn_01')
     expect(result).toHaveProperty('name', 'integration')
   })
+
+  it('strips credential (singular) key from objects', () => {
+    const result = sanitizeObjectDeep({ id: 'conn_01', credential: 'raw_value', name: 'integration' })
+    expect(result).not.toHaveProperty('credential')
+    expect(result).toHaveProperty('id', 'conn_01')
+  })
 })
