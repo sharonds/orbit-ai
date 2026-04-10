@@ -222,6 +222,33 @@ describe('GoogleOAuthHelper', () => {
       expect(status.failureCount).toBe(0)
     })
 
+    it('persists refreshed token so second call uses cache without re-refreshing', async () => {
+      const creds: StoredCredentials = {
+        accessToken: 'ya29.expiring',
+        refreshToken: '1//refresh',
+        expiresAt: Date.now() - 1000, // expired
+      }
+      await credentialStore.saveCredentials('org-1', 'google', '__default__', creds)
+
+      const futureExpiry = Date.now() + 60 * 60 * 1000
+      mockRefreshAccessToken.mockResolvedValue({
+        credentials: {
+          access_token: 'ya29.durable-token',
+          expiry_date: futureExpiry,
+        },
+      })
+
+      // First call triggers refresh
+      const token1 = await helper.getValidAccessToken('org-1', 'google', credentialStore)
+      expect(token1).toBe('ya29.durable-token')
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1)
+
+      // Second call should use cached token — no additional refresh
+      const token2 = await helper.getValidAccessToken('org-1', 'google', credentialStore)
+      expect(token2).toBe('ya29.durable-token')
+      expect(mockRefreshAccessToken).toHaveBeenCalledTimes(1) // still 1, not 2
+    })
+
     it('calls connectionTracker.recordFailure on refresh failure', async () => {
       const creds: StoredCredentials = {
         accessToken: 'ya29.expiring',
