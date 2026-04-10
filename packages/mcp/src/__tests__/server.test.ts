@@ -42,6 +42,7 @@ describe('server', () => {
     ['http://172.16.0.1/webhook', '172.16.x first of private range'],
     ['http://172.31.255.255/webhook', '172.31.x last of private range'],
     ['http://localhost/webhook', 'localhost hostname'],
+    ['http://0.0.0.0/webhook', '0.0.0.0 unspecified address'],
   ] as const)(
     'validateWebhookUrlForDirectMode blocks %s (%s)',
     (url, _label) => {

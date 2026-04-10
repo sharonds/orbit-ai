@@ -255,6 +255,28 @@ describe('core record tools', () => {
     expect(text).not.toContain('whsec_SUPER_SECRET')
   })
 
+  it('search_records with object_type all sanitizes sensitive fields', async () => {
+    const client = makeMockClient()
+    vi.mocked(client.search.query).mockResolvedValueOnce({
+      data: [{ id: 'contact_01', api_key: 'sk_live_ALL_SECRET' }],
+    } as never)
+    const result = await executeTool(client, 'search_records', { object_type: 'all', query: 'jane' })
+    const text = getTextContent(result)
+    expect(text).not.toContain('sk_live_ALL_SECRET')
+  })
+
+  it('relate_records contact_company sanitizes sensitive fields in response', async () => {
+    const client = makeMockClient()
+    vi.mocked(client.contacts.update).mockResolvedValueOnce({ id: 'contact_01', api_key: 'sk_live_SECRET' } as never)
+    const result = await executeTool(client, 'relate_records', {
+      relationship_type: 'contact_company',
+      source_record_id: 'contact_01',
+      target_record_id: 'company_01',
+    })
+    const text = getTextContent(result)
+    expect(text).not.toContain('sk_live_SECRET')
+  })
+
   it('bulk_operation sanitizes sensitive fields in batch results', async () => {
     const client = makeMockClient()
     vi.mocked(client.contacts.batch).mockResolvedValueOnce([
