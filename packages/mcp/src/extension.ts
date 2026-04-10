@@ -19,6 +19,12 @@ export interface ExtensionTool {
 const INTEGRATION_PREFIX = 'integrations.'
 
 /**
+ * Set of core tool names, computed once at module load to avoid redundant
+ * registry traversals on every registerExtensionTools call.
+ */
+const CORE_TOOL_NAMES = new Set(buildTools().map((t) => t.name))
+
+/**
  * Registers a set of integration extension tools on an existing McpServer.
  *
  * Validation rules:
@@ -29,7 +35,7 @@ const INTEGRATION_PREFIX = 'integrations.'
  * @throws Error if any validation rule is violated
  */
 export function registerExtensionTools(server: McpServer, tools: ExtensionTool[]): void {
-  const coreToolNames = new Set(buildTools().map((t) => t.name))
+  const coreToolNames = CORE_TOOL_NAMES
   const seen = new Set<string>()
 
   for (const tool of tools) {
