@@ -210,17 +210,22 @@ function isZodError(error: unknown): error is { name: 'ZodError'; issues: unknow
   )
 }
 
-const VALID_MCP_CODES = new Set<McpToolErrorCode>([
-  'RESOURCE_NOT_FOUND',
-  'VALIDATION_FAILED',
-  'AUTH_INVALID',
-  'DESTRUCTIVE_CONFIRM_REQUIRED',
-  'UNSUPPORTED_OBJECT_TYPE',
-  'DEPENDENCY_NOT_AVAILABLE',
-  'INTERNAL_ERROR',
-  'SSRF_BLOCKED',
-  'UNKNOWN_TOOL',
-])
+// Compile-time exhaustiveness check — adding a code to McpToolErrorCode without
+// adding it here is a type error. This ensures isToolErrorShape stays in sync.
+const _VALID_MCP_CODES_MAP: { [K in McpToolErrorCode]: true } = {
+  RESOURCE_NOT_FOUND: true,
+  VALIDATION_FAILED: true,
+  AUTH_INVALID: true,
+  DESTRUCTIVE_CONFIRM_REQUIRED: true,
+  UNSUPPORTED_OBJECT_TYPE: true,
+  DEPENDENCY_NOT_AVAILABLE: true,
+  INTERNAL_ERROR: true,
+  SSRF_BLOCKED: true,
+  UNKNOWN_TOOL: true,
+}
+const VALID_MCP_CODES = new Set<McpToolErrorCode>(
+  Object.keys(_VALID_MCP_CODES_MAP) as McpToolErrorCode[],
+)
 
 function isToolErrorShape(error: unknown): error is McpToolErrorShape {
   return (
@@ -245,6 +250,7 @@ function isOrbitApiError(error: unknown): error is OrbitApiError {
     'status' in e &&
     typeof e.status === 'number' &&
     'code' in e &&
+    typeof e.code === 'string' &&
     'message' in e &&
     typeof e.message === 'string'
   )
