@@ -39,13 +39,26 @@ These must be completed BEFORE the integrations branch starts. Each is a separat
 
 ### Prerequisite A: SDK/API field parity for activities and payments
 
-The current SDK `CreateActivityInput` lacks `body`, `direction`, `duration_minutes`, and `metadata`. `CreatePaymentInput` lacks `external_id`. These fields exist in `@orbit-ai/core` schema but aren't exposed in SDK types or API routes.
+The current SDK types are missing fields that the sync code needs. These exist in `@orbit-ai/core` schema but aren't exposed in SDK types.
+
+Missing from `CreateActivityInput` / `ActivityRecord`:
+- `body?: string` — email body, meeting description
+- `direction?: string` — inbound/outbound/internal (core default: `'internal'`)
+- `duration_minutes?: number` — meeting duration
+- `metadata?: Record<string, unknown>` — provider-specific data (gmail_thread_id, etc.)
+- `outcome?: string` — activity outcome (lower priority, but needed for full parity)
+
+Missing from `CreatePaymentInput` / `PaymentRecord`:
+- `external_id?: string` — Stripe session/payment intent ID
+- `metadata?: Record<string, unknown>` — provider metadata
+
+**Pre-existing naming bug:** SDK uses `payment_method` but core schema column is `method`. The API passes raw body to core, so if SDK sends `{ payment_method: 'stripe' }`, the core Zod schema receives the wrong field name and silently drops it. This must be reconciled: either rename the SDK field to `method` or add a `payment_method` alias in the core Zod schema.
 
 Required changes:
-- `packages/sdk/src/resources/activities.ts` — add `body?: string`, `direction?: string`, `duration_minutes?: number`, `metadata?: Record<string, unknown>` to `CreateActivityInput` and `ActivityRecord`
-- `packages/sdk/src/resources/payments.ts` — add `external_id?: string` to `CreatePaymentInput` and `PaymentRecord`
-- `packages/api/src/routes/activities.ts` — ensure API accepts and returns these fields
-- `packages/api/src/routes/payments.ts` — same
+- `packages/sdk/src/resources/activities.ts` — add missing fields to types
+- `packages/sdk/src/resources/payments.ts` — add missing fields, fix `payment_method`/`method` naming
+- `packages/api/src/routes/entities.ts` — verify API passthrough accepts new fields (likely no change needed)
+- Core Zod schemas — verify `activityInsertSchema` and `paymentInsertSchema` accept the fields
 
 Verify: `pnpm -r build && pnpm -r test && pnpm -r typecheck`
 
@@ -84,17 +97,26 @@ Credentials are stored in the `integration_connections` table (spec section 8), 
 
 ```typescript
 interface CredentialStore {
-  getCredentials(organizationId: string, provider: string): Promise<StoredCredentials | null>
-  saveCredentials(organizationId: string, provider: string, credentials: StoredCredentials): Promise<void>
-  deleteCredentials(organizationId: string, provider: string): Promise<void>
+  getCredentials(organizationId: string, provider: string, userId?: string): Promise<StoredCredentials | null>
+  saveCredentials(organizationId: string, provider: string, userId: string, credentials: StoredCredentials): Promise<void>
+  deleteCredentials(organizationId: string, provider: string, userId?: string): Promise<void>
+}
+
+interface EncryptionProvider {
+  encrypt(plaintext: string): Promise<string>
+  decrypt(ciphertext: string): Promise<string>
 }
 ```
 
-- `TableBackedCredentialStore` — production implementation backed by `integration_connections`
-- `InMemoryCredentialStore` — test-only implementation
-- The table is created in Phase 1 (Slice 4) BEFORE OAuth slices that need it
+- `TableBackedCredentialStore` — production implementation backed by `integration_connections`. Requires an `EncryptionProvider` for encrypting refresh tokens and credentials before writing to `_encrypted` columns.
+- `InMemoryCredentialStore` — test-only implementation (no encryption)
+- The table is created in Phase 1 (Slice 3) BEFORE OAuth slices that need it
+- `userId` parameter is required on `saveCredentials` and optional on `getCredentials`/`deleteCredentials` (when omitted, returns the org-level default connection). This prevents ambiguity when multiple users in the same org connect the same provider.
 
-Fields mapping: `StoredCredentials.refreshToken` → `integration_connections.refresh_token_encrypted`, `StoredCredentials.accessToken` → not persisted (ephemeral, refreshed on demand).
+Fields mapping:
+- `StoredCredentials.refreshToken` → encrypted via `EncryptionProvider` → `integration_connections.refresh_token_encrypted`
+- `StoredCredentials.accessToken` → not persisted (ephemeral, refreshed on demand)
+- Encryption key sourced from `ORBIT_CREDENTIAL_KEY` env var. Default implementation: AES-256-GCM with random IV prepended to ciphertext.
 
 ### 3.3 Connector Order
 
@@ -148,13 +170,16 @@ Commit: `feat(integrations): add integration connection and sync state tables`
 
 Skill trigger: `orbit-schema-change`, `orbit-tenant-safety-review`
 
-#### Slice 4: Credential store + redaction
+#### Slice 4: Credential store + encryption + redaction
 
-Create `src/credentials.ts` and `src/redaction.ts`:
-- `CredentialStore` interface (get, save, delete — all org+provider scoped)
+Create `src/credentials.ts`, `src/encryption.ts`, and `src/redaction.ts`:
+- `EncryptionProvider` interface (`encrypt`, `decrypt`)
+- `AesGcmEncryptionProvider` — default implementation (AES-256-GCM, random IV, key from `ORBIT_CREDENTIAL_KEY` env)
+- `NoopEncryptionProvider` — test-only (plaintext passthrough, clearly named)
+- `CredentialStore` interface (get, save, delete — org+provider+userId scoped per section 3.2)
 - `StoredCredentials` type
-- `TableBackedCredentialStore` — wraps `integration_connections` table (reads/writes credentialsEncrypted, refreshTokenEncrypted, accessTokenExpiresAt)
-- `InMemoryCredentialStore` — test-only
+- `TableBackedCredentialStore` — wraps `integration_connections` table, encrypts via `EncryptionProvider` before writing to `_encrypted` columns, decrypts on read
+- `InMemoryCredentialStore` — test-only (uses `NoopEncryptionProvider`)
 - `redactProviderError()` — strip tokens/secrets
 - `sanitizeIntegrationMetadata()` — per spec section 3.1
 - `toIntegrationConnectionRead()` — sanitized DTO
@@ -315,14 +340,14 @@ Commit: `feat(integrations): add Calendar event operations`
 
 Create `src/google-calendar/sync.ts` and `src/google-calendar/polling.ts`:
 - `syncCalendarEvent(runtime, input)` — per spec section 6
-- `findOrCreateContactByAttendees(client, orgId, emails)` — **org-bound**
+- `findOrCreateContactByAttendees(client, orgId, emails)` — **MUST use the shared helper from `src/shared/contacts.ts` (Slice 11) which includes `withTenantContext`; do NOT write a standalone query**
 - `pollCalendarEvents(runtime, connector, options)` — per spec section 11.3
   - Queries Calendar API for updated events since last sync token
   - Provider webhook support where available, polling fallback
   - Updates sync state cursor
 - Duration calculation, attendee mapping, metadata
 
-Tests: event-to-activity shape, attendee resolution, duration edges, polling cursor, **cross-org negative test**.
+Tests: event-to-activity shape, attendee resolution, duration edges, polling cursor, **cross-org negative test** (same attendee email in different orgs does NOT collide).
 
 Commit: `feat(integrations): add Calendar sync and event polling`
 
