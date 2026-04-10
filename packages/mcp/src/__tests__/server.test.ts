@@ -96,7 +96,7 @@ describe('server', () => {
       ._registeredResources['orbit://team-members']
     expect(registered).toBeDefined()
 
-    const result = await registered.readCallback() as { contents: Array<{ text: string }> }
+    const result = await registered!.readCallback() as { contents: Array<{ text: string }> }
     const parsed = JSON.parse(result.contents[0]!.text) as { ok: boolean; error: { code: string } }
     expect(parsed.ok).toBe(false)
     expect(parsed.error.code).toBe('INTERNAL_ERROR')
@@ -110,7 +110,7 @@ describe('server', () => {
       ._registeredResources['orbit://schema']
     expect(registered).toBeDefined()
 
-    const result = await registered.readCallback() as { contents: Array<{ text: string }> }
+    const result = await registered!.readCallback() as { contents: Array<{ text: string }> }
     const parsed = JSON.parse(result.contents[0]!.text) as { ok: boolean; error: { code: string } }
     expect(parsed.ok).toBe(false)
     expect(parsed.error.code).toBe('INTERNAL_ERROR')
