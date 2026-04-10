@@ -35,12 +35,13 @@ export async function startHttpTransport(options: StartMcpServerOptions): Promis
     try {
       await handleAuthenticatedHttpRequest(req, res, options.client, options.adapter!, bindAddress)
     } catch (error) {
-      const statusCode = error instanceof SyntaxError ? 400 : 500
+      const isClientError = error instanceof BodyTooLargeError || error instanceof SyntaxError
+      const statusCode: 400 | 500 = isClientError ? 400 : 500
       const normalized = normalizeToolError(
         statusCode === 400
           ? {
               code: 'VALIDATION_FAILED' as const,
-              message: (error as BodyTooLargeError).isBodyTooLarge
+              message: error instanceof BodyTooLargeError
                 ? 'Request body exceeds the 1 MB limit.'
                 : 'Malformed JSON body.',
             }
@@ -48,6 +49,8 @@ export async function startHttpTransport(options: StartMcpServerOptions): Promis
       )
       writeStderrWarning(`MCP HTTP ${statusCode} error: ${normalized.code}: ${normalized.message}`)
       if (res.headersSent) {
+        writeStderrWarning(`MCP HTTP: response already started — destroying half-open connection`)
+        res.destroy()
         return
       }
 
@@ -147,6 +150,8 @@ export async function authenticateRequest(
   return { ok: true, key }
 }
 
+// Must extend SyntaxError: the catch block uses `instanceof SyntaxError` to
+// produce a 400 status. `isBodyTooLarge` then distinguishes this from a JSON parse failure.
 class BodyTooLargeError extends SyntaxError {
   readonly isBodyTooLarge = true as const
   constructor() { super('Request body exceeds the 1 MB limit.') }
