@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { Command } from 'commander'
 import { registerIntegrationSubcommands, registerIntegrationsCommand } from '../commands/integrations.js'
+import { registerCalendarAliasCommand } from '../commands/calendar-alias.js'
 import { createProgram } from '../program.js'
 
 afterEach(() => {
@@ -115,5 +116,26 @@ describe('top-level calendar alias', () => {
     const calendarCmd = program.commands.find((c) => c.name() === 'calendar')
     expect(calendarCmd).toBeDefined()
     expect(calendarCmd!.description()).toContain('google-calendar')
+  })
+
+  it('prints informational message and exits 0 when google-calendar plugin is not registered', async () => {
+    const program = new Command()
+    program.exitOverride()
+    program.configureOutput({ writeOut: () => {}, writeErr: () => {} })
+    registerCalendarAliasCommand(program)
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((_code?: string | number | null) => {
+      throw new Error(`process.exit(${_code})`)
+    })
+
+    await expect(
+      program.parseAsync(['node', 'orbit', 'calendar']),
+    ).rejects.toThrow('process.exit(0)')
+
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Google Calendar integration not enabled'),
+    )
+    expect(exitSpy).toHaveBeenCalledWith(0)
   })
 })

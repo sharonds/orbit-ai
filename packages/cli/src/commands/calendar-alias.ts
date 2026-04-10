@@ -19,7 +19,7 @@ export function registerCalendarAliasCommand(program: Command): void {
         process.stderr.write(
           'Google Calendar integration not enabled. Install @orbit-ai/integrations and register the google-calendar plugin.\n',
         )
-        process.exit(1)
+        process.exit(0)
         return
       }
 
