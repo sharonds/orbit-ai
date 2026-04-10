@@ -4,24 +4,85 @@
 
 **Goal:** Fix 18 validated issues from GitHub bot reviews on PRs #29–#34, organized into 3 phases mapping to 3 small PRs.
 
-**Architecture:** Each phase targets a distinct risk category (security, data integrity, runtime). Fixes are minimal, test-first, and scoped to a single file per task. Every task ends with a commit and sub-agent review.
+**Architecture:** Each phase targets a distinct risk category (security, data integrity, runtime). Fixes are minimal and test-first. Tasks may span multiple files and packages when the fix is inherently cross-cutting. Every task ends with a commit, package-scoped validation, and sub-agent review.
 
 **Tech Stack:** TypeScript, Vitest, Zod v4, googleapis, stripe, Commander.js
+
+---
+
+## Issue Map
+
+Every validated issue maps to exactly one task. No gaps, no duplicates.
+
+| Issue # | Description | Package | Task | Phase/PR |
+|---------|-------------|---------|------|----------|
+| 1 | `findOrCreateContactFromEmail` ignores `orgId` in filters | integrations | 1 | 1 |
+| 2 | MIME header injection — no CR/LF escaping in `sendMessage` | integrations | 2 | 1 |
+| 3 | Polling cursor passed as Gmail `after:` query | integrations | 3 | 2 |
+| 4 | `stoppedEarly` returns next page token, not current position | integrations | 3 | 2 |
+| 5 | Gmail auth credential userId mismatch (save vs read slot) | integrations | 4 | 2 |
+| 6 | `CREATE POLICY` not idempotent (no `DROP IF EXISTS`) | integrations | 5 | 2 |
+| 7 | `connection_id` lacks FK to `integration_connections` | integrations | 5 | 2 |
+| 8 | Idempotency key hash collision (`parts.join('::')`) | integrations | 6 | 2 |
+| 9 | Idempotency filter by key only (should include method+path) | integrations | 6 | 2 |
+| 10 | Stripe sync undefined metadata values in spread | integrations | 7 | 2 |
+| 11 | MCP activities tool uses `description`/`user_id` (SDK renamed to `body`/`logged_by_user_id`) | mcp | 8 | 2 |
+| 12 | `String(false)` → `'false'` breaks boolean CLI defaults | cli + integrations | 9 | 3 |
+| 13 | SDK test missing `await` on async `create()` | sdk | 10 | 3 |
+| 14 | `maxAttempts` allows 0/negative in retry | integrations | 11 | 3 |
+| 15 | `sanitizeIntegrationMetadata` doesn't recurse into arrays | integrations | 12 | 3 |
+| 16 | No email validation in `findOrCreateContactFromEmail` | integrations | 1 (Step 5) | 1 |
+| 17 | Stripe CLI `--amount` NaN on missing value | integrations | 13 | 3 |
+| 18 | `commander` in devDeps but used in public API surface | integrations | 13 | 3 |
+
+---
+
+## Branch Strategy
+
+Each phase is an **independent branch from `main`** (not stacked):
+- `fix/integrations-security` — Phase 1 (Tasks 1–2)
+- `fix/integrations-data-integrity` — Phase 2 (Tasks 3–8)
+- `fix/integrations-runtime` — Phase 3 (Tasks 9–13)
+
+Since fixes touch different files with no cross-phase dependencies, they can be reviewed and merged independently. If a later phase does need a fix from an earlier one (unlikely), rebase before PR.
 
 ---
 
 ## Execution Protocol (applies to ALL tasks)
 
 ### Done definition (every task, before commit)
+
+**Per-task:** validate ALL packages touched by that task:
 ```bash
-pnpm --filter @orbit-ai/integrations build
-pnpm --filter @orbit-ai/integrations test
-pnpm --filter @orbit-ai/integrations typecheck
-pnpm --filter @orbit-ai/integrations lint
+# If task only touches packages/integrations:
+pnpm --filter @orbit-ai/integrations build && pnpm --filter @orbit-ai/integrations test && pnpm --filter @orbit-ai/integrations typecheck && pnpm --filter @orbit-ai/integrations lint
+
+# If task touches packages/mcp (Task 8):
+pnpm --filter @orbit-ai/mcp build && pnpm --filter @orbit-ai/mcp test && pnpm --filter @orbit-ai/mcp typecheck && pnpm --filter @orbit-ai/mcp lint
+
+# If task touches packages/cli (Task 9):
+pnpm --filter @orbit-ai/cli build && pnpm --filter @orbit-ai/cli test && pnpm --filter @orbit-ai/cli typecheck
+
+# If task touches packages/sdk (Task 10):
+pnpm --filter @orbit-ai/sdk build && pnpm --filter @orbit-ai/sdk test && pnpm --filter @orbit-ai/sdk typecheck
+```
+
+**Per-phase (before PR):** full monorepo validation:
+```bash
+pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm -r lint
 ```
 
 ### Sub-agent review (every task, after commit)
 Run `superpowers:requesting-code-review` after each commit. Fix ALL findings before starting the next task. This step cannot be deferred, batched, or skipped.
+
+### Orbit skill triggers (task-specific)
+
+| Task | Skill trigger | Reason |
+|------|--------------|--------|
+| 1 | `orbit-tenant-safety-review` | Org scoping on contact/company lookup |
+| 4 | `orbit-tenant-safety-review` | Auth credential slot / trusted lookup path |
+| 5 | `orbit-tenant-safety-review` | Tenant table migration policy + FK |
+| 12 | `orbit-tenant-safety-review` | Secret redaction behavior |
 
 ### Coding conventions (include in every sub-agent brief)
 - Always bind the error variable: `catch (err)` — never bare `catch {}`
@@ -30,6 +91,16 @@ Run `superpowers:requesting-code-review` after each commit. Fix ALL findings bef
 - Duck-type guards for cross-boundary errors — never `instanceof` for IntegrationError or ZodError
 - Exhaustiveness guards (`assertNever`) on every switch over union types
 - Zod v4: use `.safeParse()` not `.parse()`
+
+---
+
+## Pre-PR and PR Gate (after each phase)
+
+1. Run full monorepo pre-PR checklist: `pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm -r lint`
+2. Run `orbit-plan-wrap-up` — update test baseline in CLAUDE.md, CHANGELOG.md, package READMEs
+3. Run `pr-review-toolkit:review-pr` — all 6 specialist agents, zero MEDIUM+ stopping criterion
+4. Create PR via `gh pr create`
+5. After PR is open, run `code-review:code-review` — posts structured GitHub review comment
 
 ---
 
@@ -405,19 +476,25 @@ git commit -m "fix(integrations): fix Gmail polling cursor semantics and stopped
 
 ---
 
-### Task 4: Fix Gmail auth credential userId mismatch
+### Task 4: Fix shared OAuth credential userId mismatch (Gmail + Calendar)
 
 **Files:**
+- Modify: `packages/integrations/src/oauth.ts`
 - Modify: `packages/integrations/src/gmail/auth.ts`
 - Modify: `packages/integrations/src/gmail/auth.test.ts`
+- Modify: `packages/integrations/src/google-calendar/auth.ts`
+- Modify: `packages/integrations/src/google-calendar/auth.test.ts`
 
-Issue #5: `completeGmailAuth` saves credentials under a userId, but `getGmailClient` reads from default slot (no userId).
+Issue #5: `completeGmailAuth`/`completeCalendarAuth` save credentials under a specific `userId`, but `getGmailClient`/`getCalendarClient` read from the default slot (no userId). This is a shared design bug — both connectors use `GoogleOAuthHelper.getValidAccessToken()` which doesn't thread `userId`.
 
-- [ ] **Step 1: Write failing test — getGmailClient accepts userId parameter**
+**Design decision:** Credentials are **user-scoped**. The `userId` parameter must be threaded consistently through all connector entrypoints that read credentials.
+
+- [ ] **Step 1: Write failing tests for BOTH connectors**
+
+In `packages/integrations/src/gmail/auth.test.ts`:
 
 ```typescript
-it('passes userId through to getValidAccessToken when provided', async () => {
-  // This test verifies that credentials saved for a specific user can be retrieved
+it('retrieves user-scoped credentials when userId is provided', async () => {
   const store = new InMemoryCredentialStore()
   await store.saveCredentials('org_1', 'gmail', 'user_alice', {
     accessToken: 'alice-token',
@@ -430,9 +507,40 @@ it('passes userId through to getValidAccessToken when provided', async () => {
 })
 ```
 
-- [ ] **Step 2: Add optional userId parameter to getGmailClient**
+In `packages/integrations/src/google-calendar/auth.test.ts`:
 
-In `packages/integrations/src/gmail/auth.ts`, update `getGmailClient` signature:
+```typescript
+it('retrieves user-scoped credentials when userId is provided', async () => {
+  const store = new InMemoryCredentialStore()
+  await store.saveCredentials('org_1', 'google-calendar', 'user_bob', {
+    accessToken: 'bob-token',
+    refreshToken: 'bob-refresh',
+    expiresAt: Date.now() + 3600000,
+  })
+
+  const result = await getCalendarClient(mockConfig, store, 'org_1', 'user_bob')
+  expect(result.accessToken).toBe('bob-token')
+})
+```
+
+- [ ] **Step 2: Update shared `GoogleOAuthHelper.getValidAccessToken` in `oauth.ts`**
+
+Add `userId` parameter, thread it to both `getCredentials` and `saveCredentials`:
+
+```typescript
+  async getValidAccessToken(
+    orgId: string,
+    provider: string,
+    credentialStore: CredentialStore,
+    connectionTracker?: ConnectionStatusTracker,
+    userId?: string,
+  ): Promise<string> {
+    const creds = await credentialStore.getCredentials(orgId, provider, userId)
+    // ... existing refresh logic ...
+    await credentialStore.saveCredentials(orgId, provider, userId ?? '__default__', updated)
+```
+
+- [ ] **Step 3: Update Gmail `getGmailClient` in `gmail/auth.ts`**
 
 ```typescript
 export async function getGmailClient(
@@ -447,28 +555,22 @@ export async function getGmailClient(
 }
 ```
 
-This requires `getValidAccessToken` in `oauth.ts` to also accept a `userId` parameter. Update its signature to pass `userId` through to `credentialStore.getCredentials(orgId, provider, userId)`.
-
-In `packages/integrations/src/oauth.ts`, update `getValidAccessToken`:
+- [ ] **Step 4: Update Calendar `getCalendarClient` in `google-calendar/auth.ts`**
 
 ```typescript
-  async getValidAccessToken(
-    orgId: string,
-    provider: string,
-    credentialStore: CredentialStore,
-    connectionTracker?: ConnectionStatusTracker,
-    userId?: string,
-  ): Promise<string> {
-    const creds = await credentialStore.getCredentials(orgId, provider, userId)
+export async function getCalendarClient(
+  config: CalendarConnectorConfig,
+  credentialStore: CredentialStore,
+  orgId: string,
+  userId?: string,
+): Promise<{ accessToken: string }> {
+  const helper = createCalendarOAuthHelper(config)
+  const accessToken = await helper.getValidAccessToken(orgId, CALENDAR_SLUG, credentialStore, undefined, userId)
+  return { accessToken }
+}
 ```
 
-And update the save call to use the same userId:
-
-```typescript
-      await credentialStore.saveCredentials(orgId, provider, userId ?? '__default__', updated)
-```
-
-- [ ] **Step 3: Run tests, fix any compilation issues, commit**
+- [ ] **Step 5: Run tests for both connectors, fix any compilation issues, commit**
 
 Run: `pnpm --filter @orbit-ai/integrations test`
 
@@ -634,46 +736,95 @@ git commit -m "fix(integrations): use conditional spreads for Stripe payment met
 
 ---
 
-### Task 8: Fix MCP activities tool description→body field mismatch
+### Task 8: Fix MCP activities tool description→body field mismatch + .safeParse()
 
 **Files:**
 - Modify: `packages/mcp/src/tools/activities.ts`
-- Modify: `packages/mcp/src/__tests__/activities.test.ts` (if exists, else add test inline)
+- Create: `packages/mcp/src/__tests__/activities.test.ts`
 
-Issue #11: MCP tool passes `description` to SDK but SDK field was renamed to `body`.
+**Done definition for this task:** `pnpm --filter @orbit-ai/mcp build && pnpm --filter @orbit-ai/mcp test && pnpm --filter @orbit-ai/mcp typecheck && pnpm --filter @orbit-ai/mcp lint`
 
-- [ ] **Step 1: Update LogActivityInput schema and handler**
+Issue #11: MCP tool passes `description`/`user_id` to SDK but SDK fields were renamed to `body`/`logged_by_user_id`. Also: file uses `.parse()` which violates the `.safeParse()` convention — fix while editing.
 
-In `packages/mcp/src/tools/activities.ts`, rename `description` → `body` in the Zod schema (line 11):
+- [ ] **Step 1: Create test file `packages/mcp/src/__tests__/activities.test.ts`**
 
 ```typescript
-const LogActivityInput = z.object({
-  type: z.string(),
-  subject: z.string().optional(),
-  body: z.string().optional(),
-  contact_id: z.string().optional(),
-  company_id: z.string().optional(),
-  deal_id: z.string().optional(),
-  logged_by_user_id: z.string().optional(),
-  occurred_at: z.string(),
-  custom_fields: z.record(z.string(), z.unknown()).optional(),
+import { describe, it, expect, vi } from 'vitest'
+import { handleLogActivity } from '../tools/activities.js'
+
+describe('handleLogActivity', () => {
+  it('passes body field (not description) to SDK', async () => {
+    const mockLog = vi.fn().mockResolvedValue({ id: 'act_1', type: 'call', body: 'notes' })
+    const client = { activities: { log: mockLog } } as unknown
+
+    await handleLogActivity(client as never, {
+      type: 'call',
+      body: 'notes from the call',
+      occurred_at: '2026-04-10T10:00:00Z',
+    })
+
+    const callArg = mockLog.mock.calls[0]![0]
+    expect(callArg).toHaveProperty('body')
+    expect(callArg).not.toHaveProperty('description')
+  })
+
+  it('passes logged_by_user_id field (not user_id) to SDK', async () => {
+    const mockLog = vi.fn().mockResolvedValue({ id: 'act_2', type: 'call' })
+    const client = { activities: { log: mockLog } } as unknown
+
+    await handleLogActivity(client as never, {
+      type: 'call',
+      logged_by_user_id: 'usr_abc',
+      occurred_at: '2026-04-10T10:00:00Z',
+    })
+
+    const callArg = mockLog.mock.calls[0]![0]
+    expect(callArg).toHaveProperty('logged_by_user_id')
+    expect(callArg).not.toHaveProperty('user_id')
+  })
 })
 ```
 
-And in `handleLogActivity` (line 56), change `args.description` → `args.body` and `args.user_id` → `args.logged_by_user_id`:
+- [ ] **Step 2: Update LogActivityInput schema and handler**
+
+In `packages/mcp/src/tools/activities.ts`:
+
+Rename fields in `LogActivityInput` schema:
+- `description` → `body`
+- `user_id` → `logged_by_user_id`
+
+Replace `.parse()` with `.safeParse()` in both handlers:
 
 ```typescript
+export async function handleLogActivity(client: OrbitClient, rawArgs: unknown) {
+  const parsed = LogActivityInput.safeParse(rawArgs)
+  if (!parsed.success) {
+    return toToolSuccess({ error: 'Invalid input', details: parsed.error.message })
+  }
+  const args = parsed.data
+  return toToolSuccess(
+    sanitizeObjectDeep(
+      await client.activities.log({
+        type: args.type,
+        occurred_at: args.occurred_at,
+        ...(args.subject ? { subject: sanitizeStringInput(args.subject) } : {}),
         ...(args.body ? { body: sanitizeStringInput(args.body) } : {}),
+        ...(args.contact_id ? { contact_id: args.contact_id } : {}),
+        ...(args.company_id ? { company_id: args.company_id } : {}),
+        ...(args.deal_id ? { deal_id: args.deal_id } : {}),
         ...(args.logged_by_user_id ? { logged_by_user_id: args.logged_by_user_id } : {}),
+        ...(args.custom_fields ? { custom_fields: args.custom_fields } : {}),
+      }),
+    ),
+  )
+}
 ```
 
-Remove the old `description` and `user_id` spreads.
+Similarly update `ListActivitiesInput`: rename `user_id` → `logged_by_user_id`, replace `.parse()` with `.safeParse()`, update `handleListActivities`.
 
-Also update `ListActivitiesInput` line 24: rename `user_id` → `logged_by_user_id`, and in `handleListActivities` line 73.
+- [ ] **Step 3: Run MCP tests and fix any failures**
 
-- [ ] **Step 2: Run MCP tests and fix any failures**
-
-Run: `pnpm --filter @orbit-ai/mcp test`
+Run: `pnpm --filter @orbit-ai/mcp build && pnpm --filter @orbit-ai/mcp test && pnpm --filter @orbit-ai/mcp typecheck && pnpm --filter @orbit-ai/mcp lint`
 Fix any test referencing `description` or `user_id` in the activities tool context.
 
 - [ ] **Step 3: Commit**
@@ -692,7 +843,12 @@ git commit -m "fix(mcp): align activities tool fields with SDK (description→bo
 **Files:**
 - Modify: `packages/cli/src/commands/integrations.ts`
 - Modify: `packages/integrations/src/cli.ts`
-- Add test cases to existing test files
+- Add test: `packages/cli/src/__tests__/integrations.test.ts`
+- Add test: `packages/integrations/src/cli.test.ts`
+
+**Done definition for this task:** validate BOTH packages:
+- `pnpm --filter @orbit-ai/cli build && pnpm --filter @orbit-ai/cli test && pnpm --filter @orbit-ai/cli typecheck`
+- `pnpm --filter @orbit-ai/integrations build && pnpm --filter @orbit-ai/integrations test && pnpm --filter @orbit-ai/integrations typecheck && pnpm --filter @orbit-ai/integrations lint`
 
 Issue #12: `String(false)` converts boolean to `'false'` which is truthy.
 
@@ -731,6 +887,8 @@ git commit -m "fix(cli): preserve boolean option defaults instead of stringifyin
 
 **Files:**
 - Modify: `packages/sdk/src/__tests__/resources-wave2.test.ts`
+
+**Done definition for this task:** `pnpm --filter @orbit-ai/sdk build && pnpm --filter @orbit-ai/sdk test && pnpm --filter @orbit-ai/sdk typecheck`
 
 Issue #13: `activities.create(input)` called without `await`.
 
@@ -847,13 +1005,34 @@ git commit -m "fix(integrations): recurse into arrays in sanitizeIntegrationMeta
 
 **Files:**
 - Modify: `packages/integrations/src/stripe/mcp-tools.ts`
+- Modify: `packages/integrations/src/stripe/mcp-tools.test.ts`
 - Modify: `packages/integrations/package.json`
 
 Issues #17 and #18: CLI `--amount` produces NaN; commander is devDep but used in public API.
 
-- [ ] **Step 1: Add amount validation in Stripe CLI link-create command**
+- [ ] **Step 1: Write failing test for invalid amount**
 
-In `packages/integrations/src/stripe/mcp-tools.ts`, in the `link-create` action (around the `Number(opts['amount'])` line), add:
+Add to `packages/integrations/src/stripe/mcp-tools.test.ts`:
+
+```typescript
+it('link-create prints error and returns when amount is missing/NaN', async () => {
+  const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const commands = buildStripeCommands(mockContext)
+  const linkCreate = commands.find(c => c.name === 'link-create')!
+
+  // Simulate Commander passing opts with missing amount
+  await linkCreate.action({ currency: 'usd' })
+
+  expect(consoleSpy).toHaveBeenCalledWith(
+    expect.stringContaining('--amount must be a positive number'),
+  )
+  consoleSpy.mockRestore()
+})
+```
+
+- [ ] **Step 2: Add amount validation in Stripe CLI link-create command**
+
+In `packages/integrations/src/stripe/mcp-tools.ts`, in the `link-create` action, add before the `createPaymentLink` call:
 
 ```typescript
         const amount = Number(opts['amount'])
@@ -863,34 +1042,21 @@ In `packages/integrations/src/stripe/mcp-tools.ts`, in the `link-create` action 
         }
 ```
 
-- [ ] **Step 2: Move commander from devDependencies to dependencies**
+- [ ] **Step 3: Move commander from devDependencies to dependencies**
 
 In `packages/integrations/package.json`, move `"commander": "^12.0.0"` from `devDependencies` to `dependencies`.
 
-- [ ] **Step 3: Run pnpm install, tests, commit**
+- [ ] **Step 4: Run pnpm install, tests, commit**
 
 ```bash
 pnpm install
 pnpm --filter @orbit-ai/integrations build
 pnpm --filter @orbit-ai/integrations test
-git add packages/integrations/src/stripe/mcp-tools.ts packages/integrations/package.json pnpm-lock.yaml
+pnpm --filter @orbit-ai/integrations typecheck
+pnpm --filter @orbit-ai/integrations lint
+git add packages/integrations/src/stripe/mcp-tools.ts packages/integrations/src/stripe/mcp-tools.test.ts packages/integrations/package.json pnpm-lock.yaml
 git commit -m "fix(integrations): validate Stripe CLI amount and move commander to dependencies"
 ```
-
----
-
-## Review Protocol
-
-After **each task commit**, the executor must run a sub-agent code review (haiku model) checking:
-1. The fix addresses the specific issue
-2. No new bare catch blocks introduced
-3. Tests cover the fix
-4. `pnpm --filter @orbit-ai/integrations build && test && typecheck && lint` passes
-
-After **each phase** (3 phases = 3 PRs):
-1. Run `pnpm -r test` to verify full monorepo
-2. Create PR targeting main
-3. Run one code-reviewer sub-agent on the PR diff
 
 ## PR Summary
 
