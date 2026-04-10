@@ -93,7 +93,9 @@ export function toMcpIntegrationConnectionRead(record: Record<string, unknown>):
  * - Arrays: each element is sanitized recursively.
  * - Objects: keys matching {@link isSensitiveKey} are removed; remaining values
  *   are sanitized recursively.
- * - Strings: truncated to 5,000 characters.
+ * - Strings longer than 5,000 characters are replaced with a 4,986-character
+ *   prefix followed by `...[truncated]`, keeping the total output at 5,000
+ *   characters.
  * - Numbers, booleans, null, and undefined pass through unchanged.
  */
 export function sanitizeObjectDeep(value: unknown): unknown {
@@ -115,5 +117,5 @@ export function sanitizeObjectDeep(value: unknown): unknown {
 }
 
 function isSensitiveKey(key: string): boolean {
-  return /(token|secret|password|credential|private[_-]?key|client[_-]?secret|api[_-]?key)/i.test(key)
+  return /^(.*[_-])?(token|secret|password|credential|private[_-]?key|client[_-]?secret|client[_-]?id|api[_-]?key)$/i.test(key)
 }
