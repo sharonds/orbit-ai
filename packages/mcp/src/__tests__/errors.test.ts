@@ -142,6 +142,13 @@ describe('toToolError', () => {
     expect(result.code).toBe('VALIDATION_FAILED')
     expect(result.message).toContain('Required')
   })
+
+  it('collapses double-bracket artifact when credential value ends with ]', () => {
+    const error = new Error('request failed: access_token=abc]remaining')
+    const result = normalizeToolError(error)
+    expect(result.message).not.toContain('[redacted]]')
+    expect(result.message).toContain('[redacted]')
+  })
 })
 
 describe('toToolSuccess', () => {
