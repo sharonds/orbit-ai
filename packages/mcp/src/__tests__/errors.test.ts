@@ -147,7 +147,7 @@ describe('toToolError', () => {
     const error = new Error('request failed: access_token=abc]remaining')
     const result = normalizeToolError(error)
     expect(result.message).not.toContain('[redacted]]')
-    expect(result.message).toContain('[redacted]')
+    expect(result.message).toContain('access_token=[redacted]remaining')
   })
 })
 
