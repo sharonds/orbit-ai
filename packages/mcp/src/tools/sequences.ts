@@ -49,6 +49,8 @@ export async function handleEnrollInSequence(client: OrbitClient, rawArgs: unkno
 
 export async function handleUnenrollFromSequence(client: OrbitClient, rawArgs: unknown) {
   const args = UnenrollFromSequenceInput.parse(rawArgs)
+  // reason and idempotency_key are accepted in the MCP input for forward compatibility
+  // but the current SDK unenroll() method does not expose these parameters yet.
   void args.reason
   void args.idempotency_key
   // The current SDK seam accepts only the enrollment ID.

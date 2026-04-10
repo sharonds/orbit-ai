@@ -87,6 +87,15 @@ export function toMcpIntegrationConnectionRead(record: Record<string, unknown>):
   }
 }
 
+/**
+ * Recursively sanitizes a value for MCP output.
+ *
+ * - Arrays: each element is sanitized recursively.
+ * - Objects: keys matching {@link isSensitiveKey} are removed; remaining values
+ *   are sanitized recursively.
+ * - Strings: truncated to 5,000 characters.
+ * - Numbers, booleans, null, and undefined pass through unchanged.
+ */
 export function sanitizeObjectDeep(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => sanitizeObjectDeep(item))
