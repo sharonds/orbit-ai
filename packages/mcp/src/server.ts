@@ -72,43 +72,13 @@ export function createMcpServer(options: StartMcpServerOptions): McpServer {
     'orbit-team-members',
     'orbit://team-members',
     { title: 'Orbit team members', mimeType: 'application/json' },
-    async () => {
-      try {
-        return await safeReadResource(() => readTeamMembers(options.client))
-      } catch (error) {
-        const normalized = normalizeToolError(error)
-        return {
-          contents: [
-            {
-              uri: 'orbit://team-members',
-              mimeType: 'application/json',
-              text: JSON.stringify({ ok: false, error: normalized }, null, 2),
-            },
-          ],
-        }
-      }
-    },
+    async () => resourceWithFallback('orbit://team-members', () => readTeamMembers(options.client)),
   )
   server.registerResource(
     'orbit-schema',
     'orbit://schema',
     { title: 'Orbit schema', mimeType: 'application/json' },
-    async () => {
-      try {
-        return await safeReadResource(() => readSchema(options.client))
-      } catch (error) {
-        const normalized = normalizeToolError(error)
-        return {
-          contents: [
-            {
-              uri: 'orbit://schema',
-              mimeType: 'application/json',
-              text: JSON.stringify({ ok: false, error: normalized }, null, 2),
-            },
-          ],
-        }
-      }
-    },
+    async () => resourceWithFallback('orbit://schema', () => readSchema(options.client)),
   )
 
   return server
@@ -200,11 +170,29 @@ export function writeDirectModeAuditLog(payload: Record<string, unknown>): void 
   process.stderr.write(`${JSON.stringify(payload)}\n`)
 }
 
+async function resourceWithFallback(
+  uri: string,
+  reader: () => Promise<unknown>,
+): Promise<{ contents: Array<{ uri: string; mimeType: string; text: string }> }> {
+  try {
+    return (await safeReadResource(reader)) as { contents: Array<{ uri: string; mimeType: string; text: string }> }
+  } catch (error) {
+    const normalized = normalizeToolError(error)
+    return {
+      contents: [
+        {
+          uri,
+          mimeType: 'application/json',
+          text: JSON.stringify({ ok: false, error: normalized }, null, 2),
+        },
+      ],
+    }
+  }
+}
+
 // Exported for use within this package and unit tests only. Not re-exported from
-// index.ts and must not become part of the public API surface — it accepts an
-// arbitrary reader function and normalizes errors in a way that is only intended for
-// use within this package. Not re-exported from index.ts — callers outside createMcpServer's
-// resource wrappers should use normalizeToolError directly rather than this helper.
+// index.ts — callers outside createMcpServer's resource wrappers should use
+// normalizeToolError directly rather than this helper.
 export async function safeReadResource<T>(reader: () => Promise<T>): Promise<T> {
   try {
     return await reader()

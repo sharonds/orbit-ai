@@ -119,8 +119,8 @@ function isSensitiveKey(key: string): boolean {
   if (/^(.*[_-])?(token|secret|password|credentials?|private[_-]?key|client[_-]?secret|client[_-]?id|api[_-]?key)$/i.test(key)) {
     return true
   }
-  // camelCase pattern — common OAuth / SDK response field names.
-  // Anchored on both ends: matches keys that END with a credential word to
-  // avoid false positives on prefixed fields like tokenCount or secretCreatedAt.
+  // camelCase pattern — matches known-sensitive PREFIXED forms only (e.g. accessToken, apiKey, clientId).
+  // A fixed prefix allowlist prevents over-matching generic fields like tokenCount or secretCreatedAt
+  // that share a credential suffix but are not themselves credentials.
   return /^(?:access|refresh|bearer|id|auth)Token$|^(?:client|api|private)Secret$|^(?:api|private)Key$|^clientId$/i.test(key)
 }

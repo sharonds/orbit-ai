@@ -21,11 +21,6 @@ export interface McpToolErrorShape {
   recovery?: string
 }
 
-export interface JsonTextContent {
-  type: 'text'
-  text: string
-}
-
 const DEFAULT_HINTS: Record<McpToolErrorCode, string> = {
   RESOURCE_NOT_FOUND: 'Verify the referenced Orbit record ID is correct.',
   VALIDATION_FAILED: 'Review the tool input and retry with a valid payload.',
@@ -77,8 +72,8 @@ export class McpToolError extends Error {
   constructor(
     readonly code: McpToolErrorCode,
     message: string,
-    readonly hint: string = DEFAULT_HINTS[code],
-    readonly recovery: string = DEFAULT_RECOVERY[code],
+    readonly hint: string = DEFAULT_HINTS[code] ?? 'Unexpected error.',
+    readonly recovery: string = DEFAULT_RECOVERY[code] ?? 'Retry or contact support.',
   ) {
     super(message)
     this.name = 'McpToolError'
@@ -146,18 +141,11 @@ export function normalizeToolError(error: unknown): Required<McpToolErrorShape> 
   }
 
   if (error instanceof McpNotImplementedError) {
-    return withDefaults(
-      error.hint
-        ? {
-            code: 'DEPENDENCY_NOT_AVAILABLE',
-            message: error.message,
-            hint: error.hint,
-          }
-        : {
-            code: 'DEPENDENCY_NOT_AVAILABLE',
-            message: error.message,
-          },
-    )
+    return withDefaults({
+      code: 'DEPENDENCY_NOT_AVAILABLE',
+      message: error.message,
+      ...(error.hint ? { hint: error.hint } : {}),
+    })
   }
 
   if (isZodError(error)) {
