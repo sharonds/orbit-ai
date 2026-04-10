@@ -11,6 +11,8 @@ export type McpToolErrorCode =
   | 'INTERNAL_ERROR'
   | 'SSRF_BLOCKED'
   | 'UNKNOWN_TOOL'
+  | 'RATE_LIMITED'
+  | 'CONFLICT'
 
 export interface McpToolErrorShape {
   code: McpToolErrorCode
@@ -34,6 +36,8 @@ const DEFAULT_HINTS: Record<McpToolErrorCode, string> = {
   INTERNAL_ERROR: 'Retry if the issue is transient, otherwise inspect server logs.',
   SSRF_BLOCKED: 'Use a public webhook destination instead of an internal or link-local address.',
   UNKNOWN_TOOL: 'Call one of the registered Orbit MCP tools instead.',
+  RATE_LIMITED: 'Retry after backing off — you have exceeded the Orbit API request quota.',
+  CONFLICT: 'A conflicting record or operation already exists.',
 }
 
 const DEFAULT_RECOVERY: Record<McpToolErrorCode, string> = {
@@ -46,6 +50,8 @@ const DEFAULT_RECOVERY: Record<McpToolErrorCode, string> = {
   INTERNAL_ERROR: 'Retry later. If the problem persists, inspect the underlying Orbit service logs.',
   SSRF_BLOCKED: 'Change the webhook URL to a publicly routable destination and retry.',
   UNKNOWN_TOOL: 'List tools again and select a valid Orbit MCP tool name.',
+  RATE_LIMITED: 'Wait and retry with exponential backoff. Do not retry immediately.',
+  CONFLICT: 'Fetch the existing record and decide whether to update it instead.',
 }
 
 function redactSensitiveText(input: string | undefined | null): string {
@@ -61,7 +67,9 @@ function redactSensitiveText(input: string | undefined | null): string {
     /\b(api[_-]?key|refresh_token|client_secret|access_token|client[_-]?id)[=:]\s*[^\s,&"'\]]+/gi,
     '$1=[redacted]',
   )
-  output = output.replace(/\[redacted\]]+/g, '[redacted]')
+  // Collapse any double-bracket artifact left when a redacted value ended with `]`
+  // e.g. `access_token=[redacted]]remaining` → `access_token=[redacted]remaining`
+  output = output.replace(/\[redacted\]\]+/g, '[redacted]')
   return output.slice(0, 500)
 }
 
@@ -77,6 +85,8 @@ export class McpToolError extends Error {
   }
 }
 
+// `recovery` is intentionally absent here — normalizeToolError fills it via
+// withDefaults using DEFAULT_RECOVERY['DEPENDENCY_NOT_AVAILABLE'].
 export class McpNotImplementedError extends Error {
   readonly code = 'DEPENDENCY_NOT_AVAILABLE' as const
 
@@ -224,9 +234,11 @@ const _VALID_MCP_CODES_MAP: { [K in McpToolErrorCode]: true } = {
   INTERNAL_ERROR: true,
   SSRF_BLOCKED: true,
   UNKNOWN_TOOL: true,
+  RATE_LIMITED: true,
+  CONFLICT: true,
 }
 const VALID_MCP_CODES = new Set<McpToolErrorCode>(
-  Object.keys(_VALID_MCP_CODES_MAP) as McpToolErrorCode[],
+  Object.keys(_VALID_MCP_CODES_MAP) as Array<keyof typeof _VALID_MCP_CODES_MAP>,
 )
 
 function isToolErrorShape(error: unknown): error is McpToolErrorShape {
@@ -236,7 +248,8 @@ function isToolErrorShape(error: unknown): error is McpToolErrorShape {
     'code' in error &&
     typeof (error as Record<string, unknown>).code === 'string' &&
     VALID_MCP_CODES.has((error as Record<string, unknown>).code as McpToolErrorCode) &&
-    'message' in error
+    'message' in error &&
+    typeof (error as Record<string, unknown>).message === 'string'
   )
 }
 
@@ -262,5 +275,7 @@ function mapApiErrorCode(code: string): McpToolErrorCode {
   if (code === 'RESOURCE_NOT_FOUND') return 'RESOURCE_NOT_FOUND'
   if (code === 'VALIDATION_FAILED') return 'VALIDATION_FAILED'
   if (code === 'AUTH_INVALID_API_KEY') return 'AUTH_INVALID'
+  if (code === 'RATE_LIMITED') return 'RATE_LIMITED'
+  if (code === 'CONFLICT' || code === 'IDEMPOTENCY_CONFLICT') return 'CONFLICT'
   return 'INTERNAL_ERROR'
 }
