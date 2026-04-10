@@ -1,0 +1,16 @@
+// @orbit-ai/integrations — CRM integration connectors
+// Connectors: Gmail, Google Calendar, Stripe
+export * from './types.js'
+export * from './errors.js'
+export * from './schema.js'
+export * from './schema-extension.js'
+export * from './types/connection.js'
+export * from './encryption.js'
+export * from './credentials.js'
+export * from './redaction.js'
+export * from './retry.js'
+export * from './idempotency.js'
+export * from './registry.js'
+export * from './config.js'
+export * from './oauth.js'
+export const INTEGRATIONS_VERSION = '0.1.0-alpha.0'
