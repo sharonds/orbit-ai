@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { OrbitClient } from '@orbit-ai/sdk'
 import { defineTool } from './schemas.js'
 import { toToolSuccess } from '../errors.js'
+import { sanitizeObjectDeep } from '../output/sensitive.js'
 import { sanitizeRecordPayload } from './schemas.js'
 
 const EnrollInSequenceInput = z.object({
@@ -37,10 +38,12 @@ export const unenrollFromSequenceTool = defineTool({
 export async function handleEnrollInSequence(client: OrbitClient, rawArgs: unknown) {
   const args = EnrollInSequenceInput.parse(rawArgs)
   return toToolSuccess(
-    await client.sequences.enroll(args.sequence_id, {
-      contact_id: args.contact_id,
-      ...(args.body ? (sanitizeRecordPayload(args.body) as Record<string, unknown>) : {}),
-    }),
+    sanitizeObjectDeep(
+      await client.sequences.enroll(args.sequence_id, {
+        contact_id: args.contact_id,
+        ...(args.body ? (sanitizeRecordPayload(args.body) as Record<string, unknown>) : {}),
+      }),
+    ),
   )
 }
 

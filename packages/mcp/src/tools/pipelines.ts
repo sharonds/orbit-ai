@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { OrbitClient } from '@orbit-ai/sdk'
 import { defineTool, LimitSchema } from './schemas.js'
 import { toToolSuccess } from '../errors.js'
+import { sanitizeObjectDeep } from '../output/sensitive.js'
 
 const GetPipelinesInput = z.object({
   limit: LimitSchema,
@@ -59,7 +60,7 @@ export async function handleGetPipelines(client: OrbitClient, rawArgs: unknown) 
 export async function handleMoveDealStage(client: OrbitClient, rawArgs: unknown) {
   const args = MoveDealStageInput.parse(rawArgs)
   // The current SDK seam accepts only { stage_id }. Keep the richer MCP input for forward compatibility.
-  return toToolSuccess(await client.deals.move(args.deal_id, { stage_id: args.stage_id }))
+  return toToolSuccess(sanitizeObjectDeep(await client.deals.move(args.deal_id, { stage_id: args.stage_id })))
 }
 
 export async function handleGetPipelineStats(client: OrbitClient, rawArgs: unknown) {

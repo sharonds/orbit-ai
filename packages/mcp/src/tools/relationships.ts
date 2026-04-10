@@ -3,6 +3,7 @@ import type { OrbitClient } from '@orbit-ai/sdk'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { defineTool } from './schemas.js'
 import { McpNotImplementedError, McpToolError, toToolSuccess } from '../errors.js'
+import { sanitizeObjectDeep } from '../output/sensitive.js'
 import { getClientResource } from './core-records.js'
 
 const RelateRecordsInput = z.object({
@@ -44,29 +45,35 @@ export async function handleRelateRecords(client: OrbitClient, rawArgs: unknown)
       entity_type: inferEntityType(args.source_record_id),
       entity_id: args.source_record_id,
     })
-    return toToolSuccess(data)
+    return toToolSuccess(sanitizeObjectDeep(data))
   }
 
   if (args.relationship_type === 'contact_company') {
     return toToolSuccess(
-      await getClientResource(client, 'contacts').update(args.source_record_id, {
-        company_id: args.detach ? null : args.target_record_id,
-      }),
+      sanitizeObjectDeep(
+        await getClientResource(client, 'contacts').update(args.source_record_id, {
+          company_id: args.detach ? null : args.target_record_id,
+        }),
+      ),
     )
   }
 
   if (args.relationship_type === 'contact_deal') {
     return toToolSuccess(
-      await getClientResource(client, 'deals').update(args.target_record_id, {
-        contact_id: args.detach ? null : args.source_record_id,
-      }),
+      sanitizeObjectDeep(
+        await getClientResource(client, 'deals').update(args.target_record_id, {
+          contact_id: args.detach ? null : args.source_record_id,
+        }),
+      ),
     )
   }
 
   return toToolSuccess(
-    await getClientResource(client, 'deals').update(args.target_record_id, {
-      company_id: args.detach ? null : args.source_record_id,
-    }),
+    sanitizeObjectDeep(
+      await getClientResource(client, 'deals').update(args.target_record_id, {
+        company_id: args.detach ? null : args.source_record_id,
+      }),
+    ),
   )
 }
 

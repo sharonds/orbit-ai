@@ -126,6 +126,9 @@ export function validateWebhookUrlForDirectMode(url: string): void {
 
   if (
     hostname === 'localhost' ||
+    hostname === '0.0.0.0' ||
+    hostname === '::' ||
+    hostname === '[::]' ||
     hostname === '::1' ||
     hostname === '[::1]' ||
     hostname === '169.254.169.254' ||
@@ -170,7 +173,7 @@ export async function safeReadResource<T>(reader: () => Promise<T>): Promise<T> 
   } catch (error) {
     const normalized = normalizeToolError(error)
     // Resource readers surface errors as thrown Error instances. We normalize through
-    // normalizeToolError for redaction and log the structured code before re-throwing.
+    // normalizeToolError for redaction, write the structured error to stderr, and re-throw as McpToolError.
     writeStderrWarning(`MCP resource read failed [${normalized.code}]: ${normalized.message}`)
     throw new McpToolError(normalized.code, normalized.message, normalized.hint, normalized.recovery)
   }

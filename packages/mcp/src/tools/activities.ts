@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { OrbitClient } from '@orbit-ai/sdk'
 import { defineTool, LimitSchema } from './schemas.js'
 import { toToolSuccess } from '../errors.js'
+import { sanitizeObjectDeep } from '../output/sensitive.js'
 import { sanitizeStringInput, truncateUnknownStringsWithMeta } from '../output/truncation.js'
 
 const LogActivityInput = z.object({
@@ -47,17 +48,19 @@ export const listActivitiesTool = defineTool({
 export async function handleLogActivity(client: OrbitClient, rawArgs: unknown) {
   const args = LogActivityInput.parse(rawArgs)
   return toToolSuccess(
-    await client.activities.log({
-      type: args.type,
-      occurred_at: args.occurred_at,
-      ...(args.subject ? { subject: sanitizeStringInput(args.subject) } : {}),
-      ...(args.description ? { description: sanitizeStringInput(args.description) } : {}),
-      ...(args.contact_id ? { contact_id: args.contact_id } : {}),
-      ...(args.company_id ? { company_id: args.company_id } : {}),
-      ...(args.deal_id ? { deal_id: args.deal_id } : {}),
-      ...(args.user_id ? { user_id: args.user_id } : {}),
-      ...(args.custom_fields ? { custom_fields: args.custom_fields } : {}),
-    }),
+    sanitizeObjectDeep(
+      await client.activities.log({
+        type: args.type,
+        occurred_at: args.occurred_at,
+        ...(args.subject ? { subject: sanitizeStringInput(args.subject) } : {}),
+        ...(args.description ? { description: sanitizeStringInput(args.description) } : {}),
+        ...(args.contact_id ? { contact_id: args.contact_id } : {}),
+        ...(args.company_id ? { company_id: args.company_id } : {}),
+        ...(args.deal_id ? { deal_id: args.deal_id } : {}),
+        ...(args.user_id ? { user_id: args.user_id } : {}),
+        ...(args.custom_fields ? { custom_fields: args.custom_fields } : {}),
+      }),
+    ),
   )
 }
 
