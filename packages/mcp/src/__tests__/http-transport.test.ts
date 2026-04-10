@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { authenticateRequest, resolveHttpOptions, startHttpTransport } from '../transports/http.js'
+import * as serverModule from '../server.js'
 import { makeMockClient } from './helpers.js'
 
 describe('http transport', () => {
@@ -160,6 +161,35 @@ describe('http transport', () => {
       expect(inner.error?.code).toBe('VALIDATION_FAILED')
       expect(inner.error?.message).toBe('Malformed JSON body.')
     } finally {
+      await new Promise<void>((resolve) => runtime.server.close(() => resolve()))
+    }
+  })
+
+  it('logs persistent server errors with [CODE] format after listen', async () => {
+    const adapter = {
+      lookupApiKeyForAuth: async () => ({
+        id: 'key_01',
+        organizationId: 'org_01',
+        scopes: ['*'],
+        revokedAt: null,
+        expiresAt: null,
+      }),
+    }
+    const runtime = await startHttpTransport({
+      client: makeMockClient(),
+      transport: 'http',
+      port: 0,
+      adapter: adapter as never,
+    })
+
+    const spy = vi.spyOn(serverModule, 'writeStderrWarning').mockImplementation(() => undefined)
+    try {
+      const err = Object.assign(new Error('connection reset by peer'), { code: 'ECONNRESET' })
+      runtime.server.emit('error', err)
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('[ECONNRESET]'))
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('connection reset by peer'))
+    } finally {
+      spy.mockRestore()
       await new Promise<void>((resolve) => runtime.server.close(() => resolve()))
     }
   })

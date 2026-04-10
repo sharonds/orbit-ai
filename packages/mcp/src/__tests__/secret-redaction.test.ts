@@ -129,10 +129,12 @@ describe('sanitizeObjectDeep direct', () => {
       access_token: 'sk_live_SECRET',
       secret_created_at: '2025-01-01',
       api_key: 'key_REDACTED',
+      signing_secret_last_four: 'ab12',
     })
     expect(result).toHaveProperty('token_count', 42)
     expect(result).toHaveProperty('token_last_used', '2026-01-01')
     expect(result).toHaveProperty('secret_created_at', '2025-01-01')
+    expect(result).toHaveProperty('signing_secret_last_four', 'ab12')
     expect(result).not.toHaveProperty('access_token')
     expect(result).not.toHaveProperty('api_key')
   })
