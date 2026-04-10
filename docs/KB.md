@@ -59,9 +59,12 @@ Current focus:
   - Execution plan: [integrations-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/integrations-implementation-plan.md)
   - Plan revised 2026-04-10 (v3, post-Codex review): 23 slices, 3 prerequisites, tests in every commit, code review after every commit, sub-agent briefs include Coding Conventions, credential storage backed by integration_connections table, explicit provider-ingestion slices, tenant-safety negative tests, webhook replay-window enforcement
 
+In progress on `feat/integrations`:
+
+- `@orbit-ai/integrations` — Gmail, Google Calendar, Stripe connectors with plugin contract, credential store, event bus, retry, OAuth2, webhook handling, MCP tool seams, CLI command seams
+
 Not started yet:
 
-- `packages/integrations`
 - CLI/MCP wiring for integration connectors (after integrations package is stable)
 
 ## Frozen Decisions
@@ -127,13 +130,40 @@ Use these files first:
   - [core-tenant-hardening-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-tenant-hardening-review.md)
   - [orbit-skills-plan.md](/Users/sharonsciammas/orbit-ai/docs/skills/orbit-skills-plan.md)
 
+## Integrations Package (`@orbit-ai/integrations`)
+
+Architecture:
+
+- **Plugin contract**: `OrbitIntegrationPlugin` interface with install/uninstall/healthcheck lifecycle
+- **Registry**: `IntegrationRegistry` for dynamic plugin registration and discovery
+- **Config**: `.orbit/integrations.json` for enabling/disabling connectors per project
+- **Credential store**: `CredentialStore` interface with AES-256-GCM encryption at rest
+- **Event bus**: Internal domain events with routing enforcement (provider events cannot be emitted as customer events)
+- **Retry**: Bounded exponential backoff with jitter for provider API calls
+- **Schema**: `integration_connections` and `integration_sync_state` tables with RLS policies
+
+Connectors:
+
+| Connector | Auth | Sync Model | MCP Tools | CLI Commands |
+|-----------|------|------------|-----------|--------------|
+| Gmail | OAuth2 | message → activity (polling) | send_email, sync_thread | — |
+| Google Calendar | OAuth2 | event → activity | list_events, create_event | list, create, sync |
+| Stripe | API key | checkout → payment (webhooks) | create_payment_link, get_payment_status | link-create, sync |
+
+Extension seams:
+
+- `@orbit-ai/mcp`: `registerExtensionTools` for integration-provided MCP tools
+- `@orbit-ai/cli`: Dynamic subcommand registration for integration CLI commands
+- `@orbit-ai/cli`: `orbit calendar` top-level alias
+
+Dependencies: `googleapis`, `google-auth-library`, `stripe`, `@orbit-ai/core`, `@orbit-ai/sdk`
+
+Execution plan: [integrations-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/integrations-implementation-plan.md)
+
 ## What Is Next
 
-1. **Execute `packages/integrations`** from [integrations-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/integrations-implementation-plan.md)
-   - 17 slices: foundation → Gmail → Calendar → Stripe → schema → closeout
-   - Dependencies: `googleapis`, `google-auth-library`, `stripe`
-   - OAuth2 token lifecycle with `CredentialStore` interface
-   - Every slice: tests included, code review after, lint before commit
+1. **Finalize `packages/integrations`** — implementation on `feat/integrations` branch, 23 slices executed
+   - Remaining: PR review, merge to main
 2. **Wire CLI/MCP to integrations** — only after the package contract is stable
 3. **Publish all 6 packages** together as `0.1.0-alpha.0` to npm
 
