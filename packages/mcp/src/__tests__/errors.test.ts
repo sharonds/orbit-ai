@@ -76,6 +76,27 @@ describe('toToolError', () => {
     expect(normalized.hint).toContain('custom hint text')
     expect(normalized.recovery).toContain('custom recovery text')
   })
+
+  it('redacts key=value formatted secrets in error messages', () => {
+    const cases = [
+      { input: 'api_key=sk_live_secret123', secret: 'sk_live_secret123' },
+      { input: 'refresh_token=rt_abc_def', secret: 'rt_abc_def' },
+      { input: 'client_secret=cs_xyz', secret: 'cs_xyz' },
+      { input: 'access_token=ya29.sometoken', secret: 'sometoken' },
+    ]
+    for (const { input, secret } of cases) {
+      const result = toToolError({ code: 'INTERNAL_ERROR', message: input })
+      const text = getTextContent(result)
+      expect(text).not.toContain(secret)
+    }
+  })
+
+  it('normalizeToolError degrades safely on malformed ZodError lookalike with null issues', () => {
+    const malformed = { name: 'ZodError', issues: [null, { message: 'Required' }, undefined] }
+    const result = normalizeToolError(malformed)
+    expect(result.code).toBe('VALIDATION_FAILED')
+    expect(result.message).toContain('Required')
+  })
 })
 
 describe('toToolSuccess', () => {
