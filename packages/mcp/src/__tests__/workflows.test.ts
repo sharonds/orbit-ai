@@ -87,6 +87,21 @@ describe('workflow tools', () => {
       operations: [{ action: 'delete', record_id: 'contact_01', confirm: true }],
     })
     expect(spy).toHaveBeenCalled()
+    const writtenArgs = spy.mock.calls.map((call) => String(call[0]))
+    const auditLine = writtenArgs.find((line) => {
+      try {
+        const parsed = JSON.parse(line) as Record<string, unknown>
+        return parsed.kind === 'bulk_delete_preview'
+      } catch {
+        return false
+      }
+    })
+    expect(auditLine).toBeDefined()
+    const auditPayload = JSON.parse(auditLine!) as Record<string, unknown>
+    expect(auditPayload.kind).toBe('bulk_delete_preview')
+    expect(auditPayload.objectType).toBe('contacts')
+    expect(auditPayload.operationCount).toBe(1)
+    expect(auditPayload.deleteIds).toEqual(['contact_01'])
   })
 
   it('get_pipelines sanitizes sensitive fields in response', async () => {
