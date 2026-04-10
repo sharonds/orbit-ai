@@ -83,6 +83,22 @@ describe('http transport', () => {
     expect(resolveHttpOptions({ port: 0 }).bindAddress).toBe('127.0.0.1')
   })
 
+  it('returns auth failure when lookupApiKeyForAuth rejects', async () => {
+    const adapter = {
+      lookupApiKeyForAuth: async () => {
+        throw new Error('DB connection lost')
+      },
+    }
+    const result = await authenticateRequest(
+      { headers: { authorization: 'Bearer sometoken' } } as never,
+      adapter as never,
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.message).toBe('Authentication service unavailable.')
+    }
+  })
+
   it('returns 400 when request body exceeds 1 MB', async () => {
     const adapter = {
       lookupApiKeyForAuth: async () => ({
