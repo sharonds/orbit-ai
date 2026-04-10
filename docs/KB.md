@@ -57,7 +57,7 @@ Current focus:
 - **Full suite: 1,145 tests passing.** Build + typecheck: clean. All stale branches deleted.
 - **Next package track is `packages/integrations`** — Gmail, Google Calendar, Stripe connectors
   - Execution plan: [integrations-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/integrations-implementation-plan.md)
-  - Plan revised 2026-04-10 applying MCP review-loop lessons: 17 small slices, tests in every commit, code review after every commit, sub-agent briefs include Coding Conventions
+  - Plan revised 2026-04-10 (v3, post-Codex review): 23 slices, 3 prerequisites, tests in every commit, code review after every commit, sub-agent briefs include Coding Conventions, credential storage backed by integration_connections table, explicit provider-ingestion slices, tenant-safety negative tests, webhook replay-window enforcement
 
 Not started yet:
 

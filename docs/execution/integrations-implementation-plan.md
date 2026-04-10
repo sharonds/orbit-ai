@@ -1,49 +1,72 @@
 # Orbit AI Integrations Implementation Plan
 
-Date: 2026-04-10 (revised v2)
+Date: 2026-04-10 (revised v3 — incorporates Codex deep review findings)
 Status: Execution-ready baseline
 Package: `@orbit-ai/integrations`
 Depends on:
-- [06-integrations.md](/Users/sharonsciammas/orbit-ai/docs/specs/06-integrations.md) — the canonical spec (this plan must not contradict it)
+- [06-integrations.md](/Users/sharonsciammas/orbit-ai/docs/specs/06-integrations.md) — canonical spec
 - [IMPLEMENTATION-PLAN.md](/Users/sharonsciammas/orbit-ai/docs/IMPLEMENTATION-PLAN.md)
 - [KB.md](/Users/sharonsciammas/orbit-ai/docs/KB.md)
 - [orbit-ai-threat-model.md](/Users/sharonsciammas/orbit-ai/docs/security/orbit-ai-threat-model.md)
 
 ## 1. Purpose
 
-This document defines how to execute `@orbit-ai/integrations` as Phase 8 — the last package before v1 alpha.
+This document defines how to execute `@orbit-ai/integrations` as Phase 8.
 
 The integrations package provides:
-- Reusable connector/runtime boundary
-- OAuth token lifecycle and credential storage contract
+- Reusable connector/runtime boundary for Gmail, Google Calendar, Stripe
+- OAuth token lifecycle with credentials stored in tenant-scoped `integration_connections` table
 - Connector operations (send email, list events, create payment link)
-- Extension MCP tools and CLI commands per connector (per spec sections 5.3, 6, 7, 10)
+- Provider ingestion paths (Gmail polling/scan, Calendar polling, Stripe webhooks)
+- Extension MCP tools and CLI commands defined per connector (per spec sections 5.3, 6, 7, 10)
 - Event architecture for connector reactions to Orbit domain events (per spec section 11)
-- Integration-owned tables (`integration_connections`, `integration_sync_state`)
 
-Per the spec (section 2), MCP tools and CLI commands live inside `@orbit-ai/integrations` and are registered dynamically when the plugin is enabled. They are NOT deferred to a separate package.
+Per spec section 2, MCP tools and CLI commands are defined inside `@orbit-ai/integrations`. However, consumer wiring (adding extension seams to `@orbit-ai/cli` and `@orbit-ai/mcp`) is a prerequisite that must be completed before the integration tool/command slices can compile.
 
-This plan applies the lessons from the MCP 10-round review loop:
-- Every slice includes its own tests — no separate test pass
-- `superpowers:requesting-code-review` runs after every commit
-- Every implementer brief includes CLAUDE.md Coding Conventions verbatim
-- Every slice defines "done" as: build + tests + lint pass
-- Slices are ≤100 lines of production code each
+### Spec notes
 
-### Spec deviations
-
-- **`CredentialStore` interface** — extends the spec. Spec section 3.1 defines the read-side contract but not a write-side credential store. We add `CredentialStore` because the plugin `install` callback needs to persist OAuth tokens.
-- **File layout** — spec section 2 shows `handlers.ts` in each connector directory. We consolidate event handler logic into `src/events.ts` (Slice 20) and keep connector-specific handlers inline in sync files. The behavior matches the spec; the file layout is simplified.
+- **Gmail CLI commands**: spec section 5 says "expose Gmail-specific CLI and MCP tools" but the example plugin (section 5.1) shows `commands: []`. This plan follows the example: Gmail defines MCP tools only, no CLI commands. Calendar and Stripe define both.
+- **`CredentialStore`**: extends the spec. Spec section 3.1 defines the read-side contract; we add a write-side `CredentialStore` interface backed by the `integration_connections` table. The table is created in Phase 1 before any OAuth flow needs it.
+- **File layout**: spec shows `handlers.ts` per connector. We consolidate event handlers into `src/events.ts` and keep connector-specific sync logic in `sync.ts` files.
 
 ### Extraction guidance
 
-Per spec section 13: extract bounded capabilities from `~/smb-sale-crm-app` (Gmail OAuth lifecycle, Calendar event sync, Stripe payment normalization). Do NOT carry over Next.js route handlers, app-specific UI state, SMB-specific field names, or assumptions that the source app owns the frontend. The target is a reusable connector package.
+Per spec section 13: extract bounded capabilities from `~/smb-sale-crm-app` (Gmail OAuth lifecycle, Calendar event sync, Stripe payment normalization). Do NOT carry over Next.js route handlers, app-specific UI state, SMB-specific field names, or frontend assumptions.
 
-## 2. Current Position
+## 2. Prerequisites
 
-- `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp` — all on `main`, 1,145 tests
-- `packages/integrations` does not exist yet
-- All stale branches deleted — repo is clean, `main` only
+These must be completed BEFORE the integrations branch starts. Each is a separate PR to main.
+
+### Prerequisite A: SDK/API field parity for activities and payments
+
+The current SDK `CreateActivityInput` lacks `body`, `direction`, `duration_minutes`, and `metadata`. `CreatePaymentInput` lacks `external_id`. These fields exist in `@orbit-ai/core` schema but aren't exposed in SDK types or API routes.
+
+Required changes:
+- `packages/sdk/src/resources/activities.ts` — add `body?: string`, `direction?: string`, `duration_minutes?: number`, `metadata?: Record<string, unknown>` to `CreateActivityInput` and `ActivityRecord`
+- `packages/sdk/src/resources/payments.ts` — add `external_id?: string` to `CreatePaymentInput` and `PaymentRecord`
+- `packages/api/src/routes/activities.ts` — ensure API accepts and returns these fields
+- `packages/api/src/routes/payments.ts` — same
+
+Verify: `pnpm -r build && pnpm -r test && pnpm -r typecheck`
+
+Skill trigger: `orbit-api-sdk-parity`
+
+### Prerequisite B: MCP extension tool seam
+
+The current MCP server (`packages/mcp/src/server.ts`) registers a fixed 23-tool set. There is no seam for dynamically adding extension tools.
+
+Required change:
+- Add `registerExtensionTools(server, tools: IntegrationTool[])` function to `@orbit-ai/mcp`
+- Extension tools must be namespaced (prefix check) and must not shadow core tools
+- Export from `packages/mcp/src/index.ts`
+
+### Prerequisite C: CLI integration command seam
+
+The current CLI (`packages/cli/src/commands/integrations.ts`) throws `CliNotImplementedError`. There is no seam for dynamically registering integration subcommands.
+
+Required change:
+- Replace the stub with a dynamic loader: `registerIntegrationSubcommands(program, plugins)` that accepts `IntegrationCommand[]` and registers each as a subcommand under `orbit integrations`
+- Also register top-level aliases where the spec defines them (`orbit calendar`, `orbit payments`)
 
 ## 3. Technology Decisions
 
@@ -52,18 +75,12 @@ Per spec section 13: extract bounded capabilities from `~/smb-sale-crm-app` (Gma
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `googleapis` | ^144 | Gmail + Calendar API client with TypeScript types |
-| `google-auth-library` | ^9 | OAuth2 client, token refresh, credential validation |
+| `google-auth-library` | ^9 | OAuth2 client, token refresh |
 | `stripe` | ^17 | Stripe API client |
 
-**Why `googleapis` over raw REST:** Typed API methods for Gmail and Calendar. For a CRM SDK, type safety matters more than package size (Node.js, no bundle concern). Both Gmail and Calendar share one dependency.
+### 3.2 Credential Storage Model
 
-**Why not `nodemailer`:** Too narrow — only sends email. CRM needs inbox list, thread read, and label management.
-
-### 3.2 Auth Pattern
-
-OAuth2 with stored refresh tokens for Gmail and Calendar. API key for Stripe.
-
-The package defines a `CredentialStore` interface — consumers plug in their own encrypted storage. This extends the spec (spec section 3.1 defines the read-side contract but not a `CredentialStore` interface). The extension is necessary because the spec's plugin `install` callback needs a way to persist tokens.
+Credentials are stored in the `integration_connections` table (spec section 8), not in a separate pluggable store. The `CredentialStore` interface is a thin adapter over this table:
 
 ```typescript
 interface CredentialStore {
@@ -73,373 +90,356 @@ interface CredentialStore {
 }
 ```
 
+- `TableBackedCredentialStore` — production implementation backed by `integration_connections`
+- `InMemoryCredentialStore` — test-only implementation
+- The table is created in Phase 1 (Slice 4) BEFORE OAuth slices that need it
+
+Fields mapping: `StoredCredentials.refreshToken` → `integration_connections.refresh_token_encrypted`, `StoredCredentials.accessToken` → not persisted (ephemeral, refreshed on demand).
+
 ### 3.3 Connector Order
 
-1. **Gmail first** — Most common CRM integration. Proves the hardest auth (OAuth2 refresh). If this works, Calendar is trivial.
-2. **Google Calendar second** — Same `googleapis`, same OAuth2. Incremental.
-3. **Stripe third** — Simpler auth (API key), different shape (webhooks). Proves the pattern generalizes.
+1. **Gmail** — OAuth2 token refresh (hardest auth pattern)
+2. **Google Calendar** — same OAuth2, incremental
+3. **Stripe** — API key auth, webhook-heavy
 
 ## 4. Implementation Slices
 
-Each slice is one commit. Each commit includes production code + tests. Each commit is followed by `superpowers:requesting-code-review`. Each implementer brief includes CLAUDE.md Coding Conventions verbatim.
+Each slice: one commit, production code + tests, followed by `superpowers:requesting-code-review`. Every implementer brief includes CLAUDE.md Coding Conventions verbatim.
 
-**"Done" for every slice:** `pnpm --filter @orbit-ai/integrations build && pnpm --filter @orbit-ai/integrations test && pnpm --filter @orbit-ai/integrations typecheck` all pass.
+**"Done" per slice:** `pnpm --filter @orbit-ai/integrations build && test && typecheck` pass.
 
 ---
 
-### Phase 1: Foundation (3 slices)
+### Phase 1: Foundation (4 slices)
 
 #### Slice 1: Package scaffold
 
 Create `packages/integrations/`:
-- `package.json` (deps: `googleapis`, `google-auth-library`, `stripe`)
-- `tsconfig.json` (strict, extends root)
-- `vitest.config.ts`
-- `src/index.ts` (empty barrel)
-- `README.md`, `LICENSE`
+- `package.json`, `tsconfig.json`, `vitest.config.ts`, `src/index.ts`, `README.md`, `LICENSE`
 
-Tests: smoke test that the package imports without error.
+Tests: smoke import test.
 
 Commit: `feat(integrations): scaffold package runtime`
 
-Review: `superpowers:requesting-code-review`
-
 #### Slice 2: Plugin contract types + error model
 
-Create `src/types.ts` and `src/errors.ts`. Implement the spec's plugin contract (spec section 3):
-- `OrbitIntegrationPlugin` — slug, title, version, commands, tools, outboundEventHandlers, install, uninstall, healthcheck
+Create `src/types.ts` and `src/errors.ts`:
+- `OrbitIntegrationPlugin` — per spec section 3 (slug, title, version, commands, tools, outboundEventHandlers, install, uninstall, healthcheck)
 - `IntegrationCommand`, `IntegrationTool`, `IntegrationWebhookHandler` — per spec
 - `IntegrationRuntime` — adapter, client, config, eventBus
-- `OrbitIntegrationEventBus` — publish, subscribe (per spec section 3)
-- `IntegrationError` — typed error with code, message, hint, recovery (mirrors MCP pattern)
-- `IntegrationErrorCode` union — `AUTH_EXPIRED`, `AUTH_REVOKED`, `RATE_LIMITED`, `PROVIDER_ERROR`, `VALIDATION_FAILED`, `CREDENTIAL_MISSING`, `UNSUPPORTED_CAPABILITY`
-- `toIntegrationError()` — normalizer
+- `OrbitIntegrationEventBus` — publish, subscribe (per spec)
+- `IntegrationError`, `IntegrationErrorCode` union, `toIntegrationError()`
 
-Tests: error construction, normalization of unknown errors, plugin contract shape validation.
+Tests: error construction, normalization, plugin contract shape.
 
 Commit: `feat(integrations): add plugin contract and error model`
 
-Review: `superpowers:requesting-code-review`
+#### Slice 3: Integration tables + schema extension
 
-#### Slice 3: Credential boundary + redaction
+Create `src/schema.ts` and `src/schema-extension.ts`:
+- `integrationConnections` table — per spec section 8 (id, organizationId, provider, connectionType, userId, status, credentialsEncrypted, refreshTokenEncrypted, accessTokenExpiresAt, providerAccountId, providerWebhookId, scopes, failureCount, lastSuccessAt, lastFailureAt, metadata)
+- `integrationSyncState` table — per spec section 8
+- `integrationSchemaExtension` — registers both in core plugin system
+- Both tables include `organizationId`, are tenant-scoped
+
+Tests: schema extension registration, column completeness vs spec, tenant scoping assertion.
+
+Commit: `feat(integrations): add integration connection and sync state tables`
+
+Skill trigger: `orbit-schema-change`, `orbit-tenant-safety-review`
+
+#### Slice 4: Credential store + redaction
 
 Create `src/credentials.ts` and `src/redaction.ts`:
-- `CredentialStore` interface (get, save, delete — all org-scoped)
-- `StoredCredentials` type (accessToken, refreshToken, expiresAt, scopes, providerAccountId)
-- `InMemoryCredentialStore` — test-only implementation
-- `redactProviderError()` — strip tokens/secrets from provider error messages
+- `CredentialStore` interface (get, save, delete — all org+provider scoped)
+- `StoredCredentials` type
+- `TableBackedCredentialStore` — wraps `integration_connections` table (reads/writes credentialsEncrypted, refreshTokenEncrypted, accessTokenExpiresAt)
+- `InMemoryCredentialStore` — test-only
+- `redactProviderError()` — strip tokens/secrets
 - `sanitizeIntegrationMetadata()` — per spec section 3.1
-- `toIntegrationConnectionRead()` — sanitized DTO (per spec)
-- `toIntegrationSyncStateRead()` — sanitized DTO (per spec)
+- `toIntegrationConnectionRead()` — sanitized DTO
+- `toIntegrationSyncStateRead()` — sanitized DTO
 
-Tests: credential store CRUD, redaction of Bearer tokens / OAuth secrets / long strings, DTO mapping strips sensitive fields.
+Tests: credential store CRUD (both impls), redaction, DTO mapping strips sensitive fields.
 
-Commit: `feat(integrations): add credential boundary and redaction`
+Commit: `feat(integrations): add credential store and redaction`
 
-Review: `superpowers:requesting-code-review`
-
-Skill trigger: `orbit-tenant-safety-review` (credential handling + tenant scoping)
+Skill trigger: `orbit-tenant-safety-review`
 
 ---
 
 ### Phase 2: Runtime primitives (3 slices)
 
-#### Slice 4: Retry + idempotency helpers
+#### Slice 5: Retry + idempotency helpers
 
 Create `src/retry.ts` and `src/idempotency.ts`:
-- `withBoundedRetry(fn, options)` — retries with exponential backoff, max attempts (default 3), jitter
-- `isRetryableError(error)` — checks HTTP status (429, 500, 502, 503) and provider codes
-- `IdempotencyHelper` — generates + checks idempotency keys for write operations
-- Retry is bounded — no unbounded loops.
+- `withBoundedRetry(fn, options)` — max 3, exponential backoff, jitter
+- `isRetryableError(error)` — HTTP 429/500/502/503
+- `IdempotencyHelper` — key generation + dedup check
 
-Tests: retry exhaustion, backoff timing (mocked), idempotency key generation, non-retryable errors not retried.
+Tests: retry exhaustion, backoff (mocked), non-retryable pass-through.
 
 Commit: `feat(integrations): add bounded retry and idempotency helpers`
 
-Review: `superpowers:requesting-code-review`
-
-#### Slice 5: Registry + config loader
+#### Slice 6: Registry + config loader
 
 Create `src/registry.ts` and `src/config.ts`:
-- `IntegrationRegistry` — register/lookup connectors by slug
-- `loadIntegrationConfig(configPath)` — reads `.orbit/integrations.json` (per spec section 4)
-- `validateConnectorConfig(slug, config)` — validates per-connector required fields
-- `loadEnabledIntegrations(registry, config, context)` — loads only enabled connectors (per spec section 9)
+- `IntegrationRegistry` — register/lookup by slug
+- `loadIntegrationConfig(configPath)` — `.orbit/integrations.json` (per spec section 4)
+- `validateConnectorConfig(slug, config)` — per-connector validation
+- `loadEnabledIntegrations(registry, config, context)` — per spec section 9
 
-Tests: registry add/lookup, config loading valid/invalid JSON, enabled/disabled filtering, unknown slug rejection.
+Tests: registry CRUD, config loading, enabled/disabled filtering, unknown slug rejection.
 
 Commit: `feat(integrations): add registry and config loader`
 
-Review: `superpowers:requesting-code-review`
-
-#### Slice 6: OAuth2 token lifecycle
+#### Slice 7: OAuth2 token lifecycle
 
 Create `src/oauth.ts`:
 - `GoogleOAuthHelper` — wraps `google-auth-library` OAuth2Client
 - `createAuthUrl(scopes, redirectUri)` — consent URL
-- `exchangeCode(code)` — authorization code → tokens
-- `getValidAccessToken(orgId, provider, credentialStore)` — returns valid token, auto-refreshes (5-min margin)
-- `revokeToken(orgId, provider, credentialStore)` — revokes and deletes stored credentials
-- Token refresh errors map to `IntegrationError` (`AUTH_EXPIRED` / `AUTH_REVOKED`)
+- `exchangeCode(code)` — code → tokens, persists via `CredentialStore`
+- `getValidAccessToken(orgId, provider, credentialStore)` — auto-refresh (5-min margin)
+- `revokeToken(orgId, provider, credentialStore)` — revoke + delete
+- Errors map to `IntegrationError` (`AUTH_EXPIRED`, `AUTH_REVOKED`)
 
-Tests: token refresh when expired (mocked OAuth2Client), revocation, exchange, invalid grant error mapping.
+Tests: refresh when expired (mocked), revocation, exchange, invalid grant mapping.
 
 Commit: `feat(integrations): add OAuth2 token lifecycle`
 
-Review: `superpowers:requesting-code-review`
+Skill trigger: `orbit-tenant-safety-review`
 
-Skill trigger: `orbit-tenant-safety-review` (token storage, refresh token handling)
-
-Phase 2 milestone: `orbit-core-slice-review` (runtime primitives complete)
+Phase 2 milestone: `orbit-core-slice-review`
 
 ---
 
 ### Phase 3: Gmail connector (5 slices)
 
-#### Slice 7: Gmail connector scaffold + config
+#### Slice 8: Gmail connector scaffold + config
 
-Create `src/gmail/connector.ts` and `src/gmail/types.ts`:
+Create `src/gmail/connector.ts`, `src/gmail/types.ts`:
 - `gmailPlugin: OrbitIntegrationPlugin` — per spec section 5.1
-- `GmailConnectorConfig` — Zod schema (clientId, clientSecretEnv, redirectUri, scopes)
+- `GmailConnectorConfig` — Zod (clientId, clientSecretEnv, redirectUri, scopes)
 - Register in registry
 
-Tests: config validation (missing fields, invalid scopes), registration.
+Tests: config validation, registration.
 
 Commit: `feat(integrations): scaffold Gmail connector`
 
-Review: `superpowers:requesting-code-review`
-
-#### Slice 8: Gmail OAuth flow
+#### Slice 9: Gmail OAuth flow
 
 Create `src/gmail/auth.ts`:
-- `getGmailAuthUrl(connector)` — consent URL for Gmail scopes
-- `completeGmailAuth(connector, code)` — exchanges code, stores credentials
-- `getGmailClient(connector)` — authenticated `gmail_v1.Gmail` with auto-refresh
+- `getGmailAuthUrl(connector)`, `completeGmailAuth(connector, code)`, `getGmailClient(connector)`
 - Scopes: `gmail.readonly`, `gmail.send`, `gmail.modify`
 
-Tests: auth URL correct scopes, code exchange stores credentials, client creation with valid/expired tokens.
+Tests: auth URL scopes, code exchange persists credentials, client auto-refresh.
 
 Commit: `feat(integrations): add Gmail OAuth flow`
 
-Review: `superpowers:requesting-code-review`
-
-#### Slice 9: Gmail send + list operations
+#### Slice 10: Gmail send + list operations
 
 Create `src/gmail/operations.ts`:
-- `listMessages(client, options)` — list inbox with pagination
-- `getMessage(client, messageId)` — single message with parsed headers
-- `sendMessage(client, to, subject, body)` — RFC 2822 base64 encoding
-- All return `IntegrationResult<T>`, provider errors mapped through `toIntegrationError()`
+- `listMessages`, `getMessage`, `sendMessage`
+- All return `IntegrationResult<T>`, errors via `toIntegrationError()`
 
-Tests: list/send with mocked Gmail API, error mapping for auth failure / rate limit / not found.
+Tests: list/send with mocked Gmail API, error mapping (auth failure, rate limit, not found).
 
 Commit: `feat(integrations): add Gmail send and list operations`
 
-Review: `superpowers:requesting-code-review`
-
-#### Slice 10: Gmail sync — email-to-activity mapping
+#### Slice 11: Gmail sync + contact dedupe
 
 Create `src/gmail/sync.ts` and `src/shared/contacts.ts`:
-- `syncGmailMessage(runtime, input)` — maps email to Orbit activity (per spec section 5.2)
-- `findOrCreateContactFromEmail(client, email)` — dedupe by email (per spec section 5)
+- `syncGmailMessage(runtime, input)` — per spec section 5.2
+- `findOrCreateContactFromEmail(client, orgId, email)` — **orgId is required** (tenant-bound lookup)
+- Full dedupe policy per spec section 5:
+  1. Exact normalized email match (within org)
+  2. Company match by domain (within org)
+  3. Create only when connector config `auto_create_contacts: true`
+- `withTenantContext` wrapper on all contact/company lookups
 - Direction detection: inbound vs outbound
-- Metadata: `gmail_message_id`, `gmail_thread_id`, `to`, `cc`
 
-Tests: inbound/outbound direction, contact lookup, activity creation shape.
+Tests:
+- Inbound/outbound direction
+- Contact lookup by email within org
+- Company-by-domain matching within org
+- **Negative test: same email in different orgs does NOT collide** (cross-tenant isolation)
+- Auto-create disabled → no creation
+- Activity creation shape matches SDK `CreateActivityInput`
 
-Commit: `feat(integrations): add Gmail sync and email-to-activity mapping`
+Commit: `feat(integrations): add Gmail sync with tenant-safe contact dedupe`
 
-Review: `superpowers:requesting-code-review`
+Skill trigger: `orbit-tenant-safety-review`
 
-Skill trigger: `orbit-tenant-safety-review` (cross-tenant contact lookup)
+#### Slice 12: Gmail MCP extension tools + polling
 
-#### Slice 11: Gmail MCP extension tools
+Create `src/gmail/mcp-tools.ts` and `src/gmail/polling.ts`:
+- `integrations.gmail.send_email` — MCP tool (per spec section 5.3)
+- `integrations.gmail.sync_thread` — MCP tool
+- `pollGmailInbox(runtime, connector, options)` — per spec section 5 ("Gmail scan / polling job")
+  - Queries Gmail API for new messages since last sync cursor
+  - For each new message: calls `syncGmailMessage`
+  - Updates `integration_sync_state.cursor` after successful batch
+  - Bounded: max messages per poll, max poll duration
+- Note: no Gmail CLI commands (spec section 5.1 shows `commands: []`)
 
-Create `src/gmail/mcp-tools.ts`:
-- `integrations.gmail.send_email` — MCP extension tool (per spec section 5.3)
-- `integrations.gmail.sync_thread` — MCP extension tool
-- Register tools on `gmailPlugin.tools`
-- Note: spec section 5.1 shows `commands: []` for Gmail — no CLI commands defined for Gmail
+Tests: tool registration/execution, polling with mocked API, cursor advancement, bounded poll limits.
 
-Tests: tool registration, tool execution with mocked operations, error handling.
+Commit: `feat(integrations): add Gmail MCP tools and inbox polling`
 
-Commit: `feat(integrations): add Gmail MCP extension tools`
-
-Review: `superpowers:requesting-code-review`
-
-Phase 3 milestone: `orbit-core-slice-review` (Gmail connector complete)
+Phase 3 milestone: `orbit-core-slice-review`
 
 ---
 
 ### Phase 4: Google Calendar connector (4 slices)
 
-#### Slice 12: Calendar connector scaffold + auth
+#### Slice 13: Calendar connector scaffold + auth
 
-Create `src/google-calendar/connector.ts` and `src/google-calendar/auth.ts`:
+Create `src/google-calendar/connector.ts`, `src/google-calendar/auth.ts`:
 - `calendarPlugin: OrbitIntegrationPlugin`
-- `CalendarConnectorConfig` — Zod schema (reuses Google OAuth, different scopes)
-- `getCalendarClient(connector)` — authenticated `calendar_v3.Calendar`
-- Shares OAuth helper from Slice 6 — different scopes (`calendar.events`, `calendar.readonly`)
+- Shares OAuth from Slice 7, different scopes (`calendar.events`, `calendar.readonly`)
 
 Tests: config validation, client creation, scope verification.
 
 Commit: `feat(integrations): scaffold Google Calendar connector`
 
-Review: `superpowers:requesting-code-review`
-
-#### Slice 13: Calendar event operations
+#### Slice 14: Calendar event operations
 
 Create `src/google-calendar/operations.ts`:
-- `listEvents(client, calendarId, options)` — time range + pagination
-- `createEvent(client, calendarId, event)` — with attendees, time, description
-- `updateEvent(client, calendarId, eventId, event)` — update existing
-- `deleteEvent(client, calendarId, eventId)` — delete
-- `checkAvailability(client, calendarId, timeMin, timeMax)` — freebusy query
+- `listEvents`, `createEvent`, `updateEvent`, `deleteEvent`, `checkAvailability`
 
-Tests: list/create with mocked API, error mapping, freebusy response parsing.
+Tests: list/create mocked, error mapping, freebusy parsing.
 
 Commit: `feat(integrations): add Calendar event operations`
 
-Review: `superpowers:requesting-code-review`
+#### Slice 15: Calendar sync + polling
 
-#### Slice 14: Calendar sync — event-to-activity mapping
-
-Create `src/google-calendar/sync.ts`:
-- `syncCalendarEvent(runtime, input)` — maps event to Orbit activity (per spec section 6)
-- `findOrCreateContactByAttendees(client, emails)` — in `src/shared/contacts.ts`
+Create `src/google-calendar/sync.ts` and `src/google-calendar/polling.ts`:
+- `syncCalendarEvent(runtime, input)` — per spec section 6
+- `findOrCreateContactByAttendees(client, orgId, emails)` — **org-bound**
+- `pollCalendarEvents(runtime, connector, options)` — per spec section 11.3
+  - Queries Calendar API for updated events since last sync token
+  - Provider webhook support where available, polling fallback
+  - Updates sync state cursor
 - Duration calculation, attendee mapping, metadata
 
-Tests: event-to-activity shape, attendee resolution, duration edge cases.
+Tests: event-to-activity shape, attendee resolution, duration edges, polling cursor, **cross-org negative test**.
 
-Commit: `feat(integrations): add Calendar sync and event-to-activity mapping`
+Commit: `feat(integrations): add Calendar sync and event polling`
 
-Review: `superpowers:requesting-code-review`
+Skill trigger: `orbit-tenant-safety-review`
 
-#### Slice 15: Calendar MCP tools + CLI commands
+#### Slice 16: Calendar MCP tools + CLI commands
 
 Create `src/google-calendar/mcp-tools.ts`:
-- `integrations.google_calendar.list_events` — MCP extension tool (per spec section 6)
-- `integrations.google_calendar.create_event` — MCP extension tool
-- CLI commands: `orbit calendar list`, `orbit calendar create`, `orbit calendar sync` (per spec section 6)
+- `integrations.google_calendar.list_events`, `integrations.google_calendar.create_event` — MCP tools
+- CLI: `orbit calendar list`, `orbit calendar create`, `orbit calendar sync`
 
-Tests: tool registration, command registration, execution with mocked operations.
+Tests: tool/command registration, execution with mocked operations.
 
 Commit: `feat(integrations): add Calendar MCP tools and CLI commands`
 
-Review: `superpowers:requesting-code-review`
-
-Phase 4 milestone: `orbit-core-slice-review` (Calendar connector complete)
+Phase 4 milestone: `orbit-core-slice-review`
 
 ---
 
-### Phase 5: Stripe connector (3 slices)
+### Phase 5: Stripe connector (4 slices)
 
-#### Slice 16: Stripe connector scaffold + config
+#### Slice 17: Stripe connector scaffold + config
 
 Create `src/stripe/connector.ts`:
 - `stripePlugin: OrbitIntegrationPlugin`
-- `StripeConnectorConfig` — Zod schema (secretKeyEnv, webhookSecretEnv)
-- Secret key resolved from env var — never stored in config file
+- `StripeConnectorConfig` — Zod (secretKeyEnv, webhookSecretEnv)
+- Secret key from env — never in config file
 
-Tests: config validation, env var resolution, missing env rejection.
+Tests: config validation, env resolution, missing env rejection.
 
 Commit: `feat(integrations): scaffold Stripe connector`
 
-Review: `superpowers:requesting-code-review`
+Skill trigger: `orbit-tenant-safety-review`
 
-Skill trigger: `orbit-tenant-safety-review` (API key handling from env)
+#### Slice 18: Stripe payment operations + sync
 
-#### Slice 17: Stripe payment operations + sync
-
-Create `src/stripe/operations.ts` and `src/stripe/sync.ts`:
-- `createPaymentLink(client, options)` — create Stripe payment link
-- `getPaymentStatus(client, sessionId)` — retrieve checkout session
+Create `src/stripe/operations.ts`, `src/stripe/sync.ts`:
+- `createPaymentLink`, `getPaymentStatus`
 - `syncStripeCheckoutSession(runtime, stripeClient, sessionId)` — per spec section 7
 
-Tests: payment link creation, session retrieval, sync mapping shape.
+Tests: payment link, session retrieval, sync mapping.
 
 Commit: `feat(integrations): add Stripe payment operations and sync`
 
-Review: `superpowers:requesting-code-review`
-
-#### Slice 18: Stripe MCP tools + CLI commands
-
-Create `src/stripe/mcp-tools.ts`:
-- `integrations.stripe.create_payment_link` — MCP extension tool (per spec section 7)
-- `integrations.stripe.get_payment_status` — MCP extension tool
-- CLI: `orbit payments link create`, `orbit payments sync stripe` (per spec section 7)
-- Register on `stripePlugin.tools` and `stripePlugin.commands`
-
-Tests: MCP tool execution with mocked operations, CLI command registration, error handling.
-
-Commit: `feat(integrations): add Stripe MCP tools and CLI commands`
-
-Review: `superpowers:requesting-code-review`
-
-#### Slice 19: Stripe webhook handler
+#### Slice 19: Stripe webhook handler + security
 
 Create `src/stripe/webhooks.ts`:
 - `verifyStripeWebhook(payload, signature, secret)` — signature verification
-- `handleStripeEvent(runtime, event)` — route by type (checkout.session.completed, payment_intent.succeeded)
-- Map Stripe events to Orbit payment records
-- Replay protection via idempotency helper
+- `handleStripeEvent(runtime, event)` — route by type
+- **Replay-window enforcement**: reject events older than configurable window (default 5 min) per threat model
+- **Receipt persistence**: store webhook delivery ID in `integration_sync_state` for dedup
+- Idempotency: same event ID processed at most once
+- **Provider events must NOT route through outbound customer webhook delivery** (per spec section 11.3)
 
-Tests: signature verification (valid/invalid), event routing, idempotent handling, unknown event rejection.
+Tests:
+- Signature valid/invalid
+- Event routing
+- **Replay: event with timestamp outside window is rejected**
+- **Dedup: same event ID processed twice → second is no-op**
+- **Negative: provider event does NOT trigger outbound customer webhook delivery**
+- Unknown event type rejection
 
-Commit: `feat(integrations): add Stripe webhook handler`
+Commit: `feat(integrations): add Stripe webhook handler with replay and dedup`
 
-Review: `superpowers:requesting-code-review`
+#### Slice 20: Stripe MCP tools + CLI commands
 
-Phase 5 milestone: `orbit-core-slice-review` (Stripe connector complete)
+Create `src/stripe/mcp-tools.ts`:
+- `integrations.stripe.create_payment_link`, `integrations.stripe.get_payment_status` — MCP tools
+- CLI: `orbit payments link create`, `orbit payments sync stripe`
+
+Tests: tool/command registration, execution.
+
+Commit: `feat(integrations): add Stripe MCP tools and CLI commands`
+
+Phase 5 milestone: `orbit-core-slice-review`
 
 ---
 
-### Phase 6: Event architecture + schema + closeout (3 slices)
+### Phase 6: Event architecture + registration + closeout (3 slices)
 
-#### Slice 20: Event bus + integration tables
+#### Slice 21: Event bus + routing enforcement
 
-Create `src/events.ts`, `src/schema.ts`, `src/schema-extension.ts`:
-- `OrbitIntegrationEventBus` implementation (per spec section 3, lines 106-109)
+Create `src/events.ts`:
+- `OrbitIntegrationEventBus` implementation (per spec section 3)
 - Internal domain events: `contact.created`, `deal.stage_moved`, `payment.created` (per spec section 11.1)
 - Event subscription by connector handlers (per spec section 12)
-- `integrationConnections` table (per spec section 8)
-- `integrationSyncState` table (per spec section 8)
-- `integrationSchemaExtension` — registers in core plugin system
-- Both tables include `organizationId`, tenant-scoped
+- **Enforcing seam**: provider inbound events and internal domain events flow through the event bus; outbound customer webhooks use the API webhook delivery worker. These paths must NOT be conflated.
 
-Tests: event publish/subscribe, handler invocation, schema extension registration, table definitions match spec.
+Tests:
+- Event publish/subscribe
+- Handler invocation
+- **Negative: inbound provider event does NOT reach outbound webhook delivery path**
+- **Negative: internal domain event handler cannot accidentally emit to customer webhook channel**
 
-Commit: `feat(integrations): add event bus, integration tables, and schema extension`
+Commit: `feat(integrations): add event bus with routing enforcement`
 
-Review: `superpowers:requesting-code-review`
+Skill trigger: `orbit-tenant-safety-review`
 
-Skill trigger: `orbit-schema-change` (new tables), `orbit-tenant-safety-review` (tenant-scoped tables + event bus)
-
-#### Slice 21: CLI + MCP dynamic registration
+#### Slice 22: CLI + MCP dynamic registration
 
 Create `src/cli.ts` and update `src/index.ts`:
 - `registerIntegrationCommands(program, runtime, config)` — per spec section 10
 - `getIntegrationTools(runtime, config)` — per spec section 10
-- Dynamic registration: only enabled plugins register their commands/tools
-- Extension tools namespaced (`integrations.gmail.*`) and must not shadow core tools
+- Dynamic registration: only enabled plugins
+- Namespacing: `integrations.*` prefix, must not shadow core tools
+- Note: actual wiring into `@orbit-ai/cli` program.ts and `@orbit-ai/mcp` server.ts requires Prerequisites B and C
 
-Tests: dynamic registration with enabled/disabled plugins, namespacing, no-shadow assertion.
+Tests: dynamic registration enabled/disabled, namespacing, no-shadow assertion.
 
 Commit: `feat(integrations): add CLI and MCP dynamic registration`
 
-Review: `superpowers:requesting-code-review`
+#### Slice 23: Docs + review closeout
 
-#### Slice 22: Docs + review closeout
-
-- Update `packages/integrations/README.md` with usage examples
-- Update `docs/KB.md` with integration execution status
-- Update `CHANGELOG.md`
-- Update `CLAUDE.md` test baseline
-- Add review artifacts under `docs/review/`
+- `packages/integrations/README.md`, `docs/KB.md`, `CHANGELOG.md`, `CLAUDE.md` baseline
+- Review artifacts under `docs/review/`
 
 Commit: `docs(integrations): record execution and review closeout`
-
-Review: `superpowers:requesting-code-review`
 
 ---
 
@@ -447,99 +447,81 @@ Review: `superpowers:requesting-code-review`
 
 ### 5.1 Sub-Agent Briefing (MANDATORY)
 
-Every implementer sub-agent brief MUST include:
-
-1. The full CLAUDE.md **Coding Conventions** section (error handling, tests, no deferrals, lint gates, sensitive data rules)
-2. The slice description from this plan
-3. The "done" definition: `build + tests + lint pass`
-4. The specific orbit skill to run after the slice (if any)
-5. Reference to the canonical spec sections relevant to the slice
+Every implementer brief MUST include:
+1. CLAUDE.md **Coding Conventions** section verbatim
+2. Slice description from this plan
+3. "Done" definition: build + tests + lint pass
+4. Specific orbit skill trigger (if any)
+5. Relevant canonical spec section references
 
 ### 5.2 Review After Every Commit
 
-After each slice commit, run `superpowers:requesting-code-review`. Fix all findings before proceeding to the next slice. This is not optional.
+`superpowers:requesting-code-review` after each slice. Fix all findings before next slice.
 
 ### 5.3 No Deferrals
 
-Any issue found on this branch is fixed on this branch. No "pre-existing" exemptions. No "non-blocking" items.
+Any issue found is fixed immediately. No "non-blocking" items.
 
 ### 5.4 Lint Before Commit
 
-`pnpm --filter @orbit-ai/integrations lint` must pass before every commit.
+`pnpm --filter @orbit-ai/integrations lint` before every commit.
 
 ## 6. Final Review Gate
 
-After all 22 slices are committed and their individual reviews are clean:
+After all 23 slices + individual reviews:
+1. `pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm -r lint`
+2. `pr-review-toolkit:review-pr all` — all 6 agents
+3. Stop when zero MEDIUM/HIGH/CRITICAL across all 6
+4. Cosmetic suggestions → file as issues, don't block
 
-1. Run `pnpm -r build && pnpm -r typecheck && pnpm -r test && pnpm -r lint` — all must pass
-2. Run `pr-review-toolkit:review-pr all` — all 6 specialist agents
-3. Stop when all 6 agents report zero MEDIUM, HIGH, or CRITICAL issues
-4. Only cosmetic suggestions may remain — file as issues, don't block the PR
-5. This final review should confirm quality, not discover it (because every commit was already reviewed)
-
-## 7. Verification Matrix
-
-Per slice:
-```bash
-pnpm --filter @orbit-ai/integrations build
-pnpm --filter @orbit-ai/integrations test
-pnpm --filter @orbit-ai/integrations typecheck
-```
-
-Cross-package (if seams change):
-```bash
-pnpm -r build && pnpm -r test
-```
-
-## 8. Orbit Skill Triggers
+## 7. Orbit Skill Triggers
 
 | Slice | Trigger | Skill |
 |-------|---------|-------|
-| 3 | Credential handling + tenant scoping | `orbit-tenant-safety-review` |
-| 6 | Token storage, refresh token handling | `orbit-tenant-safety-review` |
-| 10 | Cross-tenant contact lookup | `orbit-tenant-safety-review` |
-| 16 | API key handling from env | `orbit-tenant-safety-review` |
-| 20 | New tables + tenant-scoped events | `orbit-schema-change`, `orbit-tenant-safety-review` |
-| End of Phase 2 | Runtime primitives complete | `orbit-core-slice-review` |
-| End of Phase 3 | Gmail connector complete | `orbit-core-slice-review` |
-| End of Phase 4 | Calendar connector complete | `orbit-core-slice-review` |
-| End of Phase 5 | Stripe connector complete | `orbit-core-slice-review` |
+| 3 | New tables, tenant scoping | `orbit-schema-change`, `orbit-tenant-safety-review` |
+| 4 | Credential handling | `orbit-tenant-safety-review` |
+| 7 | Token storage, refresh | `orbit-tenant-safety-review` |
+| 11 | Cross-tenant contact lookup | `orbit-tenant-safety-review` |
+| 15 | Cross-tenant contact lookup | `orbit-tenant-safety-review` |
+| 17 | API key from env | `orbit-tenant-safety-review` |
+| 21 | Event bus, routing isolation | `orbit-tenant-safety-review` |
+| End of Phase 2 | Runtime complete | `orbit-core-slice-review` |
+| End of Phase 3 | Gmail complete | `orbit-core-slice-review` |
+| End of Phase 4 | Calendar complete | `orbit-core-slice-review` |
+| End of Phase 5 | Stripe complete | `orbit-core-slice-review` |
 
-## 9. Spec Acceptance Criteria Mapping
+## 8. Spec Acceptance Criteria Mapping
 
-Per spec section 14, all 8 criteria must be proven:
+| # | Criterion | Covered by |
+|---|-----------|-----------|
+| 1 | Enable Gmail, Calendar, Stripe via config | 6, 8, 13, 17 |
+| 2 | Each connector: install, commands, tools, sync | 8-12, 13-16, 17-20 |
+| 3 | State in tenant-scoped tables | 3 |
+| 4 | Tables via core plugin schema extension | 3 |
+| 5 | Commands/tools registered dynamically when enabled | 22 |
+| 6 | Distinguish internal/outbound/inbound events | 19, 21 |
+| 7 | Reads return sanitized DTOs | 4 |
+| 8 | Commands/tools use shared serializer helpers | 12, 16, 20, 22 |
 
-| # | Criterion | Covered by slice(s) |
-|---|-----------|-------------------|
-| 1 | Enable Gmail, Calendar, Stripe via `.orbit/integrations.json` | 5, 7, 12, 16 |
-| 2 | Each connector exposes install, commands, tools, sync handlers | 7-11, 12-15, 16-19 |
-| 3 | Connector state in Orbit-owned tenant-scoped tables | 20 |
-| 4 | Tables registered through core plugin schema extension | 20 |
-| 5 | Commands/tools registered dynamically when plugin enabled | 21 |
-| 6 | Distinguish internal events, outbound webhooks, inbound provider webhooks | 19, 20 |
-| 7 | Reads return sanitized DTOs; credentials stay server-only | 3 |
-| 8 | Commands/tools use shared serializer helpers | 11, 15, 18, 21 |
+## 9. Definition of Done
 
-## 10. Definition of Done
+- `packages/integrations` builds
+- All 3 connectors end-to-end: OAuth, operations, sync, MCP tools, CLI commands (Calendar/Stripe)
+- Provider ingestion: Gmail polling, Calendar polling, Stripe webhooks
+- `OrbitIntegrationPlugin` contract from spec section 3 implemented
+- Event bus with routing enforcement (provider ≠ customer events)
+- Webhook security: replay-window, receipt persistence, dedup
+- Tenant-safe contact lookup: org-bound, `withTenantContext`, negative cross-org tests
+- CredentialStore backed by integration_connections table
+- All reads use sanitized DTOs
+- Every slice reviewed individually
+- Final review: zero MEDIUM+ across all 6 agents
+- All 8 spec acceptance criteria proven
+- KB, CHANGELOG, review artifacts updated
 
-The integrations package is complete when:
+## 10. What Comes After
 
-- `packages/integrations` exists and builds
-- Gmail, Google Calendar, and Stripe connectors are implemented end-to-end
-- `OrbitIntegrationPlugin` contract from spec section 3 is implemented
-- MCP extension tools registered per connector (6 tools total)
-- CLI commands registered per connector (5 commands total)
-- Event bus implements `OrbitIntegrationEventBus` from spec
-- OAuth2 token lifecycle proven (refresh, revoke, exchange)
-- `CredentialStore` interface defined and testable
-- All connector reads use sanitized DTOs
-- Unit and integration test coverage in place
-- Every slice passed `superpowers:requesting-code-review`
-- Final `pr-review-toolkit:review-pr` shows zero MEDIUM+ issues
-- All 8 spec acceptance criteria are proven
-- KB, CHANGELOG, and review artifacts updated
-
-## 11. What Comes After
-
-1. Merge `@orbit-ai/integrations` to main
-2. Publish all 6 packages together as `0.1.0-alpha.1` to npm (0.1.0-alpha.0 is already tagged)
+1. Complete Prerequisites A, B, C (separate PRs to main)
+2. Execute this plan on a feature branch
+3. Merge `@orbit-ai/integrations` to main
+4. Publish all 6 packages as `0.1.0-alpha.1` (alpha.0 already tagged)
