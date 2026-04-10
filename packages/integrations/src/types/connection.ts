@@ -8,6 +8,7 @@ export interface IntegrationConnectionRecord {
   connectionType: string
   userId: string | null
   status: string
+  accessTokenExpiresAt: string | null // ISO timestamp (.toISOString())
   providerAccountId: string | null
   providerWebhookId: string | null
   scopes: string | null
