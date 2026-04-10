@@ -1,8 +1,8 @@
 # Orbit AI KB
 
-Date: 2026-04-10 (revised)
+Date: 2026-04-10 (revised after integrations merge)
 Status: Active working hub
-Current baseline commit: `59d3205` (main) — all 5 packages merged, no stale branches
+Current baseline commit: `ce7aa64` (main) — all 6 packages merged, 1,564 tests passing
 
 ## What Orbit Is
 
@@ -48,24 +48,20 @@ Completed:
 
 Current focus:
 
-- **All 5 core packages are complete and merged to main:**
-  - `@orbit-ai/core` — 328 tests
+- **All 6 packages complete and merged to main:**
+  - `@orbit-ai/core` — 332 tests
   - `@orbit-ai/api` — 281 tests
-  - `@orbit-ai/sdk` — 194 tests
-  - `@orbit-ai/cli` — 170 tests (30 commands, JSON/table/CSV/TSV output, direct SQLite + API modes)
-  - `@orbit-ai/mcp` — 173 tests (23 core tools, stdio + HTTP transport, SSRF protection, secret redaction)
-- **Full suite: 1,145 tests passing.** Build + typecheck: clean. All stale branches deleted.
-- **Next package track is `packages/integrations`** — Gmail, Google Calendar, Stripe connectors
-  - Execution plan: [integrations-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/integrations-implementation-plan.md)
-  - Plan revised 2026-04-10 (v3, post-Codex review): 23 slices, 3 prerequisites, tests in every commit, code review after every commit, sub-agent briefs include Coding Conventions, credential storage backed by integration_connections table, explicit provider-ingestion slices, tenant-safety negative tests, webhook replay-window enforcement
+  - `@orbit-ai/sdk` — 198 tests
+  - `@orbit-ai/cli` — 180 tests (30 commands + integration subcommand seam + calendar alias)
+  - `@orbit-ai/mcp` — 183 tests (23 core tools + extension tool seam)
+  - `@orbit-ai/integrations` — 390 tests (Gmail, Google Calendar, Stripe connectors)
+- **Full suite: 1,564 tests passing.** Build + typecheck + lint: clean.
+- **Merged via 6 stacked PRs** (#29–#34) on 2026-04-10
 
-In progress on `feat/integrations`:
+Next steps:
 
-- `@orbit-ai/integrations` — Gmail, Google Calendar, Stripe connectors with plugin contract, credential store, event bus, retry, OAuth2, webhook handling, MCP tool seams, CLI command seams
-
-Not started yet:
-
-- CLI/MCP wiring for integration connectors (after integrations package is stable)
+- Address any GitHub review feedback on PRs #29–#34
+- Publish all 6 packages as `0.1.0-alpha.1` (alpha.0 already tagged)
 
 ## Frozen Decisions
 
@@ -117,6 +113,7 @@ Use these files first:
   - [sdk-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/sdk-implementation-plan.md)
   - [cli-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/cli-implementation-plan.md)
   - [mcp-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/mcp-implementation-plan.md)
+  - [integrations-implementation-plan.md](/Users/sharonsciammas/orbit-ai/docs/execution/integrations-implementation-plan.md)
   - [core-wave-1-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-review.md)
   - [core-wave-1-full-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-full-review.md)
   - [core-wave-1-remediation-review.md](/Users/sharonsciammas/orbit-ai/docs/review/core-wave-1-remediation-review.md)
