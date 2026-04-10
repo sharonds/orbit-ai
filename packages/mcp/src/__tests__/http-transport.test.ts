@@ -116,8 +116,49 @@ describe('http transport', () => {
       // The HTTP handler serializes a CallToolResult: { isError: true, content: [{ type: 'text', text: '{"ok":false,"error":{...}}' }] }
       const outer = await response.json() as { isError?: boolean; content?: Array<{ type: string; text?: string }> }
       const textBlock = outer.content?.find((b) => b.type === 'text' && typeof b.text === 'string')
-      const inner = JSON.parse(textBlock?.text ?? '{}') as { error?: { code?: string } }
+      const inner = JSON.parse(textBlock?.text ?? '{}') as { error?: { code?: string; message?: string } }
       expect(inner.error?.code).toBe('VALIDATION_FAILED')
+      expect(inner.error?.message).toBe('Request body exceeds the 1 MB limit.')
+    } finally {
+      await new Promise<void>((resolve) => runtime.server.close(() => resolve()))
+    }
+  })
+
+  it('returns 400 with malformed JSON body message when JSON is invalid', async () => {
+    const adapter = {
+      lookupApiKeyForAuth: async () => ({
+        id: 'key_01',
+        organizationId: 'org_01',
+        scopes: ['*'],
+        revokedAt: null,
+        expiresAt: null,
+      }),
+    }
+    const runtime = await startHttpTransport({
+      client: makeMockClient(),
+      transport: 'http',
+      port: 0,
+      adapter: adapter as never,
+    })
+
+    const addr = runtime.server.address() as import('node:net').AddressInfo
+    const actualPort = addr.port
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${actualPort}/`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: 'Bearer test-token',
+        },
+        body: '{ this is not valid json }',
+      })
+      expect(response.status).toBe(400)
+      const outer = await response.json() as { isError?: boolean; content?: Array<{ type: string; text?: string }> }
+      const textBlock = outer.content?.find((b) => b.type === 'text' && typeof b.text === 'string')
+      const inner = JSON.parse(textBlock?.text ?? '{}') as { error?: { code?: string; message?: string } }
+      expect(inner.error?.code).toBe('VALIDATION_FAILED')
+      expect(inner.error?.message).toBe('Malformed JSON body.')
     } finally {
       await new Promise<void>((resolve) => runtime.server.close(() => resolve()))
     }
