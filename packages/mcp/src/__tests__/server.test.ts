@@ -44,7 +44,7 @@ describe('server', () => {
     ['http://localhost/webhook', 'localhost hostname'],
   ] as const)(
     'validateWebhookUrlForDirectMode blocks %s (%s)',
-    (url) => {
+    (url, _label) => {
       expect(() => validateWebhookUrlForDirectMode(url)).toThrow(
         expect.objectContaining({ code: 'SSRF_BLOCKED' }),
       )
@@ -56,7 +56,7 @@ describe('server', () => {
     ['http://172.32.0.1/webhook', 'just above 172.31 range'],
   ] as const)(
     'validateWebhookUrlForDirectMode allows %s (%s)',
-    (url) => {
+    (url, _label) => {
       expect(() => validateWebhookUrlForDirectMode(url)).not.toThrow()
     },
   )
