@@ -193,4 +193,33 @@ describe('http transport', () => {
       await new Promise<void>((resolve) => runtime.server.close(() => resolve()))
     }
   })
+
+  it('logs persistent server errors with [UNKNOWN] when error has no code', async () => {
+    const adapter = {
+      lookupApiKeyForAuth: async () => ({
+        id: 'key_01',
+        organizationId: 'org_01',
+        scopes: ['*'],
+        revokedAt: null,
+        expiresAt: null,
+      }),
+    }
+    const runtime = await startHttpTransport({
+      client: makeMockClient(),
+      transport: 'http',
+      port: 0,
+      adapter: adapter as never,
+    })
+
+    const spy = vi.spyOn(serverModule, 'writeStderrWarning').mockImplementation(() => undefined)
+    try {
+      const err = new Error('network failure')
+      runtime.server.emit('error', err)
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('[UNKNOWN]'))
+      expect(spy).toHaveBeenCalledWith(expect.stringContaining('network failure'))
+    } finally {
+      spy.mockRestore()
+      await new Promise<void>((resolve) => runtime.server.close(() => resolve()))
+    }
+  })
 })

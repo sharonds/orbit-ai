@@ -109,7 +109,6 @@ export function sanitizeObjectDeep(value: unknown): unknown {
         .map(([entryKey, entryValue]) => [entryKey, sanitizeObjectDeep(entryValue)]),
     )
   }
-  // Primitives: strings longer than 5,000 chars are truncated; numbers, booleans, null, and undefined pass through unchanged.
   if (typeof value === 'string') {
     return value.length > 5_000 ? `${value.slice(0, 5_000 - 14)}...[truncated]` : value
   }
