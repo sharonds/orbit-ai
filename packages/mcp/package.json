@@ -1,0 +1,56 @@
+{
+  "name": "@orbit-ai/mcp",
+  "version": "0.1.0-alpha.0",
+  "description": "Model Context Protocol server for Orbit AI",
+  "keywords": [
+    "crm",
+    "ai-agents",
+    "orbit-ai",
+    "mcp",
+    "model-context-protocol"
+  ],
+  "author": "Orbit AI Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sharonds/orbit-ai.git",
+    "directory": "packages/mcp"
+  },
+  "homepage": "https://github.com/sharonds/orbit-ai#readme",
+  "bugs": {
+    "url": "https://github.com/sharonds/orbit-ai/issues"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@orbit-ai/api": "workspace:*",
+    "@orbit-ai/sdk": "workspace:*",
+    "zod": "^4.1.11"
+  }
+}

@@ -1,5 +1,5 @@
 export { createApi } from './create-api.js'
-export type { CreateApiOptions } from './config.js'
+export type { CreateApiOptions, RuntimeApiAdapter } from './config.js'
 export type { OrbitApiVariables } from './context.js'
 export { requestIdMiddleware } from './middleware/request-id.js'
 export { versionMiddleware } from './middleware/version.js'

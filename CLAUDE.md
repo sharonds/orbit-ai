@@ -2,14 +2,14 @@
 
 ## Project
 
-Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). Alpha release: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk` at `0.1.0-alpha.0` on main, 794 tests passing.
+Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). All 5 packages implemented: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`. 1,145 tests passing. Not yet published to npm.
 
 ## Commands
 
 ```bash
 pnpm install              # Install all workspace dependencies
 pnpm -r build             # Build all packages (core must build first)
-pnpm -r test              # Run all tests (vitest) — expect 794 passing
+pnpm -r test              # Run all tests (vitest) — expect 1145 passing
 pnpm -r typecheck         # TypeScript type checking
 pnpm -r lint              # Lint all packages
 
@@ -30,8 +30,6 @@ docs/             # Strategy, specs, security, review artifacts, implementation 
 ```
 
 **Not yet implemented** (separate plans, don't reference in code):
-- `packages/cli/` — `@orbit-ai/cli` (Commander.js + Ink)
-- `packages/mcp/` — `@orbit-ai/mcp` (MCP server)
 - `packages/integrations/` — Gmail, Google Calendar, Stripe connectors
 - `apps/docs/` — Documentation site
 
@@ -57,31 +55,36 @@ docs/             # Strategy, specs, security, review artifacts, implementation 
 - ZodError handling: use duck-type guard (`name === 'ZodError' && Array.isArray(issues)`), not `instanceof`
 - IdempotencyStore: in-memory default is single-instance only; multi-instance needs custom store via `CreateApiOptions.idempotencyStore`
 
-## Adding an Entity
+## Coding Conventions
 
-1. Drizzle schema in `packages/core/src/schema/<entity>.ts`
-2. Types in `packages/core/src/types.ts`
-3. Repository in `packages/core/src/entities/<entity>/repository.ts`
-4. Service in `packages/core/src/entities/<entity>/service.ts`
-5. Wire into `packages/core/src/services/index.ts` (createCoreServices)
-6. REST routes in `packages/api/src/routes/<entity>.ts`
-7. Register in `packages/api/src/create-api.ts`
-8. Resource in `packages/sdk/src/resources/<entity>.ts`
-9. Wire into `packages/sdk/src/client.ts`
-10. Export types (NOT class) from `packages/sdk/src/index.ts`
+**These rules apply to every implementation task. Include them verbatim in every sub-agent brief.**
 
-## Adding a Storage Adapter
+### Error handling
+- Always bind the error variable: `catch (err)` — never bare `catch {}`
+- Always log before swallowing: `writeStderrWarning(...)` or `console.error(...)` inside every catch
+- Defensive cast before accessing `.message`: `err instanceof Error ? err.message : String(err)`
+- Duck-type guards for cross-boundary errors (ZodError, OrbitApiError) — never `instanceof` for these
 
-1. Create `packages/core/src/adapters/<name>/adapter.ts`
-2. Implement `StorageAdapter` interface from `packages/core/src/adapters/interface.ts`
-3. Create database + schema setup files
-4. Export from `packages/core/src/index.ts`
+### Tests
+- Tests ship in the same commit as the feature — never in a separate pass
+- Every new code path gets at least one test: happy path + the most likely failure mode
+- Tests assert behavior (inputs/outputs), not implementation (which function was called)
 
-## Base Entities (12)
+### No deferrals
+- Any issue found on this branch is fixed on this branch — "pre-existing" is not a reason to skip
+- No "non-blocking" items left open — if it's worth noting, it's worth fixing now
 
-contacts, companies, deals, pipeline_stages, activities, products, payments, contracts, channels, sequences, tags, notes
+### Lint gates
+- `pnpm -r lint` must pass before committing — not just before the PR
+- Lint failures are convention violations, not style suggestions — fix them, don't suppress them
 
-Plus: users, webhooks, imports, schema-migrations, idempotency-keys, api-keys, organizations, organization-memberships, audit-logs, custom-field-definitions, webhook-deliveries
+### Sensitive data
+- `sanitizeObjectDeep` must be applied to all tool output that may contain user records
+- `isSensitiveKey` covers both snake_case (`api_key`, `refresh_token`) and camelCase (`accessToken`, `clientSecret`) — if adding a new sensitive field name, add it to both branches
+
+## Extension Reference
+
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for step-by-step guides on adding entities, adding storage adapters, and the full entity list.
 
 ## Environment Variables
 
@@ -94,10 +97,119 @@ See `.env.example` at repo root for the full list with comments.
 | `ORBIT_API_PORT` | No | Server port (default: 3000) |
 | `ORBIT_API_VERSION` | No | API version header (default: 2026-04-01) |
 
+## How We Work
+
+### Development Cycle
+
+Every feature follows this pipeline — no skipping steps:
+
+```
+1. BRAINSTORM   superpowers:brainstorming
+                → Collaborative spec with explicit approval gate before any code
+                → Output: docs/superpowers/specs/YYYY-MM-DD-<name>.md
+
+2. PLAN         superpowers:writing-plans
+                → Converts spec into step-by-step impl plan with exact file paths,
+                  full code blocks, TDD steps, and expected command output
+                → Output: docs/superpowers/plans/YYYY-MM-DD-<name>.md
+
+3. WORKTREE     superpowers:using-git-worktrees
+                → Isolated branch; verifies baseline tests pass before any changes
+
+4. EXECUTE      superpowers:subagent-driven-development
+                → One sub-agent per task; ~100-line slices; commit after each slice
+                → Every implementer brief MUST include the Coding Conventions section above
+                → Every implementer brief MUST define "done": build + tests + lint pass
+                → After each task: superpowers:requesting-code-review
+                → At trigger points: run the orbit-specific skill (see below)
+
+5. WRAP-UP      orbit-plan-wrap-up
+                → Update test baseline in CLAUDE.md, memory, package READMEs,
+                  CHANGELOG.md; verify spec coverage
+                → Run BEFORE pr-review-toolkit
+
+6. PRE-PR       pr-review-toolkit:review-pr
+                → Run all 6 specialist agents before creating the PR
+                → Key agents for orbit: type-design-analyzer, silent-failure-hunter,
+                  pr-test-analyzer
+                → Also run the pre-PR checklist (see below)
+
+6. PR           superpowers:finishing-a-development-branch
+                → Creates PR via gh pr create with summary and test plan
+
+7. POST-PR      code-review:code-review
+                → Posts structured GitHub review comment after PR is open
+```
+
+### Orbit-Specific Review Triggers
+
+These skills are **mandatory** at their trigger points — run in addition to the general flow:
+
+| Trigger | Skill |
+|---------|-------|
+| Schema change (new table, column, index) | `orbit-schema-change` |
+| New REST route or route modification | `orbit-api-sdk-parity` |
+| New/modified SDK resource | `orbit-api-sdk-parity` |
+| Completing a core slice or milestone | `orbit-core-slice-review` |
+| Any service/repo/adapter touching tenant data | `orbit-tenant-safety-review` |
+
+### Pre-PR Checklist
+
+Run this before step 5 (pr-review-toolkit). Fix any failure before proceeding.
+
+```bash
+# If packages/core/src changed:
+pnpm --filter @orbit-ai/core build
+
+# Always:
+pnpm -r build
+pnpm -r typecheck
+pnpm -r test        # must be ≥ current baseline (update baseline below after merges)
+pnpm -r lint
+```
+
+**Test baseline**: 1145 tests (update this number after each merge to main)
+
+**Before any npm-publish branch**: verify `CHANGELOG.md` is updated and `files` field in each `package.json` is correct (`dist/`, `README.md`, `LICENSE` only).
+
+### PR Review Tool — Which to Use When
+
+| When | Tool | Purpose |
+|------|------|---------|
+| After each task, during execution | `superpowers:requesting-code-review` | Plan compliance + code quality per task |
+| End of all tasks, before PR | `pr-review-toolkit:review-pr` | 6 specialist agents, confidence ≥80 threshold |
+| After PR is open on GitHub | `code-review:code-review` | Posts structured comment to the PR |
+
+Do not substitute one for another — they serve different points in the pipeline.
+
+### Review Stopping Criterion
+
+A task is **done** when: `pnpm -r build && pnpm -r test && pnpm -r lint` all pass, tests cover the new path, and `superpowers:requesting-code-review` finds no MEDIUM+ issues.
+
+The final `pr-review-toolkit:review-pr` should **confirm** quality, not **discover** it for the first time. If conventions are followed and commit-level reviews were run, one round of all 6 agents should be sufficient.
+
+Stop the PR review loop when:
+- All 6 agents report zero MEDIUM, HIGH, or CRITICAL issues
+- Only cosmetic suggestions remain — file these as issues, don't block the PR
+
+**Never** skip `superpowers:requesting-code-review` after each task slice — this is the root cause of multi-round catch-up loops. Conventions in sub-agent briefs prevent systematic violations. Commit-level review catches the remainder. The final review catches edge cases only.
+
+### Keeping This File Current
+
+Update this file when:
+- A new architectural rule is established (add to **Key Architecture Rules**)
+- A new entity or adapter is added (update step lists and entity name list in `docs/CONTRIBUTING.md`)
+- The test baseline changes after merges (update the number in **Pre-PR Checklist**)
+- The workflow itself changes based on what works / doesn't work
+
+When updating, keep sections concise. Prefer tables and numbered lists over prose.
+
+---
+
 ## Gotchas
 
 - This is NOT `smb-sale-crm-app` (the Next.js CRM app). This is the extracted infrastructure project.
-- All 3 packages are at `0.1.0-alpha.0` but NOT yet published to npm.
+- All 5 packages (`core`, `api`, `sdk`, `cli`, `mcp`) are implemented but NOT yet published to npm.
 - The `files` field in each package.json limits `pnpm pack` to `dist/`, `README.md`, `LICENSE`.
 - Core build script runs `rm -rf dist && tsc` to prevent stale test artifacts in tarballs.
 - SDK barrel does NOT export resource classes (ContactResource etc.) — only types. Consumers access resources via `client.contacts`, not by constructing classes.
