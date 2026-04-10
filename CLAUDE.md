@@ -2,7 +2,7 @@
 
 ## Project
 
-Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). All 5 packages implemented: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`. 1,145 tests passing. Not yet published to npm.
+Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). All 6 packages implemented: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`, `@orbit-ai/integrations`. 1,564 tests passing. Not yet published to npm.
 
 ## Commands
 
@@ -22,15 +22,17 @@ cd examples/nodejs-quickstart && pnpm start
 ## Monorepo Structure
 
 ```
-packages/core/    # @orbit-ai/core — schema engine, entities, adapters (Drizzle ORM)
-packages/sdk/     # @orbit-ai/sdk — TypeScript client SDK (HTTP + DirectTransport)
-packages/api/     # @orbit-ai/api — Hono REST API server
-examples/         # nodejs-quickstart (runnable E2E smoke test)
-docs/             # Strategy, specs, security, review artifacts, implementation plans
+packages/core/          # @orbit-ai/core — schema engine, entities, adapters (Drizzle ORM)
+packages/sdk/           # @orbit-ai/sdk — TypeScript client SDK (HTTP + DirectTransport)
+packages/api/           # @orbit-ai/api — Hono REST API server
+packages/cli/           # @orbit-ai/cli — Terminal interface (Commander.js)
+packages/mcp/           # @orbit-ai/mcp — Model Context Protocol server
+packages/integrations/  # @orbit-ai/integrations — Gmail, Google Calendar, Stripe connectors
+examples/               # nodejs-quickstart (runnable E2E smoke test)
+docs/                   # Strategy, specs, security, review artifacts, implementation plans
 ```
 
 **Not yet implemented** (separate plans, don't reference in code):
-- `packages/integrations/` — Gmail, Google Calendar, Stripe connectors
 - `apps/docs/` — Documentation site
 
 ## Tech Stack
@@ -168,7 +170,7 @@ pnpm -r test        # must be ≥ current baseline (update baseline below after 
 pnpm -r lint
 ```
 
-**Test baseline**: 1145 tests (update this number after each merge to main)
+**Test baseline**: 1564 tests (update this number after each merge to main)
 
 **Before any npm-publish branch**: verify `CHANGELOG.md` is updated and `files` field in each `package.json` is correct (`dist/`, `README.md`, `LICENSE` only).
 
