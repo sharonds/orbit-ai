@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { executeTool } from '../tools/registry.js'
 import { toToolError } from '../errors.js'
-import { toMcpIntegrationConnectionRead } from '../output/sensitive.js'
+import { sanitizeSecretBearingRecord, toMcpIntegrationConnectionRead } from '../output/sensitive.js'
 import { getTextContent, makeMockClient } from './helpers.js'
 
 describe('secret redaction', () => {
@@ -56,5 +56,30 @@ describe('secret redaction', () => {
   it('redacts jwt-like strings in tool errors', () => {
     const result = toToolError({ code: 'INTERNAL_ERROR', message: 'jwt eyJabc.def.ghi' })
     expect(getTextContent(result)).not.toContain('eyJabc.def.ghi')
+  })
+
+  it('sanitizeSecretBearingRecord strips sensitive keys in nested objects', () => {
+    const result = sanitizeSecretBearingRecord('contacts', {
+      id: 'contact_01',
+      name: 'Jane',
+      profile: {
+        api_key: 'sk_live_nested_secret',
+        bio: 'Developer',
+      },
+    }) as Record<string, unknown>
+    const profile = result.profile as Record<string, unknown>
+    expect(profile).not.toHaveProperty('api_key')
+    expect(profile.bio).toBe('Developer')
+    expect(result.name).toBe('Jane')
+  })
+
+  it('sanitizeSecretBearingRecord strips sensitive keys at all array depths', () => {
+    const result = sanitizeSecretBearingRecord('contacts', {
+      id: 'contact_01',
+      connections: [{ api_key: 'sk_leaked', provider: 'google' }],
+    }) as Record<string, unknown>
+    const connections = result.connections as Array<Record<string, unknown>>
+    expect(connections[0]).not.toHaveProperty('api_key')
+    expect(connections[0]?.provider).toBe('google')
   })
 })
