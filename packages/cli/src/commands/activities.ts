@@ -51,11 +51,11 @@ export function registerActivitiesCommand(program: Command): void {
     .description('Create a new activity')
     .requiredOption('--type <type>', 'Activity type (call, email, meeting, note, task)')
     .option('--subject <subject>', 'Activity subject')
-    .option('--description <description>', 'Activity description')
+    .option('--body <body>', 'Activity body text')
     .option('--contact-id <id>', 'Contact ID')
     .option('--company-id <id>', 'Company ID')
     .option('--deal-id <id>', 'Deal ID')
-    .option('--user-id <id>', 'User ID')
+    .option('--logged-by-user-id <id>', 'User ID who logged the activity')
     .option('--occurred-at <date>', 'Occurred at (ISO date)')
     .action(async (opts) => {
       const flags = program.opts() as GlobalFlags
@@ -63,11 +63,11 @@ export function registerActivitiesCommand(program: Command): void {
 
       const input: CreateActivityInput = { type: opts.type }
       if (opts.subject) input.subject = opts.subject
-      if (opts.description) input.description = opts.description
+      if (opts.body) input.body = opts.body
       if (opts.contactId) input.contact_id = opts.contactId
       if (opts.companyId) input.company_id = opts.companyId
       if (opts.dealId) input.deal_id = opts.dealId
-      if (opts.userId) input.user_id = opts.userId
+      if (opts.loggedByUserId) input.logged_by_user_id = opts.loggedByUserId
       if (opts.occurredAt) input.occurred_at = opts.occurredAt
 
       if (isJsonMode()) {
@@ -84,11 +84,11 @@ export function registerActivitiesCommand(program: Command): void {
     .description('Update an activity')
     .option('--type <type>', 'Activity type')
     .option('--subject <subject>', 'Activity subject')
-    .option('--description <description>', 'Activity description')
+    .option('--body <body>', 'Activity body text')
     .option('--contact-id <id>', 'Contact ID')
     .option('--company-id <id>', 'Company ID')
     .option('--deal-id <id>', 'Deal ID')
-    .option('--user-id <id>', 'User ID')
+    .option('--logged-by-user-id <id>', 'User ID who logged the activity')
     .option('--occurred-at <date>', 'Occurred at (ISO date)')
     .action(async (id, opts) => {
       const flags = program.opts() as GlobalFlags
@@ -97,11 +97,11 @@ export function registerActivitiesCommand(program: Command): void {
       const input: UpdateActivityInput = {}
       if (opts.type) input.type = opts.type
       if (opts.subject) input.subject = opts.subject
-      if (opts.description) input.description = opts.description
+      if (opts.body) input.body = opts.body
       if (opts.contactId) input.contact_id = opts.contactId
       if (opts.companyId) input.company_id = opts.companyId
       if (opts.dealId) input.deal_id = opts.dealId
-      if (opts.userId) input.user_id = opts.userId
+      if (opts.loggedByUserId) input.logged_by_user_id = opts.loggedByUserId
       if (opts.occurredAt) input.occurred_at = opts.occurredAt
 
       if (isJsonMode()) {
