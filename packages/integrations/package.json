@@ -1,0 +1,45 @@
+{
+  "name": "@orbit-ai/integrations",
+  "version": "0.1.0-alpha.0",
+  "description": "Integration connectors for Orbit AI CRM (Gmail, Google Calendar, Stripe)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@orbit-ai/core": "workspace:*",
+    "@orbit-ai/sdk": "workspace:*",
+    "googleapis": "^144.0.0",
+    "google-auth-library": "^9.0.0",
+    "stripe": "^17.0.0",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "Orbit AI Contributors",
+  "license": "MIT"
+}
