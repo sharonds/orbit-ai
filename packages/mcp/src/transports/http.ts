@@ -41,8 +41,8 @@ export async function startHttpTransport(options: StartMcpServerOptions): Promis
           ? { code: 'VALIDATION_FAILED', message: 'Malformed JSON body.' as const }
           : error,
       )
+      writeStderrWarning(`MCP HTTP ${statusCode} error: ${normalized.code}: ${normalized.message}`)
       if (res.headersSent) {
-        writeStderrWarning(`MCP HTTP transport error after headers sent: ${normalized.code}: ${normalized.message}`)
         return
       }
 
@@ -100,7 +100,6 @@ export async function authenticateRequest(
 ): Promise<
   | {
       ok: true
-      token: string
       key: NonNullable<Awaited<ReturnType<RuntimeApiAdapter['lookupApiKeyForAuth']>>>
     }
   | { ok: false; message: string }
@@ -127,7 +126,7 @@ export async function authenticateRequest(
     return { ok: false, message: 'API key has expired' }
   }
 
-  return { ok: true, token, key }
+  return { ok: true, key }
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {

@@ -4,6 +4,7 @@ import { defineTool, ObjectTypeSchema, sanitizeRecordPayload } from './schemas.j
 import { McpToolError, toToolSuccess } from '../errors.js'
 import { getClientResource } from './core-records.js'
 import { isDirectModeClient, writeDirectModeAuditLog } from '../server.js'
+import { sanitizeObjectDeep } from '../output/sensitive.js'
 
 const BulkOperationInput = z.object({
   object_type: ObjectTypeSchema,
@@ -68,5 +69,6 @@ export async function handleBulkOperation(client: OrbitClient, rawArgs: unknown)
         : operation,
     ),
   }
-  return toToolSuccess(await resource.batch(payload))
+  const rawResult = await resource.batch(payload)
+  return toToolSuccess(sanitizeObjectDeep(rawResult))
 }

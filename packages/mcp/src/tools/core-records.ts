@@ -125,7 +125,7 @@ export async function handleSearchRecords(client: OrbitClient, rawArgs: unknown)
   }
 
   const resource = getClientResource(client, args.object_type)
-  const data = await resource.search({
+  const rawResult = await resource.search({
     ...(query ? { query } : {}),
     ...(args.filter ? { filter: sanitizeRecordPayload(args.filter) } : {}),
     ...(args.sort ? { sort: args.sort } : {}),
@@ -133,7 +133,10 @@ export async function handleSearchRecords(client: OrbitClient, rawArgs: unknown)
     ...(args.cursor ? { cursor: args.cursor } : {}),
     ...(args.include ? { include: args.include } : {}),
   })
-  return toToolSuccess(data)
+  const sanitizedData = Array.isArray((rawResult as Record<string, unknown>)?.data)
+    ? { ...(rawResult as Record<string, unknown>), data: ((rawResult as Record<string, unknown>).data as unknown[]).map((r: unknown) => sanitizeSecretBearingRecord(String(args.object_type), r)) }
+    : rawResult
+  return toToolSuccess(sanitizedData)
 }
 
 export async function handleGetRecord(client: OrbitClient, rawArgs: unknown) {

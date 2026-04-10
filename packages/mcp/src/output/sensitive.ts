@@ -17,6 +17,11 @@ export interface McpIntegrationConnectionRead {
   last_failure_at?: string | null
   metadata_summary?: Record<string, string | number | boolean | null>
   credentials_redacted: true
+  // Prevent credential fields — any object carrying these cannot satisfy this type.
+  access_token?: never
+  refresh_token?: never
+  client_secret?: never
+  private_key?: never
   created_at?: string
   updated_at?: string
 }
@@ -82,7 +87,7 @@ export function toMcpIntegrationConnectionRead(record: Record<string, unknown>):
   }
 }
 
-function sanitizeObjectDeep(value: unknown): unknown {
+export function sanitizeObjectDeep(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => sanitizeObjectDeep(item))
   }
@@ -93,7 +98,7 @@ function sanitizeObjectDeep(value: unknown): unknown {
         .map(([entryKey, entryValue]) => [entryKey, sanitizeObjectDeep(entryValue)]),
     )
   }
-  // Primitives (strings, numbers, booleans, null) — truncate strings
+  // Primitives: strings are truncated at 5,000 chars; numbers, booleans, and null pass through unchanged.
   if (typeof value === 'string') {
     return value.length > 5_000 ? `${value.slice(0, 5_000 - 14)}...[truncated]` : value
   }
@@ -101,5 +106,5 @@ function sanitizeObjectDeep(value: unknown): unknown {
 }
 
 function isSensitiveKey(key: string): boolean {
-  return /(token|secret|password|private[_-]?key|client[_-]?secret|api[_-]?key)/i.test(key)
+  return /(token|secret|password|credential|private[_-]?key|client[_-]?secret|api[_-]?key)/i.test(key)
 }
