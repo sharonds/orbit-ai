@@ -36,13 +36,11 @@ export async function startHttpTransport(options: StartMcpServerOptions): Promis
       await handleAuthenticatedHttpRequest(req, res, options.client, options.adapter!, bindAddress)
     } catch (error) {
       const statusCode = error instanceof SyntaxError ? 400 : 500
-      const isBodyTooLarge =
-        error instanceof SyntaxError && error.message === 'Request body too large.'
       const normalized = normalizeToolError(
         statusCode === 400
           ? {
               code: 'VALIDATION_FAILED' as const,
-              message: isBodyTooLarge
+              message: (error as BodyTooLargeError).isBodyTooLarge
                 ? 'Request body exceeds the 1 MB limit.'
                 : 'Malformed JSON body.',
             }
@@ -149,6 +147,11 @@ export async function authenticateRequest(
   return { ok: true, key }
 }
 
+class BodyTooLargeError extends SyntaxError {
+  readonly isBodyTooLarge = true as const
+  constructor() { super('Request body exceeds the 1 MB limit.') }
+}
+
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
   let totalLength = 0
@@ -157,7 +160,7 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
     const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string)
     totalLength += buf.length
     if (totalLength > MAX_BODY) {
-      throw new SyntaxError('Request body too large.')
+      throw new BodyTooLargeError()
     }
     chunks.push(buf)
   }
