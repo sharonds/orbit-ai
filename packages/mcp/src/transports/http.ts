@@ -2,7 +2,6 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { OrbitClient } from '@orbit-ai/sdk'
 import type { RuntimeApiAdapter } from '@orbit-ai/api'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { normalizeToolError, toToolError } from '../errors.js'
 import type { StartMcpServerOptions } from '../server.js'
 import { createMcpServer, writeStderrWarning } from '../server.js'
@@ -42,7 +41,7 @@ export async function startHttpTransport(options: StartMcpServerOptions): Promis
           ? {
               code: 'VALIDATION_FAILED' as const,
               message: error instanceof BodyTooLargeError
-                ? error.message  // BODY_TOO_LARGE_MESSAGE
+                ? error.message
                 : 'Malformed JSON body.',
             }
           : error,
@@ -86,7 +85,10 @@ export async function handleAuthenticatedHttpRequest(
     try {
       res.writeHead(401, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ ok: false, error: { code: 'AUTH_INVALID', message: auth.message } }))
-    } catch {
+    } catch (writeErr) {
+      writeStderrWarning(
+        `MCP HTTP: failed to write 401 response [${(writeErr as NodeJS.ErrnoException).code ?? 'UNKNOWN'}]: ${(writeErr as Error).message}`,
+      )
       res.destroy()
     }
     return
@@ -110,7 +112,13 @@ export async function handleAuthenticatedHttpRequest(
   try {
     await transport.handleRequest(req, res, body)
   } finally {
-    try { await transport.close?.() } catch { /* best-effort */ }
+    try {
+      await transport.close?.()
+    } catch (closeErr) {
+      writeStderrWarning(
+        `MCP HTTP: transport.close() failed [${(closeErr as NodeJS.ErrnoException).code ?? 'UNKNOWN'}]: ${(closeErr as Error).message}`,
+      )
+    }
   }
 }
 
@@ -148,7 +156,8 @@ export async function authenticateRequest(
   try {
     key = await adapter.lookupApiKeyForAuth(hash)
   } catch (err) {
-    writeStderrWarning(`MCP HTTP: API key lookup failed: ${(err as Error).message}`)
+    const msg = err instanceof Error ? err.message : String(err)
+    writeStderrWarning(`MCP HTTP: API key lookup failed: ${msg}`)
     return { ok: false, message: 'Authentication service unavailable.' }
   }
   if (!key) {
@@ -166,9 +175,9 @@ export async function authenticateRequest(
 
 const BODY_TOO_LARGE_MESSAGE = 'Request body exceeds the 1 MB limit.'
 
-// Must extend SyntaxError: the catch block uses `instanceof SyntaxError` to
-// produce a 400 status. `instanceof BodyTooLargeError` then distinguishes this
-// from a JSON parse failure.
+// Extends SyntaxError so body-size violations are treated as client errors (400)
+// alongside JSON parse failures. `instanceof BodyTooLargeError` distinguishes this
+// case to preserve the specific error message.
 class BodyTooLargeError extends SyntaxError {
   constructor() { super(BODY_TOO_LARGE_MESSAGE) }
 }
