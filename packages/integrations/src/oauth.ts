@@ -73,8 +73,9 @@ export class GoogleOAuthHelper {
     provider: string,
     credentialStore: CredentialStore,
     connectionTracker?: ConnectionStatusTracker,
+    userId?: string,
   ): Promise<string> {
-    const creds = await credentialStore.getCredentials(orgId, provider)
+    const creds = await credentialStore.getCredentials(orgId, provider, userId)
     if (!creds) {
       throw createIntegrationError('AUTH_EXPIRED', `No credentials found for ${provider}`, { provider })
     }
@@ -96,8 +97,8 @@ export class GoogleOAuthHelper {
         accessToken: credentials.access_token ?? '',
         ...(credentials.expiry_date != null ? { expiresAt: credentials.expiry_date } : {}),
       }
-      // Save refreshed credentials (userId not known here — use default)
-      await credentialStore.saveCredentials(orgId, provider, '__default__', updated)
+      // Preserve the userId slot when saving refreshed credentials
+      await credentialStore.saveCredentials(orgId, provider, userId ?? '__default__', updated)
 
       if (connectionTracker) {
         await connectionTracker.recordSuccess(orgId, provider)
@@ -123,8 +124,9 @@ export class GoogleOAuthHelper {
     orgId: string,
     provider: string,
     credentialStore: CredentialStore,
+    userId?: string,
   ): Promise<void> {
-    const creds = await credentialStore.getCredentials(orgId, provider)
+    const creds = await credentialStore.getCredentials(orgId, provider, userId)
     if (creds?.refreshToken) {
       try {
         await this.oauth2Client.revokeToken(creds.refreshToken)
@@ -133,7 +135,7 @@ export class GoogleOAuthHelper {
         // Continue to delete local credentials even if revocation fails
       }
     }
-    await credentialStore.deleteCredentials(orgId, provider)
+    await credentialStore.deleteCredentials(orgId, provider, userId)
   }
 }
 

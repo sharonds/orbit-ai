@@ -48,8 +48,8 @@ export async function syncStripeCheckoutSession(
       external_id: session.id,
       metadata: {
         stripe_session_id: session.id,
-        stripe_payment_intent: checkoutSync.paymentIntentId,
-        stripe_customer_email: checkoutSync.customerEmail,
+        ...(checkoutSync.paymentIntentId != null ? { stripe_payment_intent: checkoutSync.paymentIntentId } : {}),
+        ...(checkoutSync.customerEmail != null ? { stripe_customer_email: checkoutSync.customerEmail } : {}),
       },
     }
 

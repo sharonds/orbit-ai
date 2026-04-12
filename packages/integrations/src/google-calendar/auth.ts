@@ -54,8 +54,9 @@ export async function getCalendarClient(
   config: CalendarConnectorConfig,
   credentialStore: CredentialStore,
   orgId: string,
+  userId?: string,
 ): Promise<{ accessToken: string }> {
   const helper = createCalendarOAuthHelper(config)
-  const accessToken = await helper.getValidAccessToken(orgId, CALENDAR_SLUG, credentialStore)
+  const accessToken = await helper.getValidAccessToken(orgId, CALENDAR_SLUG, credentialStore, undefined, userId)
   return { accessToken }
 }

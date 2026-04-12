@@ -244,6 +244,63 @@ describe('pollGmailInbox', () => {
     expect(mockSyncGmailMessage).toHaveBeenCalledWith(syncContext, makeGmailMessage('msg-2'))
   })
 
+  it('uses cursor as pageToken only — not as after: query parameter', async () => {
+    mockListMessages.mockResolvedValueOnce({
+      data: { messages: [], nextPageToken: undefined },
+      provider: 'gmail',
+    })
+
+    await pollGmailInbox(config, credentialStore, 'org_1', syncContext, 'cursor_abc')
+
+    const listCall = mockListMessages.mock.calls[0]![3] as Record<string, unknown>
+    expect(listCall['pageToken']).toBe('cursor_abc')
+    expect(listCall['query']).toBeUndefined()
+  })
+
+  it('returns last fully-processed page cursor when stopped early', async () => {
+    // First page: 2 messages, has next page
+    mockListMessages.mockResolvedValueOnce({
+      data: { messages: [{ id: 'm1', threadId: 't1' }, { id: 'm2', threadId: 't2' }], nextPageToken: 'page2' },
+      provider: 'gmail',
+    })
+    // getMessage mocks
+    mockGetMessage.mockResolvedValue({ data: makeGmailMessage('m1'), provider: 'gmail' })
+    mockSyncGmailMessage.mockResolvedValue({ activity: makeActivity('m1'), contactId: 'c_1', created: false })
+
+    const result = await pollGmailInbox(config, credentialStore, 'org_1', syncContext, undefined, { maxMessages: 2 })
+
+    // All allowed messages are exactly consumed with the page fully processed.
+    // newCursor should be 'page2' (the cursor for the NEXT unprocessed page)
+    expect(result.newCursor).toBe('page2')
+  })
+
+  it('returns current page cursor when maxMessages interrupts mid-page', async () => {
+    // Page has 3 messages but maxMessages=1 — we stop after first message
+    mockListMessages.mockResolvedValueOnce({
+      data: {
+        messages: [
+          { id: 'm1', threadId: 't1' },
+          { id: 'm2', threadId: 't2' },
+          { id: 'm3', threadId: 't3' },
+        ],
+        nextPageToken: 'page2',
+      },
+      provider: 'gmail',
+    })
+    mockGetMessage.mockResolvedValue({ data: makeGmailMessage('m1'), provider: 'gmail' })
+    mockSyncGmailMessage.mockResolvedValue({ activity: makeActivity('m1'), contactId: 'c_1', created: false })
+
+    const result = await pollGmailInbox(
+      config, credentialStore, 'org_1', syncContext, 'page1', { maxMessages: 1 },
+    )
+
+    expect(result.stoppedEarly).toBe(true)
+    expect(result.synced).toBe(1)
+    // Page was NOT fully processed — cursor should be 'page1' (where we started),
+    // not 'page2' (which would skip unprocessed messages m2/m3)
+    expect(result.newCursor).toBe('page1')
+  })
+
   it('wraps errors with toIntegrationError', async () => {
     mockListMessages.mockRejectedValueOnce(new Error('API rate limit exceeded 429'))
 

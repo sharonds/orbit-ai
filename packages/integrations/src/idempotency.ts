@@ -11,8 +11,13 @@ export interface IdempotencyCheckResult {
  * Generate a deterministic idempotency key from provider-specific inputs.
  * Uses SHA-256 to create a stable key from the inputs.
  */
+const INTEGRATION_METHOD = 'INTEGRATION' as const
+const INTEGRATION_PATH = '/integration/dedup' as const
+
 export function generateIdempotencyKey(parts: string[]): string {
-  return createHash('sha256').update(parts.join('::')).digest('hex').slice(0, 32)
+  // Length-prefix each part to prevent ambiguity: "3:abc5:hello" not "abc::hello"
+  const encoded = parts.map(p => `${p.length}:${p}`).join('')
+  return createHash('sha256').update(encoded).digest('hex').slice(0, 32)
 }
 
 /**
@@ -53,7 +58,7 @@ export class IdempotencyHelper {
     try {
       const ctx: OrbitAuthContext = { orgId: this.organizationId }
       const result = await this.repository.list(ctx, {
-        filter: { key },
+        filter: { key, method: INTEGRATION_METHOD, path: INTEGRATION_PATH },
         limit: 1,
       })
       return { isDuplicate: result.data.length > 0, key }
@@ -79,8 +84,8 @@ export class IdempotencyHelper {
         id: generateId('idempotencyKey'),
         organizationId: this.organizationId,
         key,
-        method: 'INTEGRATION',
-        path: '/integration/dedup',
+        method: INTEGRATION_METHOD,
+        path: INTEGRATION_PATH,
         requestHash: key,
         responseCode: null,
         responseBody: null,
