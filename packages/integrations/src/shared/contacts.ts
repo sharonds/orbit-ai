@@ -27,11 +27,27 @@ export async function findOrCreateContactFromEmail(
   email: string,
   options?: { autoCreate?: boolean },
 ): Promise<{ contactId: string; created: boolean }> {
+  if (!orgId || typeof orgId !== 'string') {
+    throw createIntegrationError(
+      'INVALID_INPUT',
+      'orgId must be a non-empty string',
+      { provider: 'integrations' },
+    )
+  }
+
   const normalizedEmail = email.toLowerCase().trim()
+
+  if (!normalizedEmail || !normalizedEmail.includes('@')) {
+    throw createIntegrationError(
+      'INVALID_INPUT',
+      `Invalid email address: '${email}'`,
+      { provider: 'integrations' },
+    )
+  }
 
   // Step 1: Exact email match within org
   const existing = await contactClient.list({
-    filter: { email: normalizedEmail },
+    filter: { email: normalizedEmail, organization_id: orgId },
   })
   if (existing.data.length > 0) {
     return { contactId: existing.data[0]!.id, created: false }
@@ -41,7 +57,7 @@ export async function findOrCreateContactFromEmail(
     throw createIntegrationError(
       'NOT_FOUND',
       `Contact not found for email ${normalizedEmail} and auto_create is disabled`,
-      { provider: 'gmail' },
+      { provider: 'integrations' },
     )
   }
 
@@ -50,7 +66,7 @@ export async function findOrCreateContactFromEmail(
   let companyId: string | undefined
   if (domain) {
     const companies = await companyClient.list({
-      filter: { domain },
+      filter: { domain, organization_id: orgId },
     })
     if (companies.data.length > 0) {
       companyId = companies.data[0]!.id

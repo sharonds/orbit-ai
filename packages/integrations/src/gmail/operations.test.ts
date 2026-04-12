@@ -257,6 +257,26 @@ describe('Gmail operations', () => {
       expect(decoded).toContain('Cc: b@b.com, c@c.com')
     })
 
+    it('strips CR/LF from MIME header fields to prevent injection', async () => {
+      const { sendMessage } = await loadOps()
+      mockMessagesSend.mockResolvedValue({ data: { id: 'msg_1', threadId: 'th_1' } })
+
+      await sendMessage(TEST_CONFIG, {} as never, ORG_ID, {
+        to: 'user@example.com',
+        subject: 'Hello\r\nBcc: attacker@evil.com',
+        body: 'test body',
+      })
+
+      const call = mockMessagesSend.mock.calls[0]![0] as Record<string, unknown>
+      const raw = (call['requestBody'] as Record<string, string>)['raw']
+      const decoded = Buffer.from(raw, 'base64url').toString('utf-8')
+
+      // The injected Bcc header must NOT appear as a separate header line
+      expect(decoded).not.toMatch(/^Bcc:/m)
+      // Subject should be on a single line (CR/LF stripped)
+      expect(decoded).toMatch(/^Subject: Hello Bcc: attacker@evil\.com$/m)
+    })
+
     it('includes threadId for replies', async () => {
       const { sendMessage } = await loadOps()
       mockMessagesSend.mockResolvedValue({

@@ -138,10 +138,62 @@ describe('findOrCreateContactFromEmail', () => {
 
     expect(result.contactId).toBe('c-upper')
     expect(result.created).toBe(false)
-    // Verify the filter used the normalized email
+    // Verify the filter used the normalized email and included organization_id
     expect(contactClient.list).toHaveBeenCalledWith({
-      filter: { email: 'alice@example.com' },
+      filter: { email: 'alice@example.com', organization_id: 'org-1' },
     })
+  })
+
+  it('passes organization_id in contact lookup filter', async () => {
+    const contactClient: ContactLookupClient = {
+      list: vi.fn().mockResolvedValue({ data: [{ id: 'c_1', email: 'a@b.com' }] }),
+      create: vi.fn(),
+    }
+    const companyClient: CompanyLookupClient = {
+      list: vi.fn().mockResolvedValue({ data: [] }),
+      create: vi.fn(),
+    }
+
+    await findOrCreateContactFromEmail(contactClient, companyClient, 'org_abc', 'a@b.com')
+
+    expect(contactClient.list).toHaveBeenCalledWith({
+      filter: { email: 'a@b.com', organization_id: 'org_abc' },
+    })
+  })
+
+  it('passes organization_id in company lookup filter', async () => {
+    const contactClient: ContactLookupClient = {
+      list: vi.fn().mockResolvedValue({ data: [] }),
+      create: vi.fn().mockResolvedValue({ id: 'c_new' }),
+    }
+    const companyClient: CompanyLookupClient = {
+      list: vi.fn().mockResolvedValue({ data: [{ id: 'co_1', domain: 'b.com' }] }),
+      create: vi.fn(),
+    }
+
+    await findOrCreateContactFromEmail(contactClient, companyClient, 'org_abc', 'a@b.com')
+
+    expect(companyClient.list).toHaveBeenCalledWith({
+      filter: { domain: 'b.com', organization_id: 'org_abc' },
+    })
+  })
+
+  it('throws INVALID_INPUT for empty email', async () => {
+    const contactClient: ContactLookupClient = { list: vi.fn(), create: vi.fn() }
+    const companyClient: CompanyLookupClient = { list: vi.fn(), create: vi.fn() }
+
+    await expect(
+      findOrCreateContactFromEmail(contactClient, companyClient, 'org_1', ''),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
+
+  it('throws INVALID_INPUT when orgId is empty string', async () => {
+    const contactClient: ContactLookupClient = { list: vi.fn(), create: vi.fn() }
+    const companyClient: CompanyLookupClient = { list: vi.fn(), create: vi.fn() }
+
+    await expect(
+      findOrCreateContactFromEmail(contactClient, companyClient, '', 'a@b.com'),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' })
   })
 
   it('cross-org isolation — same email in different orgs gets separate lookup calls', async () => {
@@ -174,12 +226,12 @@ describe('findOrCreateContactFromEmail', () => {
     expect(resultB.created).toBe(true)
     expect(resultB.contactId).toBe('new-contact-shared@example.com')
 
-    // Each client received exactly one list call with the same filter
+    // Each client received exactly one list call scoped to their respective org
     expect(orgAContactClient.list).toHaveBeenCalledWith({
-      filter: { email: 'shared@example.com' },
+      filter: { email: 'shared@example.com', organization_id: 'org-a' },
     })
     expect(orgBContactClient.list).toHaveBeenCalledWith({
-      filter: { email: 'shared@example.com' },
+      filter: { email: 'shared@example.com', organization_id: 'org-b' },
     })
 
     // Org A never called create, Org B did
