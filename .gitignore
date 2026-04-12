@@ -63,7 +63,7 @@ temp/
 
 # Internal planning docs — kept locally, not tracked in the public repo
 docs/
-# Re-allow the two public security files re-added in Task 2
+# Re-allow public security documentation
 !docs/security/
 !docs/security/security-architecture.md
 !docs/security/database-hardening-checklist.md
