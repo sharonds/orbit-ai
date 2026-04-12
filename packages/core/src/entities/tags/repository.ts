@@ -1,3 +1,5 @@
+import { sql } from 'drizzle-orm'
+
 import type { OrbitAuthContext, OrbitDatabase, StorageAdapter } from '../../adapters/interface.js'
 import { createTxBoundAdapter } from '../../adapters/tx-bound-adapter.js'
 import { createTenantPostgresRepository, fromPostgresDate } from '../../repositories/postgres/shared.js'
@@ -15,6 +17,8 @@ export interface TagRepository {
   delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
   list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<TagRecord>>
   search(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<TagRecord>>
+  /** Batch fetch tags by IDs in a single query. Returns only found records (no nulls). */
+  listByIds(ctx: OrbitAuthContext, ids: string[]): Promise<TagRecord[]>
   /** See `SequenceRepository.withDatabase` — same contract. */
   withDatabase(txDb: OrbitDatabase): TagRepository
 }
@@ -86,6 +90,11 @@ export function createInMemoryTagRepository(seed: TagRecord[] = []): TagReposito
         defaultSort: TAG_DEFAULT_SORT,
       })
     },
+    async listByIds(ctx, ids) {
+      if (ids.length === 0) return []
+      const idSet = new Set(ids)
+      return scopedRows(ctx).filter((record) => idSet.has(record.id))
+    },
     withDatabase() {
       return repo
     },
@@ -130,6 +139,25 @@ export function createSqliteTagRepository(adapter: StorageAdapter): TagRepositor
   })
   return {
     ...base,
+    async listByIds(ctx, ids) {
+      if (ids.length === 0) return []
+      const orgId = assertOrgContext(ctx)
+      const idPlaceholders = sql.join(ids.map((id) => sql`${id}`), sql`, `)
+      const statement = sql`select * from tags where organization_id = ${orgId} and id in (${idPlaceholders})`
+      return adapter.withTenantContext(ctx, async (db) => {
+        const rows = await db.query<Record<string, unknown>>(statement)
+        return rows.map((row) =>
+          tagRecordSchema.parse({
+            id: row.id,
+            organizationId: row.organization_id,
+            name: row.name,
+            color: row.color ?? null,
+            createdAt: fromSqliteDate(row.created_at),
+            updatedAt: fromSqliteDate(row.updated_at),
+          }),
+        )
+      })
+    },
     withDatabase(txDb) {
       return createSqliteTagRepository(createTxBoundAdapter(adapter, txDb))
     },
@@ -173,6 +201,25 @@ export function createPostgresTagRepository(adapter: StorageAdapter): TagReposit
   })
   return {
     ...base,
+    async listByIds(ctx, ids) {
+      if (ids.length === 0) return []
+      const orgId = assertOrgContext(ctx)
+      const idPlaceholders = sql.join(ids.map((id) => sql`${id}`), sql`, `)
+      const statement = sql`select * from tags where organization_id = ${orgId} and id in (${idPlaceholders})`
+      return adapter.withTenantContext(ctx, async (db) => {
+        const rows = await db.query<Record<string, unknown>>(statement)
+        return rows.map((row) =>
+          tagRecordSchema.parse({
+            id: row.id,
+            organizationId: row.organization_id,
+            name: row.name,
+            color: row.color ?? null,
+            createdAt: fromPostgresDate(row.created_at),
+            updatedAt: fromPostgresDate(row.updated_at),
+          }),
+        )
+      })
+    },
     withDatabase(txDb) {
       return createPostgresTagRepository(createTxBoundAdapter(adapter, txDb))
     },

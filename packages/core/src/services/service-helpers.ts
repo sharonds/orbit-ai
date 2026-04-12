@@ -1,4 +1,4 @@
-import { createCursorPayload, decodeCursor, encodeCursor } from '../query/cursor.js'
+import { createCursorPayload, decodeCursor, decodeCursorWithOrgCheck, encodeCursor } from '../query/cursor.js'
 import { assertOrbitId } from '../ids/parse-id.js'
 import { normalizeSearchQuery } from '../query/list-query.js'
 import { createOrbitError } from '../types/errors.js'
@@ -158,6 +158,7 @@ export function runArrayQuery<T extends { id: string } & Record<string, unknown>
     searchableFields: string[]
     filterableFields?: string[]
     defaultSort?: SortSpec[]
+    orgId?: string
   },
 ): InternalPaginatedResult<T> {
   const normalized = normalizeSearchQuery(query, {
@@ -172,7 +173,10 @@ export function runArrayQuery<T extends { id: string } & Record<string, unknown>
 
   let startIndex = 0
   if (normalized.cursor) {
-    const cursor = decodeCursor(normalized.cursor)
+    const cursor =
+      options.orgId !== undefined
+        ? decodeCursorWithOrgCheck(normalized.cursor, options.orgId)
+        : decodeCursor(normalized.cursor)
     const cursorIndex = result.findIndex((record) => record.id === cursor.id)
 
     if (cursorIndex < 0) {
@@ -197,6 +201,7 @@ export function runArrayQuery<T extends { id: string } & Record<string, unknown>
       hasMore && lastRecord
         ? encodeCursor(
             createCursorPayload({
+              ...(options.orgId !== undefined ? { orgId: options.orgId } : {}),
               id: lastRecord.id,
               sort: normalized.sort,
               values: Object.fromEntries(

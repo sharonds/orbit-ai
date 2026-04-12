@@ -1,5 +1,5 @@
 import type { AdapterDialect, OrbitAuthContext } from '../adapters/interface.js'
-import { decodeCursor } from '../query/cursor.js'
+import { decodeCursorWithOrgCheck, type CursorPayload } from '../query/cursor.js'
 import { normalizeListQuery, type NormalizedListQuery } from '../query/list-query.js'
 import type { SortSpec } from '../types/api.js'
 import {
@@ -20,7 +20,7 @@ export interface RepositoryListPlan {
   include: string[]
   limit: number
   sort: SortSpec[]
-  cursor: ReturnType<typeof decodeCursor> | null
+  cursor: CursorPayload | null
   requiresAppLevelTenantFilter: boolean
   requiresPostgresTenantContext: boolean
 }
@@ -55,7 +55,7 @@ export function buildRepositoryListPlan(input: {
     include: normalized.include,
     limit: normalized.limit,
     sort: normalized.sort,
-    cursor: normalized.cursor ? decodeCursor(normalized.cursor) : null,
+    cursor: normalized.cursor ? decodeCursorWithOrgCheck(normalized.cursor, input.context.orgId) : null,
     requiresAppLevelTenantFilter: scopePlan.requiresAppLevelTenantFilter,
     requiresPostgresTenantContext: scopePlan.requiresPostgresTenantContext,
   }

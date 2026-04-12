@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createInMemoryActivityRepository } from '../entities/activities/repository.js'
 import { createInMemoryCompanyRepository } from '../entities/companies/repository.js'
@@ -202,5 +202,94 @@ describe('contact context service', () => {
     const context = await service.getContactContext(ctx, { contactId })
     expect(context?.tags).toHaveLength(1)
     expect(context?.tags[0]).toEqual({ id: tagId, name: 'VIP', color: '#gold' })
+  })
+
+  it('uses listByIds for tag lookup — single batch call, never N individual get() calls', async () => {
+    const contactId = 'contact_01ARYZ6S41YYYYYYYYYYYYYYYY'
+    const contacts = createInMemoryContactRepository([
+      {
+        id: contactId,
+        organizationId: ctx.orgId,
+        name: 'Taylor',
+        email: 'taylor@example.com',
+        phone: null,
+        title: null,
+        sourceChannel: null,
+        status: 'lead',
+        assignedToUserId: null,
+        companyId: null,
+        leadScore: 0,
+        isHot: false,
+        lastContactedAt: null,
+        customFields: {},
+        createdAt: new Date('2026-04-02T12:00:00.000Z'),
+        updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+      },
+    ])
+
+    const tagId1 = 'tag_01ARYZ6S41YYYYYYYYYYYYYYYA'
+    const tagId2 = 'tag_01ARYZ6S41YYYYYYYYYYYYYYZZ'
+    const tags = createInMemoryTagRepository([
+      {
+        id: tagId1,
+        organizationId: ctx.orgId,
+        name: 'VIP',
+        color: '#gold',
+        createdAt: new Date('2026-04-02T12:00:00.000Z'),
+        updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+      },
+      {
+        id: tagId2,
+        organizationId: ctx.orgId,
+        name: 'Hot Lead',
+        color: '#red',
+        createdAt: new Date('2026-04-02T12:00:00.000Z'),
+        updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+      },
+    ])
+
+    // Spy to verify batch path is used (no individual get calls)
+    const listByIdsSpy = vi.spyOn(tags, 'listByIds')
+    const getSpy = vi.spyOn(tags, 'get')
+
+    const entityTags = createInMemoryEntityTagRepository([
+      {
+        id: 'etag_01ARYZ6S41YYYYYYYYYYYYYYYA',
+        organizationId: ctx.orgId,
+        tagId: tagId1,
+        entityType: 'contacts',
+        entityId: contactId,
+        createdAt: new Date('2026-04-02T12:00:00.000Z'),
+        updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+      },
+      {
+        id: 'etag_01ARYZ6S41YYYYYYYYYYYYYYZZ',
+        organizationId: ctx.orgId,
+        tagId: tagId2,
+        entityType: 'contacts',
+        entityId: contactId,
+        createdAt: new Date('2026-04-02T12:00:00.000Z'),
+        updatedAt: new Date('2026-04-02T12:00:00.000Z'),
+      },
+    ])
+
+    const service = createContactContextService({
+      contacts,
+      companies: createInMemoryCompanyRepository(),
+      deals: createInMemoryDealRepository(),
+      entityTags,
+      tags,
+    })
+
+    const context = await service.getContactContext(ctx, { contactId })
+
+    // All tags are returned correctly
+    expect(context?.tags).toHaveLength(2)
+    expect(context?.tags.map((t) => t.name).sort()).toEqual(['Hot Lead', 'VIP'])
+
+    // listByIds called exactly once — not N individual get() calls
+    expect(listByIdsSpy).toHaveBeenCalledTimes(1)
+    expect(listByIdsSpy).toHaveBeenCalledWith(ctx, expect.arrayContaining([tagId1, tagId2]))
+    expect(getSpy).not.toHaveBeenCalled()
   })
 })

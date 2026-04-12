@@ -175,6 +175,7 @@ export function createTenantPostgresRepository<
       return runArrayQuery(await listScopedRows(ctx), query, {
         ...options,
         ...(config.filterableFields ? { filterableFields: config.filterableFields } : {}),
+        orgId: ctx.orgId,
       })
     },
     async search(ctx, query) {
@@ -185,6 +186,7 @@ export function createTenantPostgresRepository<
       return runArrayQuery(await listScopedRows(ctx), query, {
         ...options,
         ...(config.filterableFields ? { filterableFields: config.filterableFields } : {}),
+        orgId: ctx.orgId,
       })
     },
   }

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### @orbit-ai/api + @orbit-ai/core — Post-Stack Audit MEDIUM Fixes
+
+- **Fixed** (M-SEC-1): Migration preview/apply routes now validate body with Zod `.safeParse()`, returning 400 `VALIDATION_FAILED` on empty/malformed input
+- **Fixed** (M-SEC-2): Cursor payload embeds `orgId`; `decodeCursorWithOrgCheck` verifies org match on decode — propagated to all tenant-scoped repository paths (sqlite, postgres, in-memory)
+- **Fixed** (M-SEC-3): Rate limiter eviction changed from O(n) linear scan to O(1) FIFO via Map insertion order
+- **Fixed** (M-SCALE-3): Contact context tag lookup replaced 100-way `Promise.all(get())` with single `listByIds()` batch call across all 3 adapters
+
 ### @orbit-ai/integrations — Review Fixes (18 issues from PRs #29–#34)
 
 #### Security

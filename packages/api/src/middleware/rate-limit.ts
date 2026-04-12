@@ -17,6 +17,16 @@ export function _resetRateLimitBuckets(): void {
   buckets.clear()
 }
 
+/** Expose MAX_BUCKETS for testing only. */
+export const _MAX_BUCKETS = MAX_BUCKETS
+
+/** Seed buckets with dummy entries for testing only. */
+export function _seedBucketsForTest(count: number): void {
+  for (let i = 0; i < count; i++) {
+    buckets.set(`__seed_${i}`, { tokens: 100, lastRefill: Date.now() })
+  }
+}
+
 export interface RateLimitOptions {
   /** Max requests per window. Defaults to 100. */
   limit?: number
@@ -38,17 +48,10 @@ export function rateLimitMiddleware(opts?: RateLimitOptions): MiddlewareHandler 
       bucket = { tokens: limit, lastRefill: now }
       buckets.set(key, bucket)
 
-      // Evict oldest bucket if at capacity
+      // Evict oldest bucket if at capacity (O(1) via Map insertion order)
       if (buckets.size > MAX_BUCKETS) {
-        let oldestKey = ''
-        let oldestTime = Infinity
-        for (const [k, v] of buckets) {
-          if (v.lastRefill < oldestTime) {
-            oldestTime = v.lastRefill
-            oldestKey = k
-          }
-        }
-        if (oldestKey) buckets.delete(oldestKey)
+        const firstKey = buckets.keys().next().value
+        if (firstKey !== undefined) buckets.delete(firstKey)
       }
     }
 
