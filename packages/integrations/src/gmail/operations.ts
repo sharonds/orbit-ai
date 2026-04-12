@@ -112,6 +112,13 @@ export async function getMessage(
 }
 
 /**
+ * Strip CR/LF characters from MIME header values to prevent header injection.
+ */
+function sanitizeMimeHeader(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ').trim()
+}
+
+/**
  * Send a Gmail message.
  * Constructs an RFC 2822 MIME message and base64url-encodes it per Gmail API spec.
  */
@@ -126,13 +133,13 @@ export async function sendMessage(
 
     // Build RFC 2822 MIME message
     const mimeLines: string[] = [
-      `To: ${input.to}`,
-      `Subject: ${input.subject}`,
+      `To: ${sanitizeMimeHeader(input.to)}`,
+      `Subject: ${sanitizeMimeHeader(input.subject)}`,
       'Content-Type: text/plain; charset=utf-8',
       'MIME-Version: 1.0',
     ]
     if (input.cc && input.cc.length > 0) {
-      mimeLines.push(`Cc: ${input.cc.join(', ')}`)
+      mimeLines.push(`Cc: ${input.cc.map(sanitizeMimeHeader).join(', ')}`)
     }
     mimeLines.push('', input.body)
     const mimeString = mimeLines.join('\r\n')
