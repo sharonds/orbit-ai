@@ -16,6 +16,8 @@ describe('isSensitiveIntegrationKey', () => {
     'private_key',
     'signature',
     'credential',
+    'api_key',
+    'client_secret',
   ])('"%s" → true (exact match)', (key) => {
     expect(isSensitiveIntegrationKey(key)).toBe(true)
   })
@@ -129,11 +131,35 @@ describe('sanitizeIntegrationMetadata', () => {
     expect(result['created_at']).toBe('2026-01-01T00:00:00Z')
   })
 
-  it('preserves arrays as-is (does not recurse into array elements)', () => {
+  it('preserves primitive arrays unchanged', () => {
     const obj = { scopes: ['read', 'write'], count: 2 }
     const result = sanitizeIntegrationMetadata(obj)
     expect(result['scopes']).toEqual(['read', 'write'])
     expect(result['count']).toBe(2)
+  })
+
+  it('sanitizes sensitive keys inside array elements', () => {
+    const obj = {
+      connections: [
+        { name: 'gmail', accessToken: 'ya29.secret', status: 'active' },
+        { name: 'stripe', apiKey: 'sk_live_abc', status: 'active' },
+      ],
+    }
+    const result = sanitizeIntegrationMetadata(obj)
+    const connections = result['connections'] as Array<Record<string, unknown>>
+    expect(connections[0]!['accessToken']).toBe('[REDACTED]')
+    expect(connections[1]!['apiKey']).toBe('[REDACTED]')
+    expect(connections[0]!['name']).toBe('gmail')
+  })
+
+  it('sanitizes sensitive keys inside nested arrays (arrays within arrays)', () => {
+    const obj = {
+      data: [[{ token: 'secret_value', name: 'test' }]],
+    }
+    const result = sanitizeIntegrationMetadata(obj)
+    const inner = (result['data'] as unknown[][])[0]! as Array<Record<string, unknown>>
+    expect(inner[0]!['token']).toBe('[REDACTED]')
+    expect(inner[0]!['name']).toBe('test')
   })
 
   it('returns empty object when depth exceeds 10 (cycle protection)', () => {

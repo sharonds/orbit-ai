@@ -32,7 +32,11 @@ export function registerIntegrationSubcommands(program: Command, plugins: Integr
     if (plugin.options) {
       for (const opt of plugin.options) {
         if (opt.defaultValue !== undefined) {
-          sub.option(opt.flags, opt.description, String(opt.defaultValue))
+          sub.option(
+            opt.flags,
+            opt.description,
+            typeof opt.defaultValue === 'boolean' ? opt.defaultValue : String(opt.defaultValue),
+          )
         } else {
           sub.option(opt.flags, opt.description)
         }

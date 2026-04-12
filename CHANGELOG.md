@@ -9,6 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### @orbit-ai/integrations — Review Fixes (18 issues from PRs #29–#34)
+
+#### Security
+- **Fixed**: `findOrCreateContactFromEmail` now passes `organization_id` in contact and company list filters (cross-org bleed prevention)
+- **Fixed**: MIME header injection prevented via `sanitizeMimeHeader()` — strips CR/LF from To/Subject/Cc
+- **Fixed**: Email and orgId validation guards added to shared contact helper
+
+#### Data Integrity
+- **Fixed**: Gmail polling cursor used as `pageToken` only (not `after:` query); `stoppedEarly` tracks `lastCompletedPageToken` correctly
+- **Fixed**: `userId` threaded through OAuth credential read/write path (getValidAccessToken → getGmailClient/getCalendarClient → all operations)
+- **Fixed**: Schema migration policies use `DROP IF EXISTS` before `CREATE`; `connection_id` FK added with `ON DELETE CASCADE`
+- **Fixed**: Idempotency keys use length-prefixed encoding; filter narrowed to include `method`+`path`
+- **Fixed**: Stripe sync metadata uses conditional spreads to avoid `undefined` values
+
+#### Runtime
+- **Fixed**: Boolean CLI option defaults preserved (not stringified via `String(false)`)
+- **Fixed**: `maxAttempts` validated as positive integer >= 1 in retry helper
+- **Fixed**: `sanitizeIntegrationMetadata` recurses into arrays and nested arrays
+- **Fixed**: Stripe CLI `--amount` validated (NaN/negative/zero rejected)
+- **Fixed**: `commander` moved from `devDependencies` to `dependencies`
+- **Fixed**: `api_key` and `client_secret` added to `SENSITIVE_KEY_PATTERN` (snake_case coverage)
+
+### @orbit-ai/mcp
+- **Fixed**: Activities tool fields renamed `description`→`body`, `user_id`→`logged_by_user_id`; `.parse()`→`.safeParse()`
+
+### @orbit-ai/sdk
+- **Fixed**: Missing `await` in wave2 activity test
+
+### @orbit-ai/cli
+- **Fixed**: Boolean option defaults preserved in integration CLI commands
+
 ### @orbit-ai/integrations
 - **Added**: Package scaffold with plugin contract and error model
 - **Added**: Integration tables (integration_connections, integration_sync_state) with RLS

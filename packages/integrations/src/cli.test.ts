@@ -164,4 +164,65 @@ describe('registerIntegrationCommands', () => {
   it('is a function (shape check)', () => {
     expect(typeof registerIntegrationCommands).toBe('function')
   })
+
+  it('preserves boolean false default — does not stringify to "false"', () => {
+    const { Command } = require('commander') as typeof import('commander')
+    const program = new Command()
+    program.command('integrations').description('Manage integrations')
+
+    const boolCmd: IntegrationCommand = {
+      name: 'stripe',
+      description: 'Stripe integration',
+      action: vi.fn(),
+      options: [
+        { flags: '--live', description: 'Use live mode', defaultValue: false },
+      ],
+    }
+    const plugin = makePlugin('stripe', { commands: [boolCmd] })
+    const registry = new IntegrationRegistry()
+    registry.register(plugin)
+
+    const config = { integrations: { stripe: { enabled: true, config: {} } } }
+    registerIntegrationCommands(program, registry, config)
+
+    const intCmd = program.commands.find((c: { name: () => string }) => c.name() === 'integrations')
+    const stripeCmd = intCmd?.commands.find((c: { name: () => string }) => c.name() === 'stripe')
+    expect(stripeCmd).toBeDefined()
+
+    const liveOption = stripeCmd!.options.find((o: { flags: string }) => o.flags === '--live')
+    expect(liveOption).toBeDefined()
+    // Must be boolean false, NOT the string 'false' (which is truthy)
+    expect(liveOption!.defaultValue).toBe(false)
+    expect(liveOption!.defaultValue).not.toBe('false')
+  })
+
+  it('preserves boolean true default — does not stringify to "true"', () => {
+    const { Command } = require('commander') as typeof import('commander')
+    const program = new Command()
+    program.command('integrations').description('Manage integrations')
+
+    const boolCmd: IntegrationCommand = {
+      name: 'gmail',
+      description: 'Gmail integration',
+      action: vi.fn(),
+      options: [
+        { flags: '--auto-sync', description: 'Enable auto sync', defaultValue: true },
+      ],
+    }
+    const plugin = makePlugin('gmail', { commands: [boolCmd] })
+    const registry = new IntegrationRegistry()
+    registry.register(plugin)
+
+    const config = { integrations: { gmail: { enabled: true, config: {} } } }
+    registerIntegrationCommands(program, registry, config)
+
+    const intCmd = program.commands.find((c: { name: () => string }) => c.name() === 'integrations')
+    const gmailCmd = intCmd?.commands.find((c: { name: () => string }) => c.name() === 'gmail')
+    expect(gmailCmd).toBeDefined()
+
+    const autoSyncOption = gmailCmd!.options.find((o: { flags: string }) => o.flags === '--auto-sync')
+    expect(autoSyncOption).toBeDefined()
+    expect(autoSyncOption!.defaultValue).toBe(true)
+    expect(autoSyncOption!.defaultValue).not.toBe('true')
+  })
 })
