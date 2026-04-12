@@ -18,6 +18,10 @@ export async function withBoundedRetry<T>(
   const maxDelayMs = options.maxDelayMs ?? 10_000
   const jitter = options.jitter ?? true
 
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+    throw new Error('maxAttempts must be a positive integer >= 1')
+  }
+
   let lastError: unknown
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {

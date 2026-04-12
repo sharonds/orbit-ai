@@ -78,7 +78,11 @@ export function registerIntegrationCommands(
     if (cmd.options) {
       for (const opt of cmd.options) {
         if (opt.defaultValue != null) {
-          sub.option(opt.flags, opt.description, String(opt.defaultValue))
+          sub.option(
+            opt.flags,
+            opt.description,
+            typeof opt.defaultValue === 'boolean' ? opt.defaultValue : String(opt.defaultValue),
+          )
         } else {
           sub.option(opt.flags, opt.description)
         }

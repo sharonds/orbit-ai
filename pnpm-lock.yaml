@@ -128,6 +128,9 @@ importers:
       '@orbit-ai/sdk':
         specifier: workspace:*
         version: link:../sdk
+      commander:
+        specifier: ^12.0.0
+        version: 12.1.0
       drizzle-orm:
         specifier: ^0.44.5
         version: 0.44.7(@types/pg@8.20.0)(pg@8.20.0)
@@ -144,9 +147,6 @@ importers:
         specifier: ^4.1.11
         version: 4.3.6
     devDependencies:
-      commander:
-        specifier: ^12.0.0
-        version: 12.1.0
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.12.0)(tsx@4.21.0)

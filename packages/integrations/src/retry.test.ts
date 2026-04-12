@@ -83,6 +83,24 @@ describe('withBoundedRetry', () => {
     ).rejects.toThrow('Bad Gateway')
     expect(fn).toHaveBeenCalledTimes(5)
   })
+
+  it('throws immediately when maxAttempts is 0', async () => {
+    await expect(
+      withBoundedRetry(() => Promise.resolve('ok'), { maxAttempts: 0, baseDelayMs: 0, jitter: false }),
+    ).rejects.toThrow('maxAttempts must be a positive integer >= 1')
+  })
+
+  it('throws immediately when maxAttempts is negative', async () => {
+    await expect(
+      withBoundedRetry(() => Promise.resolve('ok'), { maxAttempts: -1, baseDelayMs: 0, jitter: false }),
+    ).rejects.toThrow('maxAttempts must be a positive integer >= 1')
+  })
+
+  it('throws immediately when maxAttempts is fractional', async () => {
+    await expect(
+      withBoundedRetry(() => Promise.resolve('ok'), { maxAttempts: 0.5, baseDelayMs: 0, jitter: false }),
+    ).rejects.toThrow('maxAttempts must be a positive integer >= 1')
+  })
 })
 
 describe('isRetryableError', () => {
