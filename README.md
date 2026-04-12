@@ -3,24 +3,18 @@
 > **CRM infrastructure for AI agents and developers.** Packages, not a product.
 > (Think: "Resend for CRM" — type-safe primitives, not a UI.)
 
-**Status**: pre-alpha. First npm release (`0.1.0-alpha`) targets `@orbit-ai/core`,
-`@orbit-ai/api`, and `@orbit-ai/sdk`. CLI, MCP server, and integrations (Gmail,
-Google Calendar, Stripe) are next.
+**Status**: `0.1.0-alpha`. All six packages are implemented and tested. Not yet published to npm — install from source (see [Development](#development)).
 
-## What's in this repo today
+## Packages
 
 | Package | Status | Purpose |
 |---|---|---|
 | [`@orbit-ai/core`](packages/core) | ✅ alpha | Schema engine, entities, storage adapters (SQLite, Postgres, Supabase, Neon), tenant context, migrations |
 | [`@orbit-ai/api`](packages/api) | ✅ alpha | Hono-based REST API with auth, scope enforcement, idempotency, rate limiting, sanitization |
 | [`@orbit-ai/sdk`](packages/sdk) | ✅ alpha | TypeScript client with HTTP and direct-core transports, auto-pagination, type-safe resources |
-
-## What's coming next (not in this release)
-
-- `@orbit-ai/cli` — `orbit init`, CRUD commands, `--json` mode, schema tooling
-- `@orbit-ai/integrations` — Gmail, Google Calendar, Stripe connectors
-- `@orbit-ai/mcp` — Model Context Protocol server with 23 core tools
-- A reference web app built on the SDK
+| [`@orbit-ai/cli`](packages/cli) | ✅ alpha | Terminal interface — `orbit init`, CRUD commands, schema tooling, `--json` mode, direct and API mode |
+| [`@orbit-ai/mcp`](packages/mcp) | ✅ alpha | Model Context Protocol server with 23 core tools, stdio and HTTP transports |
+| [`@orbit-ai/integrations`](packages/integrations) | ✅ alpha | Gmail, Google Calendar, and Stripe connectors with OAuth lifecycle and webhook support |
 
 ## Quick look
 
@@ -64,21 +58,28 @@ pnpm add @orbit-ai/core @orbit-ai/api
 
 ## Architecture
 
-Orbit AI is a monorepo (pnpm + Turborepo) with three layered packages:
+Orbit AI is a monorepo (pnpm + Turborepo) with six layered packages:
 
 ```
-┌─────────────────┐   ┌─────────────────┐
-│  @orbit-ai/api  │   │  @orbit-ai/sdk  │
-│   (REST server) │   │ (client lib)    │
-└────────┬────────┘   └────────┬────────┘
-         │                     │
-         │   depends on        │
-         └──────────┬──────────┘
-                    │
-           ┌────────▼─────────┐
-           │  @orbit-ai/core  │
-           │  (schema + adp.) │
-           └──────────────────┘
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│  @orbit-ai/api   │  │  @orbit-ai/sdk   │  │  @orbit-ai/cli   │
+│  (REST server)   │  │  (client lib)    │  │  (terminal)      │
+└────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
+         │                     │                      │
+         └─────────────────────┼──────────────────────┘
+                               │  depends on
+                    ┌──────────▼──────────┐
+                    │   @orbit-ai/core    │
+                    │  (schema + adpts.)  │
+                    └──────────┬──────────┘
+                               │
+          ┌────────────────────┼────────────────────┐
+          │                                         │
+┌─────────▼──────────┐              ┌───────────────▼──────┐
+│  @orbit-ai/mcp     │              │ @orbit-ai/integrations│
+│  (MCP server,      │              │ (Gmail, Calendar,     │
+│   23 tools)        │              │  Stripe)              │
+└────────────────────┘              └──────────────────────┘
 ```
 
 - **core** is the source of truth for schema, entities, storage adapters, tenant
@@ -88,6 +89,11 @@ Orbit AI is a monorepo (pnpm + Turborepo) with three layered packages:
 - **sdk** is a TypeScript client that can talk to an api server over HTTP, or run
   in-process directly against a core adapter (DirectTransport) for tests and trusted
   server-side use.
+- **cli** is a terminal interface built on Commander.js with interactive prompts,
+  `--json` mode for scripting, and support for both API and direct modes.
+- **mcp** is a Model Context Protocol server exposing 23 tools over stdio or HTTP.
+- **integrations** provides Gmail, Google Calendar, and Stripe connectors with full
+  OAuth lifecycle management and webhook support.
 
 ## Development
 
@@ -135,8 +141,7 @@ checklist.
 - Idempotency and rate limiting are **in-memory by default** — single-instance deployments
   only. For multi-instance, implement the `IdempotencyStore` interface and pass it via
   `CreateApiOptions`.
-- The full list of known alpha gaps lives in
-  [`docs/review/2026-04-08-post-stack-audit.md`](docs/review/2026-04-08-post-stack-audit.md).
+- The full list of known alpha gaps is documented in [`AGENTS.md`](AGENTS.md#known-alpha-limitations).
 
 ## Contributing
 
@@ -146,10 +151,9 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 MIT — see [`LICENSE`](LICENSE).
 
-## Key planning docs
+## What's next
 
-- [`docs/META-PLAN.md`](docs/META-PLAN.md) — master plan
-- [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md) — execution baseline
-- [`docs/product/release-definition-v1.md`](docs/product/release-definition-v1.md) — what v1 GA requires
-- [`docs/specs/01-core.md`](docs/specs/01-core.md) through [`06-integrations.md`](docs/specs/06-integrations.md) — per-component specs
-- [`docs/review/2026-04-08-post-stack-audit.md`](docs/review/2026-04-08-post-stack-audit.md) — post-stack audit (alpha readiness)
+- **npm publish** — `0.1.0-alpha.1` will be the first public npm release. Until then, install from source: `pnpm install && pnpm -r build`.
+- **Hosted tier** — a managed Orbit AI API endpoint (beta) is planned alongside the npm release.
+- **E2E test suite** — cross-surface journey tests and multi-tenant denial tests are in progress.
+- **Documentation site** — a full docs site is planned post-publish.
