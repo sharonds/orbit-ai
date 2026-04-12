@@ -35,6 +35,9 @@ export async function pollGmailInbox(
   const activities: ActivityInput[] = []
   let pageToken = cursor
   let stoppedEarly = false
+  // Tracks the last page token for which we fully processed all messages.
+  // Starts as the incoming cursor (so on mid-page interruption we can resume from there).
+  let lastCompletedPageToken = cursor
 
   try {
     let messagesProcessed = 0
@@ -46,23 +49,26 @@ export async function pollGmailInbox(
         break
       }
 
+      const currentPageToken = pageToken
       const batchSize = Math.min(20, maxMessages - messagesProcessed)
-      const listOpts: { maxResults: number; pageToken?: string; query?: string } = {
+      const listOpts: { maxResults: number; pageToken?: string } = {
         maxResults: batchSize,
       }
-      if (pageToken !== undefined) listOpts.pageToken = pageToken
-      if (cursor !== undefined) listOpts.query = `after:${cursor}`
+      if (currentPageToken !== undefined) listOpts.pageToken = currentPageToken
       const listResult = await listMessages(config, credentialStore, orgId, listOpts)
 
       if (listResult.data.messages.length === 0) break
 
+      let pageFullyProcessed = true
       for (const msgSummary of listResult.data.messages) {
         if (messagesProcessed >= maxMessages) {
           stoppedEarly = true
+          pageFullyProcessed = false
           break
         }
         if (Date.now() - startTime > maxDurationMs) {
           stoppedEarly = true
+          pageFullyProcessed = false
           break
         }
 
@@ -73,6 +79,11 @@ export async function pollGmailInbox(
       }
 
       pageToken = listResult.data.nextPageToken
+      if (pageFullyProcessed) {
+        // Only advance the completed cursor when the page was fully processed.
+        // This means newCursor points to the next unprocessed page.
+        lastCompletedPageToken = pageToken
+      }
       if (!pageToken) break
     }
 
@@ -81,7 +92,7 @@ export async function pollGmailInbox(
       activities,
       stoppedEarly,
     }
-    if (pageToken !== undefined) result.newCursor = pageToken
+    if (lastCompletedPageToken !== undefined) result.newCursor = lastCompletedPageToken
     return result
   } catch (err) {
     throw toIntegrationError(err, 'gmail')

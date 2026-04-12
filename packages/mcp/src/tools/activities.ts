@@ -8,11 +8,11 @@ import { sanitizeStringInput, truncateUnknownStringsWithMeta } from '../output/t
 const LogActivityInput = z.object({
   type: z.string(),
   subject: z.string().optional(),
-  description: z.string().optional(),
+  body: z.string().optional(),
   contact_id: z.string().optional(),
   company_id: z.string().optional(),
   deal_id: z.string().optional(),
-  user_id: z.string().optional(),
+  logged_by_user_id: z.string().optional(),
   occurred_at: z.string(),
   custom_fields: z.record(z.string(), z.unknown()).optional(),
 })
@@ -21,7 +21,7 @@ const ListActivitiesInput = z.object({
   contact_id: z.string().optional(),
   company_id: z.string().optional(),
   deal_id: z.string().optional(),
-  user_id: z.string().optional(),
+  logged_by_user_id: z.string().optional(),
   type: z.string().optional(),
   limit: LimitSchema,
   cursor: z.string().optional(),
@@ -46,18 +46,22 @@ export const listActivitiesTool = defineTool({
 })
 
 export async function handleLogActivity(client: OrbitClient, rawArgs: unknown) {
-  const args = LogActivityInput.parse(rawArgs)
+  const parsed = LogActivityInput.safeParse(rawArgs)
+  if (!parsed.success) {
+    return toToolSuccess({ error: 'Invalid input', details: parsed.error.issues.map((i) => i.message).join('; ') })
+  }
+  const args = parsed.data
   return toToolSuccess(
     sanitizeObjectDeep(
       await client.activities.log({
         type: args.type,
         occurred_at: args.occurred_at,
         ...(args.subject ? { subject: sanitizeStringInput(args.subject) } : {}),
-        ...(args.description ? { description: sanitizeStringInput(args.description) } : {}),
+        ...(args.body ? { body: sanitizeStringInput(args.body) } : {}),
         ...(args.contact_id ? { contact_id: args.contact_id } : {}),
         ...(args.company_id ? { company_id: args.company_id } : {}),
         ...(args.deal_id ? { deal_id: args.deal_id } : {}),
-        ...(args.user_id ? { user_id: args.user_id } : {}),
+        ...(args.logged_by_user_id ? { logged_by_user_id: args.logged_by_user_id } : {}),
         ...(args.custom_fields ? { custom_fields: args.custom_fields } : {}),
       }),
     ),
@@ -65,12 +69,16 @@ export async function handleLogActivity(client: OrbitClient, rawArgs: unknown) {
 }
 
 export async function handleListActivities(client: OrbitClient, rawArgs: unknown) {
-  const args = ListActivitiesInput.parse(rawArgs)
+  const parsed = ListActivitiesInput.safeParse(rawArgs)
+  if (!parsed.success) {
+    return toToolSuccess({ error: 'Invalid input', details: parsed.error.issues.map((i) => i.message).join('; ') })
+  }
+  const args = parsed.data
   const raw = await client.activities.list({
     ...(args.contact_id ? { contact_id: args.contact_id } : {}),
     ...(args.company_id ? { company_id: args.company_id } : {}),
     ...(args.deal_id ? { deal_id: args.deal_id } : {}),
-    ...(args.user_id ? { user_id: args.user_id } : {}),
+    ...(args.logged_by_user_id ? { logged_by_user_id: args.logged_by_user_id } : {}),
     ...(args.type ? { type: sanitizeStringInput(args.type) } : {}),
     ...(args.limit !== undefined ? { limit: args.limit } : {}),
     ...(args.cursor ? { cursor: args.cursor } : {}),

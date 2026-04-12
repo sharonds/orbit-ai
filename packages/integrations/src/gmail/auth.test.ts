@@ -181,5 +181,18 @@ describe('Gmail OAuth helpers', () => {
       expect(mockSetCredentials).toHaveBeenCalledWith({ refresh_token: '1//gmail-refresh' })
       expect(mockRefreshAccessToken).toHaveBeenCalled()
     })
+
+    it('retrieves user-scoped credentials when userId is provided', async () => {
+      const { getGmailClient } = await loadAuth()
+      const store = new InMemoryCredentialStore()
+      await store.saveCredentials('org_1', 'gmail', 'user_alice', {
+        accessToken: 'alice-token',
+        refreshToken: 'alice-refresh',
+        expiresAt: Date.now() + 3600000,
+      })
+
+      const result = await getGmailClient(TEST_CONFIG, store, 'org_1', 'user_alice')
+      expect(result.accessToken).toBe('alice-token')
+    })
   })
 })

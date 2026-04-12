@@ -12,8 +12,9 @@ async function getCalendarApi(
   config: CalendarConnectorConfig,
   credentialStore: CredentialStore,
   orgId: string,
+  userId?: string,
 ): Promise<calendar_v3.Calendar> {
-  const { accessToken } = await getCalendarClient(config, credentialStore, orgId)
+  const { accessToken } = await getCalendarClient(config, credentialStore, orgId, userId)
   const auth = new google.auth.OAuth2()
   auth.setCredentials({ access_token: accessToken })
   return google.calendar({ version: 'v3', auth })
@@ -66,9 +67,10 @@ export async function listEvents(
     pageToken?: string
     calendarId?: string
   },
+  userId?: string,
 ): Promise<IntegrationResult<{ events: CalendarEvent[]; nextPageToken?: string }>> {
   try {
-    const calendar = await getCalendarApi(config, credentialStore, orgId)
+    const calendar = await getCalendarApi(config, credentialStore, orgId, userId)
     const calendarId = options?.calendarId ?? 'primary'
 
     const params: calendar_v3.Params$Resource$Events$List = {
@@ -110,9 +112,10 @@ export async function createEvent(
   orgId: string,
   input: CalendarEventInput,
   calendarId?: string,
+  userId?: string,
 ): Promise<IntegrationResult<CalendarEvent>> {
   try {
-    const calendar = await getCalendarApi(config, credentialStore, orgId)
+    const calendar = await getCalendarApi(config, credentialStore, orgId, userId)
 
     const requestBody: calendar_v3.Schema$Event = {
       summary: input.summary,
@@ -150,9 +153,10 @@ export async function updateEvent(
   eventId: string,
   input: Partial<CalendarEventInput>,
   calendarId?: string,
+  userId?: string,
 ): Promise<IntegrationResult<CalendarEvent>> {
   try {
-    const calendar = await getCalendarApi(config, credentialStore, orgId)
+    const calendar = await getCalendarApi(config, credentialStore, orgId, userId)
 
     const requestBody: calendar_v3.Schema$Event = {}
     if (input.summary !== undefined) requestBody.summary = input.summary
@@ -189,9 +193,10 @@ export async function deleteEvent(
   orgId: string,
   eventId: string,
   calendarId?: string,
+  userId?: string,
 ): Promise<IntegrationResult<{ deleted: true }>> {
   try {
-    const calendar = await getCalendarApi(config, credentialStore, orgId)
+    const calendar = await getCalendarApi(config, credentialStore, orgId, userId)
 
     await calendar.events.delete({
       calendarId: calendarId ?? 'primary',
@@ -215,9 +220,10 @@ export async function checkAvailability(
   credentialStore: CredentialStore,
   orgId: string,
   options: { timeMin: string; timeMax: string; emails: string[] },
+  userId?: string,
 ): Promise<IntegrationResult<Array<{ email: string; busy: Array<{ start: string; end: string }> }>>> {
   try {
-    const calendar = await getCalendarApi(config, credentialStore, orgId)
+    const calendar = await getCalendarApi(config, credentialStore, orgId, userId)
 
     const response = await calendar.freebusy.query({
       requestBody: {

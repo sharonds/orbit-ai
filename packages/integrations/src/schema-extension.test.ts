@@ -98,4 +98,35 @@ describe('integrationSchemaExtension', () => {
     const createStatement = migration.up.find((sql) => sql.includes('CREATE TABLE'))
     expect(createStatement).toContain("DEFAULT '[]'::jsonb")
   })
+
+  it('migration 001 drops policy before creating (idempotent)', () => {
+    const migration = integrationSchemaExtension.migrations[0]!
+    const dropIdx = migration.up.findIndex((sql) =>
+      sql.includes('DROP POLICY IF EXISTS ic_tenant_isolation'),
+    )
+    const createIdx = migration.up.findIndex((sql) =>
+      sql.includes('CREATE POLICY ic_tenant_isolation'),
+    )
+    expect(dropIdx).toBeGreaterThanOrEqual(0)
+    expect(createIdx).toBeGreaterThan(dropIdx)
+  })
+
+  it('migration 002 includes FK constraint on connection_id with cascade', () => {
+    const migration = integrationSchemaExtension.migrations[1]!
+    const createSql = migration.up.find((sql) => sql.includes('CREATE TABLE'))
+    expect(createSql).toContain('REFERENCES integration_connections(id)')
+    expect(createSql).toContain('ON DELETE CASCADE')
+  })
+
+  it('migration 002 drops policy before creating (idempotent)', () => {
+    const migration = integrationSchemaExtension.migrations[1]!
+    const dropIdx = migration.up.findIndex((sql) =>
+      sql.includes('DROP POLICY IF EXISTS iss_tenant_isolation'),
+    )
+    const createIdx = migration.up.findIndex((sql) =>
+      sql.includes('CREATE POLICY iss_tenant_isolation'),
+    )
+    expect(dropIdx).toBeGreaterThanOrEqual(0)
+    expect(createIdx).toBeGreaterThan(dropIdx)
+  })
 })

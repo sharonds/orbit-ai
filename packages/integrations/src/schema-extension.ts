@@ -35,6 +35,7 @@ export const integrationSchemaExtension: PluginSchemaExtension = {
         `CREATE INDEX IF NOT EXISTS ic_org_status_idx
           ON integration_connections(organization_id, status)`,
         `ALTER TABLE integration_connections ENABLE ROW LEVEL SECURITY`,
+        `DROP POLICY IF EXISTS ic_tenant_isolation ON integration_connections`,
         `CREATE POLICY ic_tenant_isolation ON integration_connections
           USING (organization_id = current_setting('app.current_org_id', TRUE))`,
       ],
@@ -47,7 +48,7 @@ export const integrationSchemaExtension: PluginSchemaExtension = {
       up: [
         `CREATE TABLE IF NOT EXISTS integration_sync_state (
           id TEXT PRIMARY KEY,
-          connection_id TEXT NOT NULL,
+          connection_id TEXT NOT NULL REFERENCES integration_connections(id) ON DELETE CASCADE,
           stream TEXT NOT NULL,
           cursor TEXT,
           processed_event_ids JSONB DEFAULT '[]'::jsonb,
@@ -59,6 +60,7 @@ export const integrationSchemaExtension: PluginSchemaExtension = {
         `CREATE INDEX IF NOT EXISTS iss_connection_stream_idx
           ON integration_sync_state(connection_id, stream)`,
         `ALTER TABLE integration_sync_state ENABLE ROW LEVEL SECURITY`,
+        `DROP POLICY IF EXISTS iss_tenant_isolation ON integration_sync_state`,
         `CREATE POLICY iss_tenant_isolation ON integration_sync_state
           USING (
             connection_id IN (
