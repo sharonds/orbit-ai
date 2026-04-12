@@ -51,6 +51,72 @@ describe('registerIntegrationSubcommands', () => {
     expect(optionFlags).toContain('--live')
   })
 
+  it('preserves boolean false default without stringifying it', () => {
+    const program = new Command()
+
+    registerIntegrationSubcommands(program, [
+      {
+        name: 'stripe',
+        description: 'Stripe integration',
+        action: vi.fn(),
+        options: [
+          { flags: '--live', description: 'Use live mode', defaultValue: false },
+        ],
+      },
+    ])
+
+    const integrationsCmd = program.commands.find((c) => c.name() === 'integrations')
+    const stripeCmd = integrationsCmd?.commands.find((c) => c.name() === 'stripe')
+    const liveOption = stripeCmd!.options.find((o) => o.flags === '--live')
+    expect(liveOption).toBeDefined()
+    // Must be boolean false, NOT the string 'false' (which is truthy)
+    expect(liveOption!.defaultValue).toBe(false)
+    expect(liveOption!.defaultValue).not.toBe('false')
+  })
+
+  it('preserves boolean true default without stringifying it', () => {
+    const program = new Command()
+
+    registerIntegrationSubcommands(program, [
+      {
+        name: 'gmail',
+        description: 'Gmail integration',
+        action: vi.fn(),
+        options: [
+          { flags: '--auto-sync', description: 'Enable auto sync', defaultValue: true },
+        ],
+      },
+    ])
+
+    const integrationsCmd = program.commands.find((c) => c.name() === 'integrations')
+    const gmailCmd = integrationsCmd?.commands.find((c) => c.name() === 'gmail')
+    const autoSyncOption = gmailCmd!.options.find((o) => o.flags === '--auto-sync')
+    expect(autoSyncOption).toBeDefined()
+    expect(autoSyncOption!.defaultValue).toBe(true)
+    expect(autoSyncOption!.defaultValue).not.toBe('true')
+  })
+
+  it('still stringifies non-boolean defaults', () => {
+    const program = new Command()
+
+    registerIntegrationSubcommands(program, [
+      {
+        name: 'stripe',
+        description: 'Stripe integration',
+        action: vi.fn(),
+        options: [
+          { flags: '--timeout <ms>', description: 'Timeout in ms', defaultValue: '5000' },
+        ],
+      },
+    ])
+
+    const integrationsCmd = program.commands.find((c) => c.name() === 'integrations')
+    const stripeCmd = integrationsCmd?.commands.find((c) => c.name() === 'stripe')
+    const timeoutOption = stripeCmd!.options.find((o) => o.flags === '--timeout <ms>')
+    expect(timeoutOption).toBeDefined()
+    expect(timeoutOption!.defaultValue).toBe('5000')
+  })
+
   it('with empty plugins array registers the parent command with no subcommands', () => {
     const program = new Command()
 

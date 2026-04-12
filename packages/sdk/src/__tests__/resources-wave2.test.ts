@@ -119,7 +119,7 @@ describe('ActivityResource', () => {
     })
   })
 
-  it('ActivityRecord wire format uses logged_by_user_id, not user_id', () => {
+  it('ActivityRecord wire format uses logged_by_user_id, not user_id', async () => {
     // Type-level check: CreateActivityInput must accept logged_by_user_id
     // and must not accept user_id (this is enforced by TypeScript, tested here
     // by verifying the transport receives the correct field name at runtime)
@@ -130,7 +130,7 @@ describe('ActivityResource', () => {
     }
     transport.request.mockResolvedValue(makeEnvelope({ id: 'act_4', ...input }))
 
-    activities.create(input)
+    await activities.create(input)
 
     expect(transport.request).toHaveBeenCalledWith({
       method: 'POST',

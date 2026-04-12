@@ -5,7 +5,7 @@
 
 // Sensitive key patterns — exact boundary match using word boundaries
 // Keys like 'authorized_at', 'auth_provider', 'authorization_type' must NOT be redacted
-const SENSITIVE_KEY_PATTERN = /^(token|secret|signature|credential|password|private_key|refresh_token|access_token)$/i
+const SENSITIVE_KEY_PATTERN = /^(token|secret|signature|credential|password|private_key|refresh_token|access_token|api_key|client_secret)$/i
 
 /**
  * Check if an object key should be redacted.
@@ -36,6 +36,16 @@ export function redactProviderError(message: string): string {
     .replace(/\b(token|secret|key|password)=[^\s&"']+/gi, '$1=[REDACTED]')
 }
 
+function sanitizeMetadataValue(value: unknown, depth: number): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeMetadataValue(item, depth))
+  }
+  if (value !== null && typeof value === 'object') {
+    return sanitizeIntegrationMetadata(value as Record<string, unknown>, depth + 1)
+  }
+  return value
+}
+
 /**
  * Recursively sanitize a metadata object, redacting sensitive keys.
  * Must be applied recursively — top-level-only sanitization leaks nested secrets.
@@ -49,7 +59,9 @@ export function sanitizeIntegrationMetadata(
   for (const [key, value] of Object.entries(obj)) {
     if (isSensitiveIntegrationKey(key)) {
       result[key] = '[REDACTED]'
-    } else if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    } else if (Array.isArray(value)) {
+      result[key] = value.map((item) => sanitizeMetadataValue(item, depth))
+    } else if (value !== null && typeof value === 'object') {
       result[key] = sanitizeIntegrationMetadata(value as Record<string, unknown>, depth + 1)
     } else {
       result[key] = value

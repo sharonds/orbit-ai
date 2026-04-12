@@ -190,4 +190,18 @@ describe('buildStripeCommands', () => {
     expect(errorSpy).toHaveBeenCalledWith('--session-id is required')
     errorSpy.mockRestore()
   })
+
+  it('link-create prints error and returns when amount is missing/NaN', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const commands = buildStripeCommands(makeContext())
+    const linkCreate = commands.find((c) => c.name === 'link-create')!
+
+    // Simulate Commander passing opts with missing amount
+    await linkCreate.action({ currency: 'usd' })
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('--amount must be a positive number'),
+    )
+    consoleSpy.mockRestore()
+  })
 })

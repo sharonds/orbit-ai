@@ -72,10 +72,15 @@ export function buildStripeCommands(context: StripeToolContext): IntegrationComm
       ],
       async action(...args: unknown[]) {
         const opts = args[args.length - 1] as Record<string, string>
+        const amount = Number(opts['amount'])
+        if (!Number.isFinite(amount) || amount <= 0) {
+          console.error('Error: --amount must be a positive number (in cents)')
+          return
+        }
         try {
           const description = opts['description'] as string | undefined
           const result = await createPaymentLink(context.config, {
-            amount: Number(opts['amount']),
+            amount,
             currency: opts['currency'] ?? 'usd',
             ...(description !== undefined ? { description } : {}),
           })
