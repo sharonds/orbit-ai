@@ -4,7 +4,8 @@
       "WebSearch",
       "Skill(hookify:help)",
       "Skill(hookify:list)",
-      "Skill(pr-review-toolkit:review-pr)"
+      "Skill(pr-review-toolkit:review-pr)",
+      "Skill(codex:rescue)"
     ]
   }
 }
