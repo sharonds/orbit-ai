@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { Hono } from 'hono'
 import { OrbitError } from '@orbit-ai/core'
 import type { OrbitAuthContext } from '@orbit-ai/core'
-import { rateLimitMiddleware, _resetRateLimitBuckets } from '../middleware/rate-limit.js'
+import {
+  rateLimitMiddleware,
+  _resetRateLimitBuckets,
+  _MAX_BUCKETS,
+  _seedBucketsForTest,
+} from '../middleware/rate-limit.js'
 import { orbitErrorHandler } from '../middleware/error-handler.js'
 import { requestIdMiddleware } from '../middleware/request-id.js'
 import '../context.js'
@@ -121,5 +126,30 @@ describe('rate limit middleware', () => {
     const resB = await app.request('/v1/contacts', { headers: { 'x-test-key-id': 'key_b' } })
     expect(resB.status).toBe(200)
     expect(resB.headers.get('x-ratelimit-remaining')).toBe('2')
+  })
+
+  it('evicts oldest bucket when at capacity', async () => {
+    const app = createApp(5)
+
+    // Seed the map with MAX_BUCKETS entries — the first seed key is the oldest
+    _seedBucketsForTest(_MAX_BUCKETS)
+
+    // Making a request for a new key pushes size to MAX_BUCKETS + 1, triggering eviction
+    const firstSeedKey = '__seed_0'
+    const res = await app.request('/v1/contacts', {
+      headers: { 'x-test-key-id': 'key_evict_test' },
+    })
+    expect(res.status).toBe(200)
+
+    // The new key was added and the oldest seed entry (first insertion) was evicted.
+    // We verify this indirectly: after seeding MAX_BUCKETS and adding one more,
+    // the bucket count stays at MAX_BUCKETS (eviction kept it bounded).
+    // Re-requesting the evicted key treats it as a fresh bucket (remaining = limit - 1 = 4).
+    const resEvicted = await app.request('/v1/contacts', {
+      headers: { 'x-test-key-id': firstSeedKey },
+    })
+    expect(resEvicted.status).toBe(200)
+    // firstSeedKey was evicted and re-created fresh, so remaining is limit - 1
+    expect(resEvicted.headers.get('x-ratelimit-remaining')).toBe('4')
   })
 })

@@ -1,7 +1,19 @@
 import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
+import { z } from 'zod'
 import { requireScope } from '../scopes.js'
 import { toEnvelope, toError, sanitizeSchemaRead } from '../responses.js'
+
+// Defensive schema for migration input.
+// The schema engine is not yet fully implemented, so we validate that the
+// body is a non-empty object and let the service do deeper semantic validation.
+// The `passthrough()` call allows any additional fields the service understands.
+const MigrationInputSchema = z
+  .object({})
+  .passthrough()
+  .refine((obj) => Object.keys(obj).length > 0, {
+    message: 'Migration body must not be empty',
+  })
 
 function notImplemented(c: any, operation: string) {
   return c.json(toError(c, 'INTERNAL_ERROR', `${operation} not implemented`), 501)
@@ -73,7 +85,13 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
       return notImplemented(c, 'Schema migration preview')
     }
     const body = await c.req.json()
-    const result = await schema.preview(c.get('orbit'), body)
+    const parsed = MigrationInputSchema.safeParse(body)
+    if (!parsed.success) {
+      return c.json(toError(c, 'VALIDATION_FAILED', 'Invalid migration input', {
+        hint: parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; '),
+      }), 400)
+    }
+    const result = await schema.preview(c.get('orbit'), parsed.data)
     return c.json(toEnvelope(c, sanitizeSchemaRead(result)))
   })
 
@@ -83,7 +101,13 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
       return notImplemented(c, 'Schema migration apply')
     }
     const body = await c.req.json()
-    const result = await schema.apply(c.get('orbit'), body)
+    const parsed = MigrationInputSchema.safeParse(body)
+    if (!parsed.success) {
+      return c.json(toError(c, 'VALIDATION_FAILED', 'Invalid migration input', {
+        hint: parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; '),
+      }), 400)
+    }
+    const result = await schema.apply(c.get('orbit'), parsed.data)
     return c.json(toEnvelope(c, sanitizeSchemaRead(result)))
   })
 

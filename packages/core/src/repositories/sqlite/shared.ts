@@ -173,6 +173,7 @@ export function createTenantSqliteRepository<TRecord extends { id: string } & Re
       return runArrayQuery(await listScopedRows(ctx), query, {
         ...options,
         ...(config.filterableFields ? { filterableFields: config.filterableFields } : {}),
+        orgId: ctx.orgId,
       })
     },
     async search(ctx, query) {
@@ -183,6 +184,7 @@ export function createTenantSqliteRepository<TRecord extends { id: string } & Re
       return runArrayQuery(await listScopedRows(ctx), query, {
         ...options,
         ...(config.filterableFields ? { filterableFields: config.filterableFields } : {}),
+        orgId: ctx.orgId,
       })
     },
   }

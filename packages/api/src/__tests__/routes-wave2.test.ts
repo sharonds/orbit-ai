@@ -676,6 +676,87 @@ describe('Object / Schema routes', () => {
     const body = (await res.json()) as { error: { code: string } }
     expect(body.error.code).toBe('VALIDATION_FAILED')
   })
+
+  // M-SEC-1: Zod validation for migration preview/apply
+  it('POST /v1/schema/migrations/preview rejects empty body with 400 VALIDATION_FAILED', async () => {
+    const services = mockWave2CoreServices()
+    ;(services as any).schema = {
+      preview: vi.fn(async () => ({ ok: true })),
+    }
+    const app = createRouteTestApp()
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/schema/migrations/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
+    // Service must not have been called with arbitrary input
+    expect((services as any).schema.preview).not.toHaveBeenCalled()
+  })
+
+  it('POST /v1/schema/migrations/preview accepts valid non-empty body and calls service', async () => {
+    const services = mockWave2CoreServices()
+    const mockResult = { migration_id: 'mig_01', sql_statements: [] }
+    ;(services as any).schema = {
+      preview: vi.fn(async () => mockResult),
+    }
+    const app = createRouteTestApp()
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/schema/migrations/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ entity_type: 'contacts', operation: 'add_field' }),
+    })
+    expect(res.status).toBe(200)
+    expect((services as any).schema.preview).toHaveBeenCalledTimes(1)
+  })
+
+  it('POST /v1/schema/migrations/apply rejects empty body with 400 VALIDATION_FAILED', async () => {
+    const services = mockWave2CoreServices()
+    ;(services as any).schema = {
+      apply: vi.fn(async () => ({ ok: true })),
+    }
+    const app = createRouteTestApp(['*'])
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/schema/migrations/apply', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
+    // Service must not have been called with arbitrary input
+    expect((services as any).schema.apply).not.toHaveBeenCalled()
+  })
+
+  it('POST /v1/schema/migrations/apply accepts valid non-empty body and calls service', async () => {
+    const services = mockWave2CoreServices()
+    const mockResult = { migration_id: 'mig_02', applied: true }
+    ;(services as any).schema = {
+      apply: vi.fn(async () => mockResult),
+    }
+    const app = createRouteTestApp(['*'])
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/schema/migrations/apply', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ migration_id: 'mig_02' }),
+    })
+    expect(res.status).toBe(200)
+    expect((services as any).schema.apply).toHaveBeenCalledTimes(1)
+  })
 })
 
 // =============================================================================

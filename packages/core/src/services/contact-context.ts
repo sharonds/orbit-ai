@@ -111,12 +111,9 @@ export function createContactContextService(deps: {
           },
           limit: 100,
         })
-        const tagRecords = await Promise.all(
-          entityTagResults.data.map((et) => deps.tags!.get(ctx, et.tagId)),
-        )
-        tags = tagRecords
-          .filter((t): t is NonNullable<typeof t> => t !== null)
-          .map((t) => ({ id: t.id, name: t.name, color: t.color }))
+        const tagIds = entityTagResults.data.map((et) => et.tagId)
+        const tagRecords = tagIds.length > 0 ? await deps.tags!.listByIds(ctx, tagIds) : []
+        tags = tagRecords.map((t) => ({ id: t.id, name: t.name, color: t.color }))
       }
 
       const latestActivityDate = recentActivities[0]?.occurredAt ?? null

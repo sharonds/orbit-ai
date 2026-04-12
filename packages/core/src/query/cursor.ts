@@ -5,6 +5,7 @@ import { createOrbitError } from '../types/errors.js'
 
 const cursorPayloadSchema = z.object({
   version: z.literal(1),
+  orgId: z.string().min(1).optional(),
   id: z.string().min(1),
   sort: z.array(
     z.object({
@@ -63,7 +64,11 @@ export function decodeCursor(cursor: string): CursorPayload {
   try {
     const decoded = base64UrlToUtf8(cursor)
     return cursorPayloadSchema.parse(JSON.parse(decoded))
-  } catch {
+  } catch (err) {
+    const isOrbitError = err instanceof Error && (err as { code?: string }).code !== undefined
+    if (isOrbitError) {
+      throw err
+    }
     throw createOrbitError({
       code: 'INVALID_CURSOR',
       message: 'Invalid cursor',
@@ -71,13 +76,26 @@ export function decodeCursor(cursor: string): CursorPayload {
   }
 }
 
+export function decodeCursorWithOrgCheck(cursor: string, expectedOrgId: string): CursorPayload {
+  const payload = decodeCursor(cursor)
+  if (payload.orgId !== undefined && payload.orgId !== expectedOrgId) {
+    throw createOrbitError({
+      code: 'INVALID_CURSOR',
+      message: 'Invalid cursor',
+    })
+  }
+  return payload
+}
+
 export function createCursorPayload(input: {
+  orgId?: string
   id: string
   sort: SortSpec[]
   values: Record<string, string | number | boolean | null>
 }): CursorPayload {
   return {
     version: 1,
+    ...(input.orgId !== undefined ? { orgId: input.orgId } : {}),
     id: input.id,
     sort: input.sort,
     values: input.values,
