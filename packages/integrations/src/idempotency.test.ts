@@ -36,6 +36,12 @@ describe('generateIdempotencyKey', () => {
     const key = generateIdempotencyKey(['only-one'])
     expect(key).toHaveLength(32)
   })
+
+  it('generates different keys for inputs that would collide with :: separator', () => {
+    const key1 = generateIdempotencyKey(['a', 'b::c'])
+    const key2 = generateIdempotencyKey(['a::b', 'c'])
+    expect(key1).not.toBe(key2)
+  })
 })
 
 describe('IdempotencyHelper', () => {

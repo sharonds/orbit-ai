@@ -134,6 +134,24 @@ describe('Stripe sync', () => {
       expect(result.data.session.paymentIntentId).toBeUndefined()
     })
 
+    it('does not include undefined values in payment metadata', async () => {
+      const { syncStripeCheckoutSession } = await loadSync()
+      // Session with no payment_intent and no customer_details
+      mockCheckoutSessionsRetrieve.mockResolvedValue({
+        id: 'cs_1',
+        payment_status: 'paid',
+        amount_total: 1000,
+        currency: 'usd',
+        payment_intent: null,
+        customer_details: null,
+        metadata: null,
+      })
+
+      const result = await syncStripeCheckoutSession(TEST_CONFIG, 'cs_1')
+      const values = Object.values(result.data.payment.metadata ?? {})
+      expect(values.every(v => v !== undefined)).toBe(true)
+    })
+
     it('maps errors to IntegrationError', async () => {
       const { syncStripeCheckoutSession } = await loadSync()
       mockCheckoutSessionsRetrieve.mockRejectedValue(new Error('Session not found'))

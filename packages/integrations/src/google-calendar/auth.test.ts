@@ -179,5 +179,18 @@ describe('Google Calendar OAuth helpers', () => {
       expect(mockSetCredentials).toHaveBeenCalledWith({ refresh_token: '1//calendar-refresh' })
       expect(mockRefreshAccessToken).toHaveBeenCalled()
     })
+
+    it('retrieves user-scoped credentials when userId is provided', async () => {
+      const { getCalendarClient } = await loadAuth()
+      const store = new InMemoryCredentialStore()
+      await store.saveCredentials('org_1', 'google-calendar', 'user_bob', {
+        accessToken: 'bob-token',
+        refreshToken: 'bob-refresh',
+        expiresAt: Date.now() + 3600000,
+      })
+
+      const result = await getCalendarClient(TEST_CONFIG, store, 'org_1', 'user_bob')
+      expect(result.accessToken).toBe('bob-token')
+    })
   })
 })

@@ -12,8 +12,9 @@ async function getGmailApi(
   config: GmailConnectorConfig,
   credentialStore: CredentialStore,
   orgId: string,
+  userId?: string,
 ): Promise<gmail_v1.Gmail> {
-  const { accessToken } = await getGmailClient(config, credentialStore, orgId)
+  const { accessToken } = await getGmailClient(config, credentialStore, orgId, userId)
   const auth = new google.auth.OAuth2()
   auth.setCredentials({ access_token: accessToken })
   return google.gmail({ version: 'v1', auth })
@@ -27,9 +28,10 @@ export async function listMessages(
   credentialStore: CredentialStore,
   orgId: string,
   options?: { maxResults?: number; query?: string; pageToken?: string },
+  userId?: string,
 ): Promise<IntegrationResult<{ messages: Array<{ id: string; threadId: string }>; nextPageToken?: string }>> {
   try {
-    const gmail = await getGmailApi(config, credentialStore, orgId)
+    const gmail = await getGmailApi(config, credentialStore, orgId, userId)
 
     const listParams: Record<string, unknown> = {
       userId: 'me',
@@ -72,9 +74,10 @@ export async function getMessage(
   credentialStore: CredentialStore,
   orgId: string,
   messageId: string,
+  userId?: string,
 ): Promise<IntegrationResult<GmailMessage>> {
   try {
-    const gmail = await getGmailApi(config, credentialStore, orgId)
+    const gmail = await getGmailApi(config, credentialStore, orgId, userId)
     const response = await gmail.users.messages.get({
       userId: 'me',
       id: messageId,
@@ -127,9 +130,10 @@ export async function sendMessage(
   credentialStore: CredentialStore,
   orgId: string,
   input: GmailSendInput,
+  userId?: string,
 ): Promise<IntegrationResult<{ id: string; threadId: string }>> {
   try {
-    const gmail = await getGmailApi(config, credentialStore, orgId)
+    const gmail = await getGmailApi(config, credentialStore, orgId, userId)
 
     // Build RFC 2822 MIME message
     const mimeLines: string[] = [

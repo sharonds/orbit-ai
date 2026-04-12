@@ -65,7 +65,7 @@ describe('workflow tools', () => {
       contact_id: 'contact_01',
       company_id: 'company_01',
       deal_id: 'deal_01',
-      user_id: 'user_01',
+      logged_by_user_id: 'user_01',
       type: 'email',
       limit: 5,
     })
@@ -73,7 +73,7 @@ describe('workflow tools', () => {
       contact_id: 'contact_01',
       company_id: 'company_01',
       deal_id: 'deal_01',
-      user_id: 'user_01',
+      logged_by_user_id: 'user_01',
       type: 'email',
       limit: 5,
     })

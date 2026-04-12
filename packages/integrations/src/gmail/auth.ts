@@ -55,8 +55,9 @@ export async function getGmailClient(
   config: GmailConnectorConfig,
   credentialStore: CredentialStore,
   orgId: string,
+  userId?: string,
 ): Promise<{ accessToken: string }> {
   const helper = createGmailOAuthHelper(config)
-  const accessToken = await helper.getValidAccessToken(orgId, GMAIL_SLUG, credentialStore)
+  const accessToken = await helper.getValidAccessToken(orgId, GMAIL_SLUG, credentialStore, undefined, userId)
   return { accessToken }
 }
