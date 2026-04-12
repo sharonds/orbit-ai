@@ -62,8 +62,9 @@ temp/
 .claude/worktrees/
 
 # Internal planning docs — kept locally, not tracked in the public repo
-docs/
-# Re-allow public security documentation
-!docs/security/
+# (docs/* + negations used instead of docs/ so git can apply per-file exceptions)
+docs/*
+!docs/security
+docs/security/*
 !docs/security/security-architecture.md
 !docs/security/database-hardening-checklist.md

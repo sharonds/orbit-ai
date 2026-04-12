@@ -181,6 +181,7 @@ pnpm -r lint
 | After each task, during execution | `superpowers:requesting-code-review` | Plan compliance + code quality per task |
 | End of all tasks, before PR | `pr-review-toolkit:review-pr` | 6 specialist agents, confidence ≥80 threshold |
 | After PR is open on GitHub | `code-review:code-review` | Posts structured comment to the PR |
+| Implementer is stuck / needs Codex cross-check | `codex:rescue` | Delegates investigation or a targeted fix to Codex via the shared runtime; use when sub-agent is BLOCKED or a second opinion is needed |
 
 Do not substitute one for another — they serve different points in the pipeline.
 

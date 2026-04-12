@@ -1,0 +1,59 @@
+# Orbit AI
+> CRM infrastructure for AI agents and developers. Packages, not a product.
+
+Orbit AI is a TypeScript monorepo providing type-safe CRM primitives: a schema engine,
+REST API, client SDK, CLI, MCP server, and Gmail/Calendar/Stripe connectors.
+Not yet published to npm. Alpha status. MIT license.
+
+## Packages
+
+- @orbit-ai/core    — schema engine, Drizzle ORM entities, storage adapters (SQLite/Postgres/Supabase/Neon), migrations, tenant isolation
+- @orbit-ai/api     — Hono REST server, /v1/* routes, API-key auth, idempotency, rate limiting
+- @orbit-ai/sdk     — TypeScript client, HTTP transport, DirectTransport (in-process)
+- @orbit-ai/cli     — terminal interface, orbit <entity> <verb>, --mode api|direct
+- @orbit-ai/mcp     — Model Context Protocol server, 23 tools, stdio and HTTP transports
+- @orbit-ai/integrations — Gmail, Google Calendar, Stripe connectors with OAuth lifecycle
+
+## Entities
+
+contacts (cnt_), companies (cmp_), deals (deal_), pipelines (pip_), stages (stg_),
+users (usr_), activities (act_), tasks (tsk_), notes (nte_), products (prd_),
+payments (pay_), contracts (ctr_), sequences (seq_), tags (tag_),
+webhooks (whk_), imports (imp_)
+
+All entities: CRUD + cursor-based list pagination + orgId tenant scoping.
+
+## MCP Tools (23)
+
+search_records, get_record, create_record, update_record, delete_record,
+relate_records, list_related_records, bulk_operation,
+get_pipelines, move_deal_stage, get_pipeline_stats,
+log_activity, list_activities,
+get_schema, create_custom_field, update_custom_field,
+import_records, export_records,
+enroll_in_sequence, unenroll_from_sequence,
+run_report, get_dashboard_summary, assign_record
+
+## API Error Codes
+
+RESOURCE_NOT_FOUND (404), VALIDATION_FAILED (422), AUTH_INVALID_API_KEY (401),
+AUTH_INSUFFICIENT_SCOPE (403), AUTH_CONTEXT_REQUIRED (401),
+RATE_LIMITED (429), IDEMPOTENCY_CONFLICT (409),
+PAYLOAD_TOO_LARGE (413), INTERNAL_ERROR (500)
+
+## Key Docs
+
+- README.md — quickstart, architecture, dev setup
+- AGENTS.md — surface selection, auth, entity inventory, common patterns, error codes
+- packages/*/README.md — per-package reference
+- examples/nodejs-quickstart — runnable end-to-end example
+
+## Auth
+
+API/SDK/MCP-HTTP: Authorization: Bearer <api-key>
+CLI: ORBIT_API_KEY env var or ~/.config/orbit/config.json
+SDK DirectTransport: no key — pass adapter + context.orgId directly (trusted server-side only)
+
+## Tech Stack
+
+TypeScript (strict), Drizzle ORM, Hono, Zod v4, Vitest, Turborepo, pnpm, Node.js 22+
