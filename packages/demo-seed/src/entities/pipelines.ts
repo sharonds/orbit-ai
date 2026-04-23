@@ -18,8 +18,8 @@ export async function seedPipelinesAndStages(
       name: fx.name,
       stageOrder: fx.stageOrder,
       probability: fx.probability,
-      isWon: fx.isWon,
-      isLost: fx.isLost,
+      isWon: fx.kind === 'won',
+      isLost: fx.kind === 'lost',
     })
     stages.push(stage)
   }

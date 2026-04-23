@@ -23,6 +23,8 @@ export function createPrng(seed: string): Prng {
     return pool[intBetween(0, pool.length - 1)]!
   }
   const pickMany = <T>(pool: readonly T[], count: number): T[] => {
+    if (!Number.isInteger(count)) throw new TypeError('pickMany: count must be an integer')
+    if (count < 0) throw new TypeError('pickMany: count must be >= 0')
     if (count > pool.length) throw new RangeError('pickMany: count > pool size')
     const remaining = [...pool]
     const out: T[] = []
@@ -33,6 +35,7 @@ export function createPrng(seed: string): Prng {
     return out
   }
   const boolWithProbability = (probability: number): boolean => {
+    if (Number.isNaN(probability)) throw new RangeError('boolWithProbability: p is NaN')
     if (probability < 0 || probability > 1) throw new RangeError('boolWithProbability: p ∉ [0,1]')
     return float() < probability
   }
