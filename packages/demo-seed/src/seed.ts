@@ -52,18 +52,35 @@ export async function seed(
   const services = createCoreServices(adapter)
   const ctx = { orgId: organization.id }
 
-  // Check existing data, enforce mode.
-  const existing = await services.contacts.list(ctx, { limit: 1 })
-  if (existing.data.length > 0) {
+  // Check existing data, enforce mode. Check pipelines AND contacts so a
+  // partial prior seed (pipelines/companies created but failed before
+  // contacts) does not silently bypass the fail-if-exists guard. Pipelines
+  // first — they're created earlier in the orchestrator.
+  const existingPipelines = await services.pipelines.list(ctx, { limit: 1 })
+  const existingContacts = await services.contacts.list(ctx, { limit: 1 })
+  const hasExistingData =
+    existingPipelines.data.length > 0 || existingContacts.data.length > 0
+  if (hasExistingData) {
     if (mode === 'fail-if-exists') {
       throw new Error(
-        `seed: organization ${organization.slug} already has data. ` +
+        `seed: organization ${organization.slug} already has data ` +
+          `(pipelines=${existingPipelines.data.length}, contacts=${existingContacts.data.length}). ` +
           `Pass mode: 'reset' to wipe + reseed, or 'append' to add on top.`,
       )
     }
     if (mode === 'reset') {
       const { resetSeed } = await import('./reset.js')
       await resetSeed(adapter, organization.id)
+      // Post-reset verification: confirm reset actually emptied pipelines
+      // AND contacts. Closes the loop with the progress-guard in resetSeed.
+      const postPipelines = await services.pipelines.list(ctx, { limit: 1 })
+      const postContacts = await services.contacts.list(ctx, { limit: 1 })
+      if (postPipelines.data.length > 0 || postContacts.data.length > 0) {
+        throw new Error(
+          `seed: resetSeed completed but organization ${organization.slug} is not empty ` +
+            `(pipelines=${postPipelines.data.length}, contacts=${postContacts.data.length})`,
+        )
+      }
     }
     // mode === 'append' falls through with no cleanup.
   }
