@@ -32,7 +32,7 @@ export interface ResolveContextOptions {
   overrideHome?: string
 }
 
-function resolveAdapter(flags: GlobalFlags, config: OrbitConfig, cwd: string): StorageAdapter {
+export function resolveAdapter(flags: GlobalFlags, config: OrbitConfig, cwd: string): StorageAdapter {
   const adapterName = flags.adapter ?? config.adapter ?? 'sqlite'
   const dbUrl = flags.databaseUrl ?? config.databaseUrl ?? ''
 
