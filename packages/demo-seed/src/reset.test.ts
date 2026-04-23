@@ -70,11 +70,17 @@ describe('resetSeed', () => {
     const ctx = { orgId: seeded.organization.id }
     const tag = (await services.tags.list(ctx, { limit: 1 })).data[0]
     const contact = (await services.contacts.list(ctx, { limit: 1 })).data[0]
+    const company = (await services.companies.list(ctx, { limit: 1 })).data[0]
+    const deal = (await services.deals.list(ctx, { limit: 1 })).data[0]
     expect(tag).toBeDefined()
     expect(contact).toBeDefined()
+    expect(company).toBeDefined()
+    expect(deal).toBeDefined()
 
     const entityTagRepo = createSqliteEntityTagRepository(adapter)
     const now = new Date()
+    // Cover all three entity types the seed() writes so that reset must
+    // clear entity_tags rows pointing at contacts, companies, AND deals.
     await entityTagRepo.create(ctx, {
       id: generateId('entityTag'),
       organizationId: seeded.organization.id,
@@ -84,8 +90,26 @@ describe('resetSeed', () => {
       createdAt: now,
       updatedAt: now,
     })
+    await entityTagRepo.create(ctx, {
+      id: generateId('entityTag'),
+      organizationId: seeded.organization.id,
+      tagId: tag!.id,
+      entityType: 'companies',
+      entityId: company!.id,
+      createdAt: now,
+      updatedAt: now,
+    })
+    await entityTagRepo.create(ctx, {
+      id: generateId('entityTag'),
+      organizationId: seeded.organization.id,
+      tagId: tag!.id,
+      entityType: 'deals',
+      entityId: deal!.id,
+      createdAt: now,
+      updatedAt: now,
+    })
     const preReset = await entityTagRepo.list(ctx, { limit: 10 })
-    expect(preReset.data.length).toBe(1)
+    expect(preReset.data.length).toBe(3)
 
     await resetSeed(adapter, seeded.organization.id)
 

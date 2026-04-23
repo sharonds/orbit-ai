@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### @orbit-ai/core — Validator type re-exports
 
 - Re-export entity record types (`OrganizationRecord`, `UserRecord`, `SanitizedUserRecord`, `PipelineRecord`, `StageRecord`, `CompanyRecord`, `ContactRecord`, `DealRecord`, `ActivityRecord`, `NoteRecord`, `TagRecord`) from the package barrel so downstream packages (e.g. `@orbit-ai/demo-seed`) can import them without reaching into validator paths
+- **Changed**: Narrowed validator re-exports for pipelines/stages/users/organizations to type-only (`export type *`). Runtime Zod schemas remain accessible via the service modules. Prevents demo-seed and other downstream consumers from unintentionally shipping Zod at runtime.
 
 ### @orbit-ai/api + @orbit-ai/core — Post-Stack Audit MEDIUM Fixes
 
