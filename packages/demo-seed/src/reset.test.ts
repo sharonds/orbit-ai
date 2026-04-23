@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   createCoreServices,
   createSqliteOrbitDatabase,
@@ -53,4 +53,30 @@ describe('resetSeed', () => {
       resetSeed(adapter, 'org_01HZZZZZZZZZZZZZZZZZZZZZZZ'),
     ).resolves.not.toThrow()
   }, 60_000)
+
+  it('throws loudly when a service in the delete order is missing list/delete', async () => {
+    // Simulate a future refactor where an entity service is dropped from
+    // CoreServices. The loud-throw path in resetSeed is the safety net for
+    // that scenario; verify it actually fires rather than silently skipping.
+    const coreModule = await import('@orbit-ai/core')
+    const database = createSqliteOrbitDatabase()
+    const adapter = createSqliteStorageAdapter({ database })
+    await adapter.migrate()
+    const real = coreModule.createCoreServices(adapter)
+    // Build a partial stand-in with `tasks` stripped to force the throw.
+    const broken = { ...real } as Record<string, unknown>
+    delete broken.tasks
+    const spy = vi
+      .spyOn(coreModule, 'createCoreServices')
+      .mockReturnValue(broken as unknown as ReturnType<typeof coreModule.createCoreServices>)
+    try {
+      // Re-import reset.js so the mocked createCoreServices is picked up at call time.
+      const { resetSeed: resetSeedIsolated } = await import('./reset.js')
+      await expect(
+        resetSeedIsolated(adapter, 'org_01HZZZZZZZZZZZZZZZZZZZZZZZ'),
+      ).rejects.toThrow(/missing list\/delete/)
+    } finally {
+      spy.mockRestore()
+    }
+  }, 30_000)
 })

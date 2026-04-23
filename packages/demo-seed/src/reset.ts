@@ -1,5 +1,5 @@
 import { createCoreServices } from '@orbit-ai/core'
-import type { StorageAdapter } from '@orbit-ai/core'
+import type { CoreServices, StorageAdapter } from '@orbit-ai/core'
 
 /**
  * Exactly the entities that seed() writes. If a new entity is added to seed(),
@@ -8,6 +8,9 @@ import type { StorageAdapter } from '@orbit-ai/core'
  * Note: `tasks` is intentionally included even though the current `seed()`
  * orchestrator does not populate tasks — this is defensive so that a caller
  * who manually adds tasks to a seeded tenant still gets a clean reset.
+ *
+ * Typed as `keyof CoreServices` so that renames in core produce a compile
+ * error here rather than a runtime "missing list/delete" throw.
  */
 const ENTITIES_IN_DELETE_ORDER = [
   'activities',
@@ -20,7 +23,9 @@ const ENTITIES_IN_DELETE_ORDER = [
   'companies',
   'tags',
   'users',
-] as const
+] as const satisfies readonly (keyof CoreServices)[]
+
+type DeletableEntity = (typeof ENTITIES_IN_DELETE_ORDER)[number]
 
 type ListDeleteService = {
   list: (
@@ -36,8 +41,24 @@ export async function resetSeed(
 ): Promise<void> {
   const services = createCoreServices(adapter)
   const ctx = { orgId: organizationId }
+
+  // Build a typed dispatch map so a missing key is a compile error in most
+  // cases and a runtime throw in the remaining (lazy-getter) ones.
+  const deletableServices: Record<DeletableEntity, unknown> = {
+    activities: services.activities,
+    notes: services.notes,
+    tasks: services.tasks,
+    deals: services.deals,
+    contacts: services.contacts,
+    stages: services.stages,
+    pipelines: services.pipelines,
+    companies: services.companies,
+    tags: services.tags,
+    users: services.users,
+  }
+
   for (const name of ENTITIES_IN_DELETE_ORDER) {
-    const svc = (services as unknown as Record<string, ListDeleteService | undefined>)[name]
+    const svc = deletableServices[name] as ListDeleteService | undefined
     if (
       !svc ||
       typeof svc.list !== 'function' ||
@@ -50,7 +71,25 @@ export async function resetSeed(
       )
     }
     let page = await svc.list(ctx, { limit: 100 })
+    let previousFirstId: string | undefined
+    let previousLength = -1
     while (page.data.length > 0) {
+      const currentFirstId = page.data[0]!.id
+      const currentLength = page.data.length
+      // Progress guard: if a full pass completed without the set shrinking
+      // (same head id and same length), the delete is failing silently. Throw
+      // rather than loop forever.
+      if (
+        previousFirstId !== undefined &&
+        previousFirstId === currentFirstId &&
+        previousLength === currentLength
+      ) {
+        throw new Error(
+          `resetSeed: no progress deleting ${name} for org ${organizationId} — ` +
+            `first id ${currentFirstId} and length ${currentLength} unchanged after a full pass. ` +
+            `Delete is succeeding without removing records (check adapter / RLS).`,
+        )
+      }
       for (const record of page.data) {
         try {
           await svc.delete(ctx, record.id)
@@ -58,9 +97,12 @@ export async function resetSeed(
           const message = err instanceof Error ? err.message : String(err)
           throw new Error(
             `resetSeed: failed to delete ${name} ${record.id}: ${message}`,
+            { cause: err },
           )
         }
       }
+      previousFirstId = currentFirstId
+      previousLength = currentLength
       page = await svc.list(ctx, { limit: 100 })
     }
   }
