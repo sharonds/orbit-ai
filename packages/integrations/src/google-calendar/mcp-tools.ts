@@ -79,10 +79,10 @@ export function buildCalendarTools(context: CalendarToolContext): IntegrationToo
 }
 
 /**
- * Build CLI commands for Calendar.
- * These register under 'orbit integrations google-calendar' and alias as 'orbit calendar'.
+ * Build MCP-tool-style command builders for Calendar (list/create/sync).
+ * Distinct from the CLI factory in `./cli.ts` which builds configure/status.
  */
-export function buildCalendarCommands(context: CalendarToolContext): IntegrationCommand[] {
+export function buildCalendarMcpTools(context: CalendarToolContext): IntegrationCommand[] {
   return [
     {
       name: 'list',
