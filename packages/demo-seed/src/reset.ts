@@ -59,10 +59,32 @@ function entityTagRepositoryFor(adapter: StorageAdapter): EntityTagRepository {
   return createPostgresEntityTagRepository(adapter)
 }
 
+export interface ResetSeedOptions {
+  /**
+   * Required acknowledgement. Set to true to confirm you understand this call
+   * will delete ALL tenant rows in the listed entity types — not just rows
+   * that demo-seed created. There is no marker on seeded records; a "reset"
+   * is a tenant-wide wipe of activities, notes, deals, contacts, stages,
+   * pipelines, companies, tags, users, entity_tags, and tasks for the given
+   * organizationId.
+   */
+  readonly confirmWipeAllTenantData: true
+}
+
 export async function resetSeed(
   adapter: StorageAdapter,
   organizationId: string,
+  options: ResetSeedOptions,
 ): Promise<void> {
+  if (options?.confirmWipeAllTenantData !== true) {
+    throw new Error(
+      `resetSeed: refusing to run without confirmWipeAllTenantData: true. ` +
+        `This function does not delete only demo rows — it deletes ALL ` +
+        `activities, notes, deals, contacts, stages, pipelines, companies, ` +
+        `tags, users, entity_tags, and tasks for the given organization. ` +
+        `Pass { confirmWipeAllTenantData: true } to acknowledge.`,
+    )
+  }
   const services = createCoreServices(adapter)
   const ctx = { orgId: organizationId }
 

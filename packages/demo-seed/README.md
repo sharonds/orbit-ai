@@ -60,18 +60,30 @@ await seed(adapter, { profile: TENANT_PROFILES.beta })
 // Wipe + reseed
 await seed(adapter, { profile: TENANT_PROFILES.beta, mode: 'reset' })
 
-// Standalone reset (leaves the organization record intact)
+// Standalone reset (leaves the organization record intact).
+// DANGER: this wipes ALL rows in the listed entity types for that org —
+// not just rows the seeder created. See "Safety" below.
 import { resetSeed } from '@orbit-ai/demo-seed'
-await resetSeed(adapter, organizationId)
+await resetSeed(adapter, organizationId, { confirmWipeAllTenantData: true })
 ```
 
-`resetSeed()` deletes every entity the seeder writes in FK-reverse order: activities → notes → tasks → deals → contacts → stages → pipelines → companies → entity_tags → tags → users. `entity_tags` is cleared before `tags` to avoid a FK violation for any tag associations a consumer may have created on top of the seeded data. If a core service is ever missing `list`/`delete`, it fails loudly rather than leaving a half-reset tenant behind.
+`resetSeed()` walks every entity the seeder writes in FK-reverse order — activities → notes → tasks → deals → contacts → stages → pipelines → companies → entity_tags → tags → users — and deletes every row in those tables for the given `organizationId`. Seeded records carry no marker, so a "reset" cannot distinguish demo rows from rows a consumer added on top: the call is a tenant-wide wipe of those entity types. `entity_tags` is cleared before `tags` to avoid FK violations from consumer-created tag associations. If a core service is ever missing `list`/`delete`, it fails loudly rather than leaving a half-reset tenant behind.
 
 ## Safety
 
-`mode: 'reset'` is destructive. The seeder matches organizations by fixed profile slug (`acme-events`, `beta-collective`), and if your target database happens to already contain an organization with that slug — say a real customer named "Acme Events" — a naïve reset would wipe their data.
+**`resetSeed` is a tenant-wide data wipe, not a demo-row scrub.** There is no marker on seeded records, so `resetSeed` deletes *every* row in activities, notes, tasks, deals, contacts, stages, pipelines, companies, entity_tags, tags, and users for the given organization — including anything a consumer added after seeding. Pointing it at a production `organizationId` will wipe that tenant. To make the destructive contract impossible to miss, the call requires an explicit acknowledgement flag:
 
-To guard against this, `seed()` throws when `mode: 'reset'` would operate on an organization that the current call did **not** just create. Set `allowResetOfExistingOrg: true` only when you know the matching organization is a seed-created demo tenant and losing its data is intentional:
+```ts
+import { resetSeed } from '@orbit-ai/demo-seed'
+
+await resetSeed(adapter, organizationId, {
+  confirmWipeAllTenantData: true, // required; omitting throws before any delete
+})
+```
+
+`mode: 'reset'` on `seed()` is the same kind of destructive. The seeder matches organizations by fixed profile slug (`acme-events`, `beta-collective`), and if your target database happens to already contain an organization with that slug — say a real customer named "Acme Events" — a naïve reset would wipe their data.
+
+To guard against that, `seed()` throws when `mode: 'reset'` would operate on an organization that the current call did **not** just create. Set `allowResetOfExistingOrg: true` only when you know the matching organization is a seed-created demo tenant and losing its data is intentional:
 
 ```ts
 await seed(adapter, {
@@ -101,7 +113,7 @@ Auto-generated IDs (ULIDs) and `created_at` values will naturally differ per run
 | Export | Description |
 |--------|-------------|
 | `seed(adapter, opts)` | Top-level orchestrator. Returns `{ organization, counts }`. |
-| `resetSeed(adapter, orgId)` | Deletes all seeded records for one organization. |
+| `resetSeed(adapter, orgId, { confirmWipeAllTenantData: true })` | **Destructive.** Wipes every row in the seeded entity types for that organization — not just demo rows. Requires explicit acknowledgement flag. See "Safety". |
 | `TENANT_PROFILES` | `{ acme, beta }` — tuned scale presets. |
 | `createPrng(seed)` | Internal PRNG factory (exported for advanced custom seeders). |
-| Types: `SeedOptions`, `SeedResult`, `SeedMode`, `TenantProfile`, `ProfileCounts`, `Prng` | |
+| Types: `SeedOptions`, `SeedResult`, `SeedMode`, `ResetSeedOptions`, `TenantProfile`, `ProfileCounts`, `Prng` | |

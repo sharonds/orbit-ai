@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Determinism guaranteed via fixed-seed PRNG (`seedrandom`); two independent runs produce identical content under a deterministic projection
 - All names/domains/emails are synthetic; no real customer data is included
 - 30 tests cover PRNG, fixtures, profiles, every entity seeder, and the orchestrator's invariants (counts, determinism, multi-tenant isolation, mode behavior)
+- **Contract change** (`resetSeed`): now requires a third argument `{ confirmWipeAllTenantData: true }` and throws before touching the database if the flag is absent. The previous `resetSeed(adapter, orgId)` signature no longer type-checks. Rationale: `resetSeed` does not delete only demo rows — seeded records carry no marker, so the call wipes every row in the listed entity types (activities, notes, deals, contacts, stages, pipelines, companies, tags, users, entity_tags, tasks) for that organization. Docs previously described it as "deletes seeded records", which misrepresented the blast radius; making callers acknowledge the wipe via a typed flag keeps the contract honest. Pre-npm, no deprecation shim.
 
 ### @orbit-ai/core — Validator type re-exports
 

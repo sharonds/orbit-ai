@@ -16,7 +16,7 @@ describe('resetSeed', () => {
     const adapter = createSqliteStorageAdapter({ database })
     await adapter.migrate()
     const result = await seed(adapter, { profile: TENANT_PROFILES.beta })
-    await resetSeed(adapter, result.organization.id)
+    await resetSeed(adapter, result.organization.id, { confirmWipeAllTenantData: true })
     const services = createCoreServices(adapter)
     const ctx = { orgId: result.organization.id }
     // Assert zero on every entity seed() writes — not a subset. Run serially:
@@ -52,7 +52,7 @@ describe('resetSeed', () => {
     await seed(adapter, { profile: TENANT_PROFILES.beta })
     // Valid-shape ULID that does not correspond to any seeded org.
     await expect(
-      resetSeed(adapter, 'org_01HZZZZZZZZZZZZZZZZZZZZZZZ'),
+      resetSeed(adapter, 'org_01HZZZZZZZZZZZZZZZZZZZZZZZ', { confirmWipeAllTenantData: true }),
     ).resolves.not.toThrow()
   }, 60_000)
 
@@ -111,13 +111,27 @@ describe('resetSeed', () => {
     const preReset = await entityTagRepo.list(ctx, { limit: 10 })
     expect(preReset.data.length).toBe(3)
 
-    await resetSeed(adapter, seeded.organization.id)
+    await resetSeed(adapter, seeded.organization.id, { confirmWipeAllTenantData: true })
 
     const postEntityTags = await entityTagRepo.list(ctx, { limit: 10 })
     const postTags = await services.tags.list(ctx, { limit: 10 })
     expect(postEntityTags.data.length).toBe(0)
     expect(postTags.data.length).toBe(0)
   }, 90_000)
+
+  it('refuses to run without confirmWipeAllTenantData: true', async () => {
+    // Contract safety: the public resetSeed API deletes ALL tenant rows in the
+    // listed entity types, not just demo rows. Callers must explicitly
+    // acknowledge that. Omitting the flag (or passing false) must throw
+    // before any delete happens.
+    const database = createSqliteOrbitDatabase()
+    const adapter = createSqliteStorageAdapter({ database })
+    await adapter.migrate()
+    await expect(
+      // @ts-expect-error — intentionally omitting required options to exercise runtime guard
+      resetSeed(adapter, 'org_01HZZZZZZZZZZZZZZZZZZZZZZZ'),
+    ).rejects.toThrow(/confirmWipeAllTenantData/)
+  }, 30_000)
 
   it('throws loudly when a service in the delete order is missing list/delete', async () => {
     // Simulate a future refactor where an entity service is dropped from
@@ -138,7 +152,7 @@ describe('resetSeed', () => {
       // Re-import reset.js so the mocked createCoreServices is picked up at call time.
       const { resetSeed: resetSeedIsolated } = await import('./reset.js')
       await expect(
-        resetSeedIsolated(adapter, 'org_01HZZZZZZZZZZZZZZZZZZZZZZZ'),
+        resetSeedIsolated(adapter, 'org_01HZZZZZZZZZZZZZZZZZZZZZZZ', { confirmWipeAllTenantData: true }),
       ).rejects.toThrow(/missing list\/delete/)
     } finally {
       spy.mockRestore()

@@ -103,7 +103,7 @@ export async function seed(
     }
     if (mode === 'reset') {
       const { resetSeed } = await import('./reset.js')
-      await resetSeed(adapter, organization.id)
+      await resetSeed(adapter, organization.id, { confirmWipeAllTenantData: true })
       // Post-reset verification: confirm reset actually emptied users,
       // pipelines, AND contacts. Closes the loop with the progress-guard
       // in resetSeed.
