@@ -27,23 +27,33 @@ export function registerIntegrationSubcommands(program: Command, plugins: Integr
   const parent = findOrCreateIntegrationsParent(program)
 
   for (const plugin of plugins) {
-    const sub = parent.command(plugin.name).description(plugin.description)
+    const path = plugin.name.split('/').map((p) => p.trim()).filter(Boolean)
+    let host = parent
+    for (let i = 0; i < path.length - 1; i += 1) {
+      const segment = path[i]!
+      let group = host.commands.find((c) => c.name() === segment)
+      if (!group) {
+        group = host.command(segment).description(`${segment} integration`)
+      }
+      host = group
+    }
+    const leaf = host.command(path[path.length - 1]!).description(plugin.description)
 
     if (plugin.options) {
       for (const opt of plugin.options) {
         if (opt.defaultValue !== undefined) {
-          sub.option(
+          leaf.option(
             opt.flags,
             opt.description,
             typeof opt.defaultValue === 'boolean' ? opt.defaultValue : String(opt.defaultValue),
           )
         } else {
-          sub.option(opt.flags, opt.description)
+          leaf.option(opt.flags, opt.description)
         }
       }
     }
 
-    sub.action(plugin.action)
+    leaf.action(plugin.action)
   }
 }
 
