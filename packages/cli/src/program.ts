@@ -49,6 +49,11 @@ export function _resetJsonMode(): void {
   _jsonMode = false
 }
 
+// test-only
+export function _setJsonMode(value: boolean): void {
+  _jsonMode = value
+}
+
 // test-only export
 export { classifyError as _classifyError }
 

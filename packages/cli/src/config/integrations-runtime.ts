@@ -29,7 +29,7 @@ export async function resolveIntegrationsRuntime(
   }
   const config = opts.flags.profile ? applyProfile(rawConfig, opts.flags.profile) : rawConfig
 
-  const orgId = opts.flags.orgId ?? process.env['ORBIT_ORG_ID'] ?? config.orgId
+  const orgId = nonBlank(opts.flags.orgId) ?? nonBlank(process.env['ORBIT_ORG_ID']) ?? nonBlank(config.orgId)
   if (!orgId) {
     throw new CliValidationError(
       'orgId is required for integrations. Pass --org-id, set ORBIT_ORG_ID, or run `orbit init --org-id <id>` to persist it in .orbit/config.json.',
@@ -37,7 +37,10 @@ export async function resolveIntegrationsRuntime(
     )
   }
   const userId =
-    opts.flags.userId ?? process.env['ORBIT_USER_ID'] ?? config.userId ?? 'cli-user'
+    nonBlank(opts.flags.userId) ??
+    nonBlank(process.env['ORBIT_USER_ID']) ??
+    nonBlank(config.userId) ??
+    'cli-user'
 
   const adapter = resolveAdapter(opts.flags, config, opts.cwd)
 
@@ -46,19 +49,26 @@ export async function resolveIntegrationsRuntime(
   const encryption = new AesGcmEncryptionProvider()
   const credentialStore = new TableBackedCredentialStore(adapter, encryption)
 
+  const jsonMode = isJsonMode()
+
   return {
     organizationId: orgId,
     userId,
     credentialStore,
-    isJsonMode: isJsonMode(),
+    isJsonMode: jsonMode,
     print(value: unknown) {
-      if (isJsonMode()) {
-        console.log(JSON.stringify(value))
+      const safe = sanitizeForPrint(value)
+      if (jsonMode) {
+        console.log(JSON.stringify(safe))
       } else {
-        console.log(maskSecrets(value))
+        console.log(typeof safe === 'string' ? safe : JSON.stringify(safe, null, 2))
       }
     },
   }
+}
+
+function nonBlank(v: string | undefined | null): string | undefined {
+  return typeof v === 'string' && v.trim().length > 0 ? v : undefined
 }
 
 function isPostgresOnlyStatement(stmt: string): boolean {
@@ -90,11 +100,17 @@ export async function applyIntegrationsSchemaExtension(adapter: StorageAdapter):
   })
 }
 
-function maskSecrets(value: unknown): string {
-  if (typeof value !== 'object' || value === null) return String(value)
-  const masked: Record<string, unknown> = { ...(value as Record<string, unknown>) }
-  for (const key of Object.keys(masked)) {
-    if (/token|secret|key|password/i.test(key)) masked[key] = '***'
+const SECRET_KEY_PATTERN = /token|secret|key|password/i
+
+function sanitizeForPrint(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((v) => sanitizeForPrint(v))
+  if (value !== null && typeof value === 'object') {
+    const src = value as Record<string, unknown>
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(src)) {
+      out[key] = SECRET_KEY_PATTERN.test(key) ? '***' : sanitizeForPrint(src[key])
+    }
+    return out
   }
-  return JSON.stringify(masked, null, 2)
+  return value
 }

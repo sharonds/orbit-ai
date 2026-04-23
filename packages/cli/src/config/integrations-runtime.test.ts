@@ -4,6 +4,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { resolveIntegrationsRuntime } from './integrations-runtime.js'
 import type { GlobalFlags } from '../types.js'
+import { _resetJsonMode, _setJsonMode } from '../program.js'
 
 const TEST_KEY = 'a'.repeat(64)
 
@@ -77,5 +78,77 @@ describe('resolveIntegrationsRuntime', () => {
     expect(loaded?.refreshToken).toBe(creds.refreshToken)
     expect(loaded?.providerAccountId).toBe(creds.providerAccountId)
     expect(loaded?.scopes).toEqual(creds.scopes)
+  })
+
+  it('rejects whitespace-only --org-id with MISSING_REQUIRED_CONFIG', async () => {
+    const orbitDir = path.join(tmpRoot, '.orbit')
+    fs.mkdirSync(orbitDir, { recursive: true })
+    fs.writeFileSync(path.join(orbitDir, 'config.json'), JSON.stringify({ userId: 'someone' }), {
+      mode: 0o600,
+    })
+    const flags: GlobalFlags = { orgId: '   ', adapter: 'sqlite', databaseUrl: ':memory:' }
+    await expect(
+      resolveIntegrationsRuntime({ flags, cwd: tmpRoot }),
+    ).rejects.toMatchObject({ details: { code: 'MISSING_REQUIRED_CONFIG', path: 'context.orgId' } })
+  })
+
+  it('rejects empty --org-id with MISSING_REQUIRED_CONFIG', async () => {
+    const orbitDir = path.join(tmpRoot, '.orbit')
+    fs.mkdirSync(orbitDir, { recursive: true })
+    fs.writeFileSync(path.join(orbitDir, 'config.json'), JSON.stringify({ userId: 'someone' }), {
+      mode: 0o600,
+    })
+    const flags: GlobalFlags = { orgId: '', adapter: 'sqlite', databaseUrl: ':memory:' }
+    await expect(
+      resolveIntegrationsRuntime({ flags, cwd: tmpRoot }),
+    ).rejects.toMatchObject({ details: { code: 'MISSING_REQUIRED_CONFIG', path: 'context.orgId' } })
+  })
+
+  it('recursively masks secrets in JSON-mode print output', async () => {
+    process.env['ORBIT_CREDENTIAL_KEY'] = TEST_KEY
+    const orbitDir = path.join(tmpRoot, '.orbit')
+    fs.mkdirSync(orbitDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(orbitDir, 'config.json'),
+      JSON.stringify({ orgId: 'org-test' }),
+      { mode: 0o600 },
+    )
+    _setJsonMode(true)
+    try {
+      const flags: GlobalFlags = {
+        orgId: 'org-test',
+        adapter: 'sqlite',
+        databaseUrl: ':memory:',
+      }
+      const ctx = await resolveIntegrationsRuntime({ flags, cwd: tmpRoot })
+      const logs: string[] = []
+      const original = console.log
+      console.log = (msg?: unknown) => {
+        logs.push(String(msg))
+      }
+      try {
+        ctx.print({
+          accessToken: 'SECRET',
+          nested: { refreshToken: 'NESTED_SECRET', visible: 'ok' },
+        })
+      } finally {
+        console.log = original
+      }
+      expect(logs).toHaveLength(1)
+      const out = logs[0]
+      expect(out).not.toContain('SECRET')
+      expect(out).not.toContain('NESTED_SECRET')
+      expect(out).toContain('***')
+      expect(out).toContain('ok')
+      const parsed = JSON.parse(out!) as {
+        accessToken: string
+        nested: { refreshToken: string; visible: string }
+      }
+      expect(parsed.accessToken).toBe('***')
+      expect(parsed.nested.refreshToken).toBe('***')
+      expect(parsed.nested.visible).toBe('ok')
+    } finally {
+      _resetJsonMode()
+    }
   })
 })
