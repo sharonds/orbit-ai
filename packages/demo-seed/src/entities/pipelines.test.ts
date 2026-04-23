@@ -13,7 +13,7 @@ describe('seedPipelinesAndStages', () => {
     const database = createSqliteOrbitDatabase()
     const adapter = createSqliteStorageAdapter({ database })
     await adapter.migrate()
-    const org = await seedOrganization(adapter, TENANT_PROFILES.acme)
+    const { organization: org } = await seedOrganization(adapter, TENANT_PROFILES.acme)
     const services = createCoreServices(adapter)
     const ctx = { orgId: org.id }
     const { pipeline, stages } = await seedPipelinesAndStages(services, ctx)
@@ -32,7 +32,7 @@ describe('seedPipelinesAndStages', () => {
     const database = createSqliteOrbitDatabase()
     const adapter = createSqliteStorageAdapter({ database })
     await adapter.migrate()
-    const org = await seedOrganization(adapter, TENANT_PROFILES.acme)
+    const { organization: org } = await seedOrganization(adapter, TENANT_PROFILES.acme)
     const services = createCoreServices(adapter)
     const ctx = { orgId: org.id }
     const { stages } = await seedPipelinesAndStages(services, ctx)

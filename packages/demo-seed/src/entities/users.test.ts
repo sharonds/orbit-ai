@@ -14,7 +14,7 @@ describe('seedUsers', () => {
     const database = createSqliteOrbitDatabase()
     const adapter = createSqliteStorageAdapter({ database })
     await adapter.migrate()
-    const org = await seedOrganization(adapter, TENANT_PROFILES.acme)
+    const { organization: org } = await seedOrganization(adapter, TENANT_PROFILES.acme)
     const services = createCoreServices(adapter)
     const ctx = { orgId: org.id }
     const users = await seedUsers(services, ctx, createPrng('users-test'), 3)
@@ -30,7 +30,7 @@ describe('seedUsers', () => {
     const database = createSqliteOrbitDatabase()
     const adapter = createSqliteStorageAdapter({ database })
     await adapter.migrate()
-    const org = await seedOrganization(adapter, TENANT_PROFILES.acme)
+    const { organization: org } = await seedOrganization(adapter, TENANT_PROFILES.acme)
     const services = createCoreServices(adapter)
     const ctx = { orgId: org.id }
     const users = await seedUsers(services, ctx, createPrng('users-test'), 3)

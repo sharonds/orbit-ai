@@ -10,7 +10,7 @@ describe('seedCompanies', () => {
     const database = createSqliteOrbitDatabase()
     const adapter = createSqliteStorageAdapter({ database })
     await adapter.migrate()
-    const org = await seedOrganization(adapter, TENANT_PROFILES.beta)
+    const { organization: org } = await seedOrganization(adapter, TENANT_PROFILES.beta)
     const services = createCoreServices(adapter)
     const ctx = { orgId: org.id }
     const companies = await seedCompanies(services, ctx, createPrng('beta-v1'), 10)

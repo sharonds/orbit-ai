@@ -145,6 +145,29 @@ describe('seed()', () => {
     expect(notes.length).toBe(result.counts.notes)
   }, 90_000)
 
+  it('mode=append is idempotent for pipelines and stages (no duplicate Default Sales Pipeline)', async () => {
+    // Postgres has a unique (org_id, name) index on pipelines; SQLite does
+    // not but a second un-named "Default Sales Pipeline" would still be a
+    // user-visible duplicate. After a second append run the same single
+    // pipeline and stage set must remain.
+    const adapter = await freshAdapter()
+    const profile = TENANT_PROFILES.beta
+    const first = await seed(adapter, { profile })
+    await seed(adapter, {
+      profile,
+      mode: 'append',
+      randomSeed: `${profile.randomSeed}-append`,
+    })
+    const services = createCoreServices(adapter)
+    const orgId = first.organization.id
+    const pipelines = await listAll(services.pipelines, orgId)
+    const stages = await listAll(services.stages, orgId)
+    expect(pipelines.length).toBe(1)
+    expect(pipelines[0]!.name).toBe('Default Sales Pipeline')
+    // 5 canonical stages from DEFAULT_PIPELINE_STAGES — never doubled.
+    expect(stages.length).toBe(5)
+  }, 120_000)
+
   it('T1: mode=append doubles the seeded row counts across entities', async () => {
     const adapter = await freshAdapter()
     const profile = TENANT_PROFILES.beta
@@ -167,7 +190,7 @@ describe('seed()', () => {
     const adapter = await freshAdapter()
     const profile = TENANT_PROFILES.beta
     await seed(adapter, { profile })
-    await seed(adapter, { profile, mode: 'reset' })
+    await seed(adapter, { profile, mode: 'reset', allowResetOfExistingOrg: true })
     const services = createCoreServices(adapter)
     // List all orgs in the system-level admin service and filter to this slug.
     // Admin ctx.orgId is ignored by the admin service; pass an arbitrary value.
@@ -184,6 +207,25 @@ describe('seed()', () => {
     ).rejects.toThrow(/already has data/)
   }, 90_000)
 
+  it('mode=reset refuses to wipe a pre-existing org without allowResetOfExistingOrg, then succeeds with it', async () => {
+    // Simulate the footgun: a caller points the seeder at a DB that already
+    // contains an organization with the profile slug. Without the opt-in flag
+    // we must refuse; with it, we must succeed.
+    const adapter = await freshAdapter()
+    const profile = TENANT_PROFILES.beta
+    await seed(adapter, { profile })
+    await expect(
+      seed(adapter, { profile, mode: 'reset' }),
+    ).rejects.toThrow(/allowResetOfExistingOrg/)
+    // Same call with the opt-in flag succeeds and reseeds to spec.
+    const r = await seed(adapter, {
+      profile,
+      mode: 'reset',
+      allowResetOfExistingOrg: true,
+    })
+    expect(r.organization.slug).toBe(profile.organizationSlug)
+  }, 120_000)
+
   it('mode=reset wipes and re-seeds to the same counts across all entity types', async () => {
     const adapter = await freshAdapter()
     const profile = TENANT_PROFILES.beta
@@ -191,6 +233,7 @@ describe('seed()', () => {
     const r = await seed(adapter, {
       profile,
       mode: 'reset',
+      allowResetOfExistingOrg: true,
     })
     const services = createCoreServices(adapter)
     const orgId = r.organization.id

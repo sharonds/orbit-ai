@@ -9,7 +9,7 @@ describe('seedTags', () => {
     const database = createSqliteOrbitDatabase()
     const adapter = createSqliteStorageAdapter({ database })
     await adapter.migrate()
-    const org = await seedOrganization(adapter, TENANT_PROFILES.beta)
+    const { organization: org } = await seedOrganization(adapter, TENANT_PROFILES.beta)
     const services = createCoreServices(adapter)
     const ctx = { orgId: org.id }
     const tags = await seedTags(services, ctx)
