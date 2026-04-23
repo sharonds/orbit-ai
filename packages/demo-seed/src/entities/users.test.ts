@@ -23,6 +23,10 @@ describe('seedUsers', () => {
       expect(u.id).toMatch(/^user_/)
       expect(u.email).toMatch(/@/)
       expect(u.organizationId).toBe(org.id)
+      // Regression guard for whitespace/punctuation leaking into the
+      // local-part. See util.test.ts for the shape-level assertions.
+      expect(u.email).not.toMatch(/\s/)
+      expect(u.email).toMatch(/^[a-z0-9.+_-]+@[a-z0-9.-]+$/)
     }
   })
 
