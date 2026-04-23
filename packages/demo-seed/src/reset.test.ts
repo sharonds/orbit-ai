@@ -1,8 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   createCoreServices,
+  createSqliteEntityTagRepository,
   createSqliteOrbitDatabase,
   createSqliteStorageAdapter,
+  generateId,
 } from '@orbit-ai/core'
 import { seed } from './seed.js'
 import { resetSeed } from './reset.js'
@@ -53,6 +55,45 @@ describe('resetSeed', () => {
       resetSeed(adapter, 'org_01HZZZZZZZZZZZZZZZZZZZZZZZ'),
     ).resolves.not.toThrow()
   }, 60_000)
+
+  it('deletes entity_tags before tags so consumer-created tag associations do not block reset', async () => {
+    // Simulate a consumer who, after seeding, associated one of the seed tags
+    // with one of the seed contacts via entity_tags. A naïve resetSeed that
+    // deletes tags before entity_tags would hit a FK violation on Postgres
+    // and silently leave orphaned rows on SQLite. Verify reset completes and
+    // both tables are empty afterwards.
+    const database = createSqliteOrbitDatabase()
+    const adapter = createSqliteStorageAdapter({ database })
+    await adapter.migrate()
+    const seeded = await seed(adapter, { profile: TENANT_PROFILES.beta })
+    const services = createCoreServices(adapter)
+    const ctx = { orgId: seeded.organization.id }
+    const tag = (await services.tags.list(ctx, { limit: 1 })).data[0]
+    const contact = (await services.contacts.list(ctx, { limit: 1 })).data[0]
+    expect(tag).toBeDefined()
+    expect(contact).toBeDefined()
+
+    const entityTagRepo = createSqliteEntityTagRepository(adapter)
+    const now = new Date()
+    await entityTagRepo.create(ctx, {
+      id: generateId('entityTag'),
+      organizationId: seeded.organization.id,
+      tagId: tag!.id,
+      entityType: 'contacts',
+      entityId: contact!.id,
+      createdAt: now,
+      updatedAt: now,
+    })
+    const preReset = await entityTagRepo.list(ctx, { limit: 10 })
+    expect(preReset.data.length).toBe(1)
+
+    await resetSeed(adapter, seeded.organization.id)
+
+    const postEntityTags = await entityTagRepo.list(ctx, { limit: 10 })
+    const postTags = await services.tags.list(ctx, { limit: 10 })
+    expect(postEntityTags.data.length).toBe(0)
+    expect(postTags.data.length).toBe(0)
+  }, 90_000)
 
   it('throws loudly when a service in the delete order is missing list/delete', async () => {
     // Simulate a future refactor where an entity service is dropped from

@@ -1,5 +1,13 @@
-import { createCoreServices } from '@orbit-ai/core'
-import type { CoreServices, StorageAdapter } from '@orbit-ai/core'
+import {
+  createCoreServices,
+  createSqliteEntityTagRepository,
+  createPostgresEntityTagRepository,
+} from '@orbit-ai/core'
+import type {
+  CoreServices,
+  EntityTagRepository,
+  StorageAdapter,
+} from '@orbit-ai/core'
 
 /**
  * Exactly the entities that seed() writes. If a new entity is added to seed(),
@@ -9,8 +17,18 @@ import type { CoreServices, StorageAdapter } from '@orbit-ai/core'
  * orchestrator does not populate tasks — this is defensive so that a caller
  * who manually adds tasks to a seeded tenant still gets a clean reset.
  *
- * Typed as `keyof CoreServices` so that renames in core produce a compile
- * error here rather than a runtime "missing list/delete" throw.
+ * `entityTags` (the `entity_tags` junction table) MUST come before `tags`
+ * because entity_tags has a FK to tags — deleting a tag that still has
+ * rows referencing it would fail with a FK violation on Postgres. The
+ * seeder itself never creates entity_tag rows, but a consumer may have
+ * associated tags with contacts/companies/etc. and still expect a clean
+ * resetSeed to finish.
+ *
+ * `entityTags` is a sentinel name handled separately below (not routed
+ * through CoreServices, since `services.system.entityTags` is read-only).
+ *
+ * Typed as `keyof CoreServices | 'entityTags'` so renames in core produce
+ * a compile error here rather than a runtime "missing list/delete" throw.
  */
 const ENTITIES_IN_DELETE_ORDER = [
   'activities',
@@ -21,9 +39,10 @@ const ENTITIES_IN_DELETE_ORDER = [
   'stages',
   'pipelines',
   'companies',
+  'entityTags',
   'tags',
   'users',
-] as const satisfies readonly (keyof CoreServices)[]
+] as const satisfies readonly (keyof CoreServices | 'entityTags')[]
 
 type DeletableEntity = (typeof ENTITIES_IN_DELETE_ORDER)[number]
 
@@ -35,12 +54,22 @@ type ListDeleteService = {
   delete: (ctx: { orgId: string }, id: string) => Promise<unknown>
 }
 
+function entityTagRepositoryFor(adapter: StorageAdapter): EntityTagRepository {
+  if (adapter.dialect === 'sqlite') return createSqliteEntityTagRepository(adapter)
+  return createPostgresEntityTagRepository(adapter)
+}
+
 export async function resetSeed(
   adapter: StorageAdapter,
   organizationId: string,
 ): Promise<void> {
   const services = createCoreServices(adapter)
   const ctx = { orgId: organizationId }
+
+  // `entityTags` is exposed on CoreServices only as a read-only admin surface
+  // (`services.system.entityTags` has no `delete`). To clear FK-dependent
+  // junction rows we must talk to the tenant-scoped repository directly.
+  const entityTagRepository = entityTagRepositoryFor(adapter)
 
   // Build a typed dispatch map so a missing key is a compile error in most
   // cases and a runtime throw in the remaining (lazy-getter) ones.
@@ -53,6 +82,7 @@ export async function resetSeed(
     stages: services.stages,
     pipelines: services.pipelines,
     companies: services.companies,
+    entityTags: entityTagRepository,
     tags: services.tags,
     users: services.users,
   }
