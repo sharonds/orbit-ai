@@ -1,0 +1,30 @@
+{
+  "name": "@orbit-ai/demo-seed",
+  "version": "0.1.0-alpha.0",
+  "description": "Deterministic multi-tenant demo dataset for Orbit AI — powers E2E tests, starters, and demos.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@orbit-ai/core": "workspace:*",
+    "seedrandom": "^3.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "@types/seedrandom": "^3.0.8",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": { "access": "public" }
+}
