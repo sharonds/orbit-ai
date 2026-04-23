@@ -1,8 +1,8 @@
 # @orbit-ai/demo-seed
 
-Deterministic, multi-tenant realistic demo dataset for Orbit AI. Powers E2E tests, the `create-orbit-app` starter, and landing-page demo content.
+Deterministic, multi-tenant realistic demo dataset for Orbit AI. Designed to power E2E tests, the `create-orbit-app` starter, and landing-page demo content (none of those consumers are wired to this package yet — this is the alpha of the seeder itself).
 
-> **All names, domains, and emails in this package are synthetic. No real customer data is included.**
+> **All names, domains, and emails in this package are synthetic. No real customer data is included.** Company domains use only IANA-reserved, non-routable TLDs per RFC 2606 and RFC 6761 (`.test`, `.example`, `.invalid`); demo user emails use the RFC 6762 `.local` suffix. Nothing seeded here resolves to a real domain.
 
 ## Status
 
@@ -65,11 +65,27 @@ import { resetSeed } from '@orbit-ai/demo-seed'
 await resetSeed(adapter, organizationId)
 ```
 
-`resetSeed()` deletes every entity the seeder writes in FK-reverse order: activities → notes → tasks → deals → contacts → stages → pipelines → companies → tags → users. If a core service is ever missing `list`/`delete`, it fails loudly rather than leaving a half-reset tenant behind.
+`resetSeed()` deletes every entity the seeder writes in FK-reverse order: activities → notes → tasks → deals → contacts → stages → pipelines → companies → entity_tags → tags → users. `entity_tags` is cleared before `tags` to avoid a FK violation for any tag associations a consumer may have created on top of the seeded data. If a core service is ever missing `list`/`delete`, it fails loudly rather than leaving a half-reset tenant behind.
+
+## Safety
+
+`mode: 'reset'` is destructive. The seeder matches organizations by fixed profile slug (`acme-events`, `beta-collective`), and if your target database happens to already contain an organization with that slug — say a real customer named "Acme Events" — a naïve reset would wipe their data.
+
+To guard against this, `seed()` throws when `mode: 'reset'` would operate on an organization that the current call did **not** just create. Set `allowResetOfExistingOrg: true` only when you know the matching organization is a seed-created demo tenant and losing its data is intentional:
+
+```ts
+await seed(adapter, {
+  profile: TENANT_PROFILES.beta,
+  mode: 'reset',
+  allowResetOfExistingOrg: true, // explicit opt-in required
+})
+```
 
 ## Determinism
 
-All randomness is driven by a seeded PRNG keyed off `profile.randomSeed` (override via `opts.randomSeed`). Seeding the same profile against a fresh database produces identical record content every time — same company names, same contact emails, same deal titles, same note bodies, in the same order.
+All randomness is driven by a seeded PRNG keyed off `profile.randomSeed` (override via `opts.randomSeed`). Seeding the same profile against a fresh database produces identical content **under a stable projection** — same company names, same contact emails, same deal titles, same note bodies.
+
+Ordering caveat: IDs are ULIDs with per-call randomness, so records that share a `created_at` millisecond can surface in either ULID tiebreak order between runs. The determinism test in `seed.test.ts` normalizes that by sorting the projected rows client-side. If you rely on determinism, sort by a stable business field (email, name, content) rather than by insertion order.
 
 Time-dependent fields (activity `occurred_at`) are computed as offsets from `opts.now ?? Date.now()`. To get byte-identical activity timestamps across runs, pass a fixed `now`:
 
