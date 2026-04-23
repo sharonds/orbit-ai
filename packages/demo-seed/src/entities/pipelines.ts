@@ -77,5 +77,12 @@ async function findAllStagesForPipeline(
     if (!page.nextCursor || page.data.length === 0) return out
     cursor = page.nextCursor
   }
-  return out
+  // Fail loudly rather than returning a partial result: silent truncation
+  // would cause seedPipelinesAndStages to re-create stages that already
+  // exist (matched by name), tripping the unique-name constraint on
+  // Postgres. 100 pages × 100 rows = 10,000 stages per pipeline — far beyond
+  // any plausible real-world or demo scenario.
+  throw new Error(
+    `findAllStagesForPipeline: exceeded 100 pages for pipeline ${pipelineId} — pagination broken or pipeline has unexpectedly many stages`,
+  )
 }
