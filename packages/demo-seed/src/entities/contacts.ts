@@ -4,6 +4,13 @@ import { FIRST_NAMES, LAST_NAMES } from '../fixtures/names.js'
 
 const TITLES = ['VP Sales', 'Head of Ops', 'Founder', 'CTO', 'Product Lead', 'CEO', 'Account Exec'] as const
 
+function emailLocalPart(name: string): string {
+  // Strip anything that is not a letter or digit — drops spaces, hyphens, and
+  // apostrophes so multi-word names like "De Boer" or "O'Brien" still produce
+  // a valid RFC-5322 email local-part.
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
 export async function seedContacts(
   services: CoreServices,
   ctx: OrbitAuthContext,
@@ -18,7 +25,7 @@ export async function seedContacts(
     const last = prng.pickOne(LAST_NAMES)
     const company = prng.pickOne(companies)
     const domain = company.domain ?? 'example.com'
-    const email = `${first.toLowerCase()}.${last.toLowerCase()}.${i}@${domain}`
+    const email = `${emailLocalPart(first)}.${emailLocalPart(last)}.${i}@${domain}`
     const contact = await services.contacts.create(ctx, {
       name: `${first} ${last}`,
       email,
