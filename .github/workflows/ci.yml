@@ -17,9 +17,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup pnpm
+        # Version is derived from the `packageManager` field in package.json
+        # (single source of truth for Corepack + CI). Do NOT add `with: version`
+        # here — pnpm/action-setup@v4 refuses when both are specified.
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

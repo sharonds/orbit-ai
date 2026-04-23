@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### @orbit-ai/demo-seed — Initial release
+
+- **New package**: deterministic, multi-tenant demo dataset built on `@orbit-ai/core` services
+- Two tenant profiles: `acme` (200 contacts / 40 companies / 15 deals / 300 activities / 50 notes / 30d history) and `beta` (sparse, for cross-org isolation tests)
+- Public API: `seed()`, `resetSeed()`, `TENANT_PROFILES`, `createPrng()`
+- Three modes for `seed()`: `fail-if-exists` (default), `reset`, `append`
+- Determinism guaranteed via fixed-seed PRNG (`seedrandom`); two independent runs produce identical content under a deterministic projection
+- All names/domains/emails are synthetic; no real customer data is included
+- 30 tests cover PRNG, fixtures, profiles, every entity seeder, and the orchestrator's invariants (counts, determinism, multi-tenant isolation, mode behavior)
+- **Contract change** (`resetSeed`): now requires a third argument `{ confirmWipeAllTenantData: true }` and throws before touching the database if the flag is absent. The previous `resetSeed(adapter, orgId)` signature no longer type-checks. Rationale: `resetSeed` does not delete only demo rows — seeded records carry no marker, so the call wipes every row in the listed entity types (activities, notes, deals, contacts, stages, pipelines, companies, tags, users, entity_tags, tasks) for that organization. Docs previously described it as "deletes seeded records", which misrepresented the blast radius; making callers acknowledge the wipe via a typed flag keeps the contract honest. Pre-npm, no deprecation shim.
+
+### @orbit-ai/core — Validator type re-exports
+
+- Re-export entity record types (`OrganizationRecord`, `UserRecord`, `SanitizedUserRecord`, `PipelineRecord`, `StageRecord`, `CompanyRecord`, `ContactRecord`, `DealRecord`, `ActivityRecord`, `NoteRecord`, `TagRecord`) from the package barrel so downstream packages (e.g. `@orbit-ai/demo-seed`) can import them without reaching into validator paths
+- **Changed**: Narrowed validator re-exports for pipelines/stages/users/organizations to type-only (`export type *`). Runtime Zod schemas remain accessible via the service modules. Prevents demo-seed and other downstream consumers from unintentionally shipping Zod at runtime.
+
 ### @orbit-ai/api + @orbit-ai/core — Post-Stack Audit MEDIUM Fixes
 
 - **Fixed** (M-SEC-1): Migration preview/apply routes now validate body with Zod `.safeParse()`, returning 400 `VALIDATION_FAILED` on empty/malformed input
