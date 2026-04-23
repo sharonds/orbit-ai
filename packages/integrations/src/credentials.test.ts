@@ -1,6 +1,33 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { InMemoryCredentialStore } from './credentials.js'
+import { sql } from 'drizzle-orm'
+import { createSqliteOrbitDatabase, createSqliteStorageAdapter, type StorageAdapter } from '@orbit-ai/core'
+import { InMemoryCredentialStore, TableBackedCredentialStore } from './credentials.js'
 import type { StoredCredentials } from './credentials.js'
+import { NoopEncryptionProvider } from './encryption.js'
+import { integrationSchemaExtension } from './schema-extension.js'
+
+function isPostgresOnlyStatement(stmt: string): boolean {
+  const s = stmt.trim().toUpperCase()
+  return (
+    s.includes('ENABLE ROW LEVEL SECURITY') ||
+    s.startsWith('CREATE POLICY') ||
+    s.startsWith('DROP POLICY')
+  )
+}
+
+async function setupSqliteAdapter(): Promise<StorageAdapter> {
+  const database = createSqliteOrbitDatabase()
+  const adapter = createSqliteStorageAdapter({ database })
+  for (const migration of integrationSchemaExtension.migrations) {
+    for (const stmt of migration.up) {
+      if (isPostgresOnlyStatement(stmt)) continue
+      // SQLite doesn't recognize ::jsonb cast syntax — strip it for the test harness.
+      const sanitized = stmt.replace(/::jsonb/g, '')
+      await database.execute(sql.raw(sanitized))
+    }
+  }
+  return adapter
+}
 
 const makeCredentials = (overrides: Partial<StoredCredentials> = {}): StoredCredentials => ({
   accessToken: 'access-token-abc',
@@ -91,5 +118,65 @@ describe('InMemoryCredentialStore', () => {
 
   it('deleting non-existent entry does not throw', async () => {
     await expect(store.deleteCredentials('org-99', 'stripe', 'user-99')).resolves.toBeUndefined()
+  })
+})
+
+describe('TableBackedCredentialStore', () => {
+  let adapter: StorageAdapter
+  let store: TableBackedCredentialStore
+
+  beforeEach(async () => {
+    adapter = await setupSqliteAdapter()
+    store = new TableBackedCredentialStore(adapter, new NoopEncryptionProvider())
+  })
+
+  it('returns null when no credentials exist', async () => {
+    const result = await store.getCredentials('org-1', 'gmail', 'user-1')
+    expect(result).toBeNull()
+  })
+
+  it('round-trips credentials through encryption + decryption', async () => {
+    const creds = makeCredentials()
+    await store.saveCredentials('org-1', 'gmail', 'user-1', creds)
+    const result = await store.getCredentials('org-1', 'gmail', 'user-1')
+    expect(result).not.toBeNull()
+    expect(result?.accessToken).toBe(creds.accessToken)
+    expect(result?.refreshToken).toBe(creds.refreshToken)
+    expect(result?.providerAccountId).toBe(creds.providerAccountId)
+    expect(result?.scopes).toEqual(creds.scopes)
+    expect(result?.expiresAt).toBe(creds.expiresAt)
+  })
+
+  it('UPSERTs on duplicate (org, provider, user) — second save wins', async () => {
+    const original = makeCredentials({ accessToken: 'first-access', refreshToken: 'first-refresh' })
+    const updated = makeCredentials({ accessToken: 'second-access', refreshToken: 'second-refresh' })
+    await store.saveCredentials('org-1', 'gmail', 'user-1', original)
+    await expect(store.saveCredentials('org-1', 'gmail', 'user-1', updated)).resolves.toBeUndefined()
+    const result = await store.getCredentials('org-1', 'gmail', 'user-1')
+    expect(result?.accessToken).toBe('second-access')
+    expect(result?.refreshToken).toBe('second-refresh')
+  })
+
+  it('delete removes the row', async () => {
+    await store.saveCredentials('org-1', 'gmail', 'user-1', makeCredentials())
+    await store.deleteCredentials('org-1', 'gmail', 'user-1')
+    expect(await store.getCredentials('org-1', 'gmail', 'user-1')).toBeNull()
+  })
+
+  it('isolates tenants — org A credentials are invisible to org B', async () => {
+    await store.saveCredentials('org-a', 'gmail', 'user-1', makeCredentials({ accessToken: 'a-token' }))
+    expect(await store.getCredentials('org-b', 'gmail', 'user-1')).toBeNull()
+    expect((await store.getCredentials('org-a', 'gmail', 'user-1'))?.accessToken).toBe('a-token')
+  })
+
+  it('handles credentials without optional fields', async () => {
+    const minimal: StoredCredentials = { accessToken: 'a', refreshToken: 'r' }
+    await store.saveCredentials('org-1', 'stripe', 'user-1', minimal)
+    const result = await store.getCredentials('org-1', 'stripe', 'user-1')
+    expect(result?.accessToken).toBe('a')
+    expect(result?.refreshToken).toBe('r')
+    expect(result?.scopes).toBeUndefined()
+    expect(result?.expiresAt).toBeUndefined()
+    expect(result?.providerAccountId).toBeUndefined()
   })
 })
