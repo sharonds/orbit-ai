@@ -116,6 +116,34 @@ export class DirectTransport implements OrbitTransport {
       return this.services.contactContext.getContactContext(this.ctx, { contactId: action })
     }
 
+    // Schema / objects routes — delegated to OrbitSchemaEngine
+    if (entity === 'objects') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const schema = (this.services as any).schema as {
+        listObjects?: (ctx: OrbitAuthContext) => Promise<unknown>
+        getObject?: (ctx: OrbitAuthContext, type: string) => Promise<unknown>
+        addField?: (ctx: OrbitAuthContext, type: string, body: Record<string, unknown>) => Promise<unknown>
+      }
+      const subEntity = segments[startIdx + 2] // e.g. 'fields'
+      if (method === 'GET' && !action) {
+        if (typeof schema.listObjects !== 'function') throw new Error('Schema engine: listObjects not implemented')
+        return schema.listObjects(this.ctx)
+      }
+      if (method === 'GET' && action && !subEntity) {
+        if (typeof schema.getObject !== 'function') throw new Error('Schema engine: getObject not implemented')
+        const result = await schema.getObject(this.ctx, action)
+        if (result === null || result === undefined) {
+          throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Object type '${action}' not found` }, 404)
+        }
+        return result
+      }
+      if (method === 'POST' && action && subEntity === 'fields') {
+        if (typeof schema.addField !== 'function') throw new Error('Schema engine: addField not implemented')
+        return schema.addField(this.ctx, action, body as Record<string, unknown>)
+      }
+      throw new Error(`Unhandled schema dispatch: ${method} ${path}`)
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const serviceKey = resolvePublicEntityServiceKey(entity)
     const service = (this.services as any)[serviceKey] as

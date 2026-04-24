@@ -898,7 +898,7 @@ export function createCoreServices(
 
       return searchService
     },
-    schema: new OrbitSchemaEngine(),
+    schema: new OrbitSchemaEngine(() => getCustomFieldDefinitionsRepository()),
     get contactContext() {
       const optionalActivities = getOptionalActivitiesRepository()
       const optionalTasks = getOptionalTasksRepository()
