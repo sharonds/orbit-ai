@@ -11,7 +11,9 @@
     "lint": "turbo run lint",
     "release": "changeset publish --tag alpha",
     "release:dry-run": "pnpm -r build && node scripts/release-dry-run.mjs",
-    "test": "turbo run test",
+    "release:verify-artifacts": "node scripts/verify-package-artifacts.mjs",
+    "test:release-workflow": "node --test scripts/release-workflow.test.mjs",
+    "test": "pnpm test:release-workflow && turbo run test",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean"
   },

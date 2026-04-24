@@ -55,6 +55,9 @@ jobs:
       - name: Typecheck
         run: pnpm -r typecheck
 
+      - name: Test release workflow
+        run: pnpm test:release-workflow
+
       - name: Test
         run: pnpm -r test
 
@@ -233,7 +236,10 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: package-dist
-          path: .
+          path: packages
+
+      - name: Verify package artifacts
+        run: node scripts/verify-package-artifacts.mjs
 
       - name: Publish packages
         # Pinned from changesets/action v1.7.0.
