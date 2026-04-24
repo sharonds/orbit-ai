@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Fixed**: `DirectTransport` now dispatches 4-segment workflow paths (`POST /v1/deals/:id/move`, `/sequences/:id/enroll`, `/sequence_enrollments/:id/unenroll`, `/tags/:id/attach`, `/tags/:id/detach`, `/activities/log`) to the correct core service methods. Previously these routes threw "Unhandled dispatch".
 - **Security fix**: Webhook `secretEncrypted` field is now stripped from `DirectTransport` responses. Previously it was included (as `secret_encrypted`) when serializing webhook records in-process, diverging from the HTTP transport which always excluded it via `toWebhookRead`. The `signing_secret_last_four` and `signing_secret_created_at` field names are now consistent across both transports.
 
+### Release pipeline
+
+- **Added**: Changesets-based alpha publish pipeline with fixed-version grouping for all public `@orbit-ai/*` packages.
+- **Added**: GitHub Actions release workflow that validates, opens the Changesets version PR, and publishes to npm with provenance.
+- **Added**: Maintainer release playbook covering changesets, dry-runs, emergency publish handling, npm/GitHub setup, and troubleshooting.
+- **Changed**: Publish manifests now ship README and LICENSE files, exclude compiled tests from tarballs, and declare public npm access consistently.
+- **Added**: CI guard preventing manual package version bumps outside the Changesets release branch.
+
 ### @orbit-ai/demo-seed — Initial release
 
 - **New package**: deterministic, multi-tenant demo dataset built on `@orbit-ai/core` services

@@ -5,13 +5,19 @@
   "packageManager": "pnpm@9.12.3",
   "scripts": {
     "build": "turbo run build",
+    "changeset": "changeset",
+    "changeset:version": "changeset version && pnpm install --lockfile-only",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
+    "release": "changeset publish --tag alpha",
+    "release:dry-run": "pnpm -r build && node scripts/release-dry-run.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^0.6.0",
+    "@changesets/cli": "^2.31.0",
     "@types/node": "^24.6.0",
     "turbo": "^2.5.6",
     "typescript": "^5.9.3",

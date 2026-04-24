@@ -4,7 +4,7 @@ Integration connectors for Orbit AI CRM — Gmail, Google Calendar, and Stripe.
 
 ## Status
 
-Alpha (`0.1.0-alpha.0`) — not yet published to npm.
+Alpha (`0.1.0-alpha.x`).
 
 ## Connectors
 
