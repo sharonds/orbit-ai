@@ -19,7 +19,7 @@ Requires **Node.js 22+**.
 ```bash
 # API mode (default) — requires a running @orbit-ai/api server
 export ORBIT_API_KEY=your-key
-export ORBIT_API_BASE_URL=https://api.yourapp.com
+export ORBIT_BASE_URL=https://api.yourapp.com
 orbit contacts list
 
 # Direct mode — connects to a local database (no server required)
@@ -36,7 +36,7 @@ These flags apply to every command:
 | `--adapter <type>` | — | Storage adapter in direct mode: `sqlite` or `postgres` |
 | `--database-url <url>` | — | Database URL in direct mode (e.g. `./orbit.db` or a Postgres DSN) |
 | `--api-key <key>` | — | API key (prefer `ORBIT_API_KEY` env var) |
-| `--base-url <url>` | — | API base URL (prefer `ORBIT_API_BASE_URL` env var) |
+| `--base-url <url>` | — | API base URL (prefer `ORBIT_BASE_URL` env var) |
 | `--org-id <id>` | — | Organization ID override |
 | `--user-id <id>` | — | User ID override |
 | `--format <format>` | `table` | Output format: `table`, `json`, `csv`, `tsv` |
@@ -166,7 +166,7 @@ User config keys:
   "apiKeyEnv": "ORBIT_API_KEY",
   "baseUrl": "https://api.yourapp.com",
   "orgId": "org_01JXXXX",
-  "userId": "usr_01JXXXX",
+  "userId": "user_01JXXXX",
   "adapter": "sqlite",
   "databaseUrl": "./orbit.db",
   "orgName": "My Org",

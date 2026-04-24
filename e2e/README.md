@@ -16,7 +16,7 @@ End-to-end journey tests for Orbit AI. This package is the publish gate for `0.1
 | 8 | Preview + apply a reversible migration | CLI (`migrate --preview`, `migrate --apply`) |
 | 9 | SDK in HTTP mode (auth, pagination, typed errors) | SDK HTTP |
 | 10 | SDK in direct-core mode (in-process, shared error semantics) | SDK direct |
-| 11 | MCP server + core tool flows | MCP JSON-RPC (search/create/update/delete) |
+| 11 | MCP server + core tool flows | MCP JSON-RPC (tool registration, search/create/get) |
 | 12 | Configure Gmail connector | CLI `integrations gmail configure/status` |
 | 13 | Configure Google Calendar connector | CLI `integrations google-calendar configure/status` |
 | 14 | Configure Stripe connector | CLI `integrations stripe configure/status` |

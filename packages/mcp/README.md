@@ -21,7 +21,7 @@ Requires **Node.js 22+**.
 Start the server in stdio mode via the CLI:
 
 ```bash
-ORBIT_API_KEY=your-key ORBIT_API_BASE_URL=https://api.yourapp.com orbit mcp serve
+ORBIT_API_KEY=your-key ORBIT_BASE_URL=https://api.yourapp.com orbit mcp serve
 ```
 
 Or start it programmatically in HTTP mode and point your MCP host at the HTTP endpoint (see HTTP transport below).
@@ -38,7 +38,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
       "args": ["mcp", "serve"],
       "env": {
         "ORBIT_API_KEY": "your-key-here",
-        "ORBIT_API_BASE_URL": "https://api.yourapp.com"
+        "ORBIT_BASE_URL": "https://api.yourapp.com"
       }
     }
   }

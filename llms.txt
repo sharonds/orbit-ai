@@ -13,13 +13,14 @@ Not yet published to npm. Alpha status. MIT license.
 - @orbit-ai/cli     — terminal interface, orbit <entity> <verb>, --mode api|direct
 - @orbit-ai/mcp     — Model Context Protocol server, 23 tools, stdio and HTTP transports
 - @orbit-ai/integrations — Gmail, Google Calendar, Stripe connectors with OAuth lifecycle
+- @orbit-ai/demo-seed — deterministic multi-tenant demo data for local tests and examples
 
 ## Entities
 
-contacts (cnt_), companies (cmp_), deals (deal_), pipelines (pip_), stages (stg_),
-users (usr_), activities (act_), tasks (tsk_), notes (nte_), products (prd_),
-payments (pay_), contracts (ctr_), sequences (seq_), tags (tag_),
-webhooks (whk_), imports (imp_)
+contacts (contact_), companies (company_), deals (deal_), pipelines (pipeline_),
+stages (stage_), users (user_), activities (activity_), tasks (task_),
+notes (note_), products (product_), payments (payment_), contracts (contract_),
+sequences (sequence_), tags (tag_), webhooks (webhook_), imports (import_)
 
 All entities: CRUD + cursor-based list pagination + orgId tenant scoping.
 
