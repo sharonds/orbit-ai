@@ -70,7 +70,7 @@ jobs:
         # (single source of truth for Corepack + CI). Do NOT add `with: version`
         # here — pnpm/action-setup@v4 refuses when both are specified.
         # Pinned from pnpm/action-setup v4.4.0.
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e
 
       - name: Setup Node.js
         # Pinned from actions/setup-node v4.4.0.
@@ -121,7 +121,7 @@ jobs:
 
       - name: Setup pnpm
         # Pinned from pnpm/action-setup v4.4.0.
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e
 
       - name: Setup Node.js
         # Pinned from actions/setup-node v4.4.0.
@@ -167,7 +167,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Setup pnpm
         # Pinned from pnpm/action-setup v4.4.0.
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e
       - name: Setup Node.js
         # Pinned from actions/setup-node v4.4.0.
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
