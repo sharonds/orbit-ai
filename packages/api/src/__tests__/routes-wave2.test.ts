@@ -508,6 +508,24 @@ describe('Workflow routes', () => {
     expect(res.status).toBe(501)
   })
 
+  it('POST /v1/deals/:id/move rejects non-object JSON bodies before deserialization', async () => {
+    const services = mockWave2CoreServices()
+    ;(services.deals as any).move = vi.fn()
+    const app = createRouteTestApp()
+    registerWorkflowRoutes(app, services)
+
+    const res = await app.request('/v1/deals/d_01/move', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(null),
+    })
+
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('VALIDATION_FAILED')
+    expect((services.deals as any).move).not.toHaveBeenCalled()
+  })
+
   it('GET /v1/deals/pipeline returns 501 when not implemented', async () => {
     const services = mockWave2CoreServices()
     const app = createRouteTestApp()
@@ -564,6 +582,10 @@ describe('Workflow routes', () => {
     })
     // create exists on mock, so should succeed with 201
     expect(res.status).toBe(201)
+    expect((services.activities as any).create).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_test' }),
+      expect.objectContaining({ type: 'call', contactId: 'c_01' }),
+    )
   })
 })
 
@@ -843,8 +865,8 @@ describe('Workflow route sanitization', () => {
     ;(services.deals as any).move = vi.fn(async () => ({
       id: 'deal_01',
       title: 'Big Deal',
-      _internal_flag: true, // internal field — must be stripped by sanitizePublicRead
-      stage_id: 'stg_02',
+      _internalFlag: true, // internal field — must be stripped by sanitizePublicRead
+      stageId: 'stg_02',
     }))
 
     const app = createRouteTestApp()
@@ -857,12 +879,12 @@ describe('Workflow route sanitization', () => {
     })
     expect(res.status).toBe(200)
     const body = (await res.json()) as { data: Record<string, unknown> }
-    // Public fields must be present
+    // Public fields must be present (core title → public name, camelCase → snake_case)
     expect(body.data.id).toBe('deal_01')
-    expect(body.data.title).toBe('Big Deal')
+    expect(body.data.name).toBe('Big Deal')
     expect(body.data.stage_id).toBe('stg_02')
     // Internal underscore-prefixed field must be stripped
-    expect(body.data).not.toHaveProperty('_internal_flag')
+    expect(body.data).not.toHaveProperty('_internalFlag')
   })
 
   it('POST /v1/sequences/:id/enroll strips underscore-prefixed fields from response', async () => {

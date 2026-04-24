@@ -89,6 +89,8 @@ DELETE /v1/contacts/:id
 # tags, webhooks, imports
 ```
 
+**Field naming convention:** all request bodies and response records use `snake_case` (e.g. `stage_id`, `organization_id`). The API layer converts to/from the internal camelCase Drizzle representation automatically — consumers never see camelCase field names. Some entities have additional semantic renames: `deal.name` (public) ↔ `deal.title` (internal), `stage.position` ↔ `stage.stageOrder`, `note.body` ↔ `note.content`, `note.user_id` ↔ `note.createdByUserId`.
+
 All responses follow the `OrbitEnvelope` shape:
 
 ```json

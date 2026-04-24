@@ -9,7 +9,7 @@ Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorep
 ```bash
 pnpm install              # Install all workspace dependencies
 pnpm -r build             # Build all packages (core must build first)
-pnpm -r test              # Run all tests (vitest) — expect 1745 passing
+pnpm -r test              # Run all tests (vitest) — expect 1796 passing
 pnpm -r typecheck         # TypeScript type checking
 pnpm -r lint              # Lint all packages
 
@@ -58,6 +58,8 @@ docs/                   # Strategy, specs, security, review artifacts, implement
 - Zod v4: use `z.record(z.string(), z.unknown())` not `z.record(z.unknown())`
 - ZodError handling: use duck-type guard (`name === 'ZodError' && Array.isArray(issues)`), not `instanceof`
 - IdempotencyStore: in-memory default is single-instance only; multi-instance needs custom store via `CreateApiOptions.idempotencyStore`
+- API/SDK serialization: core uses camelCase (Drizzle convention); the public API and SDK contracts are snake_case. Conversion happens at the boundary via `serializeEntityRecord` (response) and `deserializeEntityInput` (request) in `packages/api/src/serialization.ts` and `packages/sdk/src/transport/serialization.ts`. When adding a new entity, add it to `ENTITY_OBJECT_TYPES` in both files. When a core field name differs from its public name beyond casing, add it to `ENTITY_RESPONSE_RENAMES` / `ENTITY_INPUT_RENAMES`. Sensitive fields that must not appear in public responses go in `ENTITY_STRIP_FIELDS`.
+- Secret-bearing entity fields (e.g. webhook `secretEncrypted`) must be added to `ENTITY_STRIP_FIELDS` in both serialization files AND verified via a unit test in `packages/api/src/__tests__/serialization.test.ts`.
 
 ## Coding Conventions
 
@@ -172,7 +174,7 @@ pnpm -r test        # must be ≥ current baseline (update baseline below after 
 pnpm -r lint
 ```
 
-**Test baseline**: 1745 tests (update this number after each merge to main)
+**Test baseline**: 1796 tests (update this number after each merge to main)
 
 **Before any npm-publish branch**: verify `CHANGELOG.md` is updated and `files` field in each `package.json` is correct (`dist/`, `README.md`, `LICENSE` only).
 
@@ -220,3 +222,5 @@ When updating, keep sections concise. Prefer tables and numbered lists over pros
 - SDK barrel does NOT export resource classes (ContactResource etc.) — only types. Consumers access resources via `client.contacts`, not by constructing classes.
 - `MemoryIdempotencyStore._reset()` is private — test-only access is via `_resetIdempotencyStore()` module function.
 - Key docs: `docs/META-PLAN.md` (master plan), `docs/IMPLEMENTATION-PLAN.md` (execution baseline), `docs/product/release-definition-v1.md` (v1 GA gates), `docs/review/2026-04-08-post-stack-audit.md` (alpha audit).
+- Drizzle ORM returns camelCase JavaScript field names (e.g. `stageId`, not `stage_id`). The public API and SDK contract is snake_case. Zod strips unknown fields silently — passing `stage_id` to a schema expecting `stageId` drops the field with no error. Always pass through the serialization layer at the API/SDK boundary.
+- DirectTransport dispatch handles 2-segment paths (entity + id) for CRUD and 3-segment paths (entity + id + verb) for workflow routes. If you add a new workflow verb (e.g. `/v1/deals/:id/archive`), add it to the `verb` dispatch block in `packages/sdk/src/transport/direct-transport.ts`.

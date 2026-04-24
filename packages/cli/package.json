@@ -2,15 +2,42 @@
   "name": "@orbit-ai/cli",
   "version": "0.1.0-alpha.0",
   "description": "Terminal interface for Orbit AI CRM",
+  "license": "MIT",
   "type": "module",
+  "keywords": [
+    "crm",
+    "ai-agents",
+    "orbit-ai",
+    "cli",
+    "typescript"
+  ],
+  "author": "Orbit AI Contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sharonds/orbit-ai.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/sharonds/orbit-ai#readme",
+  "bugs": {
+    "url": "https://github.com/sharonds/orbit-ai/issues"
+  },
   "bin": {
-    "orbit": "./dist/index.js"
+    "orbit": "dist/index.js"
   },
   "files": [
     "dist/",
+    "!dist/**/__tests__/**",
+    "!dist/**/*.test.*",
+    "!dist/**/fixtures/**",
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "build": "rm -rf dist && tsc && chmod +x dist/index.js",
     "typecheck": "tsc --noEmit",

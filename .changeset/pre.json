@@ -1,0 +1,15 @@
+{
+  "mode": "pre",
+  "tag": "alpha",
+  "initialVersions": {
+    "@orbit-ai/api": "0.1.0-alpha.0",
+    "@orbit-ai/cli": "0.1.0-alpha.0",
+    "@orbit-ai/core": "0.1.0-alpha.0",
+    "@orbit-ai/create-orbit-app": "0.1.0-alpha.0",
+    "@orbit-ai/demo-seed": "0.1.0-alpha.0",
+    "@orbit-ai/integrations": "0.1.0-alpha.0",
+    "@orbit-ai/mcp": "0.1.0-alpha.0",
+    "@orbit-ai/sdk": "0.1.0-alpha.0"
+  },
+  "changesets": []
+}

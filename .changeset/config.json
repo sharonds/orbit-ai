@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
+  "changelog": ["@changesets/changelog-github", { "repo": "sharonds/orbit-ai" }],
+  "commit": false,
+  "fixed": [
+    [
+      "@orbit-ai/api",
+      "@orbit-ai/cli",
+      "@orbit-ai/core",
+      "@orbit-ai/create-orbit-app",
+      "@orbit-ai/demo-seed",
+      "@orbit-ai/integrations",
+      "@orbit-ai/mcp",
+      "@orbit-ai/sdk"
+    ]
+  ],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "ignore": ["orbit-ai-nodejs-quickstart"]
+}

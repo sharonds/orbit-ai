@@ -3,7 +3,7 @@
 > **CRM infrastructure for AI agents and developers.** Packages, not a product.
 > (Think: "Resend for CRM" — type-safe primitives, not a UI.)
 
-**Status**: `0.1.0-alpha`. All alpha packages are implemented and tested. Not yet published to npm — install from source (see [Development](#development)).
+**Status**: `0.1.0-alpha`. All eight public packages are implemented and tested. The first npm release is cut through the Changesets release workflow; before that release lands, install from source (see [Development](#development)).
 
 ## Packages
 
@@ -15,7 +15,7 @@
 | [`@orbit-ai/cli`](packages/cli) | ✅ alpha | Terminal interface — `orbit init`, CRUD commands, schema tooling, `--json` mode, direct and API mode |
 | [`@orbit-ai/mcp`](packages/mcp) | ✅ alpha | Model Context Protocol server with 23 core tools, stdio and HTTP transports |
 | [`@orbit-ai/integrations`](packages/integrations) | ✅ alpha | Gmail, Google Calendar, and Stripe connectors with OAuth lifecycle and webhook support |
-| [`@orbit-ai/demo-seed`](packages/demo-seed) | ✅ alpha | Deterministic Acme Events demo dataset for examples, tests, and scaffolds |
+| [`@orbit-ai/demo-seed`](packages/demo-seed) | ✅ alpha | Deterministic multi-tenant demo data for local testing and examples |
 | [`@orbit-ai/create-orbit-app`](packages/create-orbit-app) | ✅ alpha | Starter scaffolder — `npx @orbit-ai/create-orbit-app@alpha my-app` |
 
 ## Quick look
@@ -46,7 +46,7 @@ const contact = await client.contacts.create({
 
 A runnable example lives at [`examples/nodejs-quickstart`](examples/nodejs-quickstart).
 
-## Installation (when published)
+## Installation
 
 ```bash
 pnpm add @orbit-ai/sdk
@@ -54,13 +54,12 @@ pnpm add @orbit-ai/sdk
 pnpm add @orbit-ai/core @orbit-ai/api
 ```
 
-> **Note**: the packages have not yet been published to npm. Until the `0.1.0-alpha`
-> release, the only way to try Orbit AI is to clone this repo and run it from source
-> with `pnpm install && pnpm -r build`.
+> **Pre-publish note**: until the first `0.1.0-alpha` npm release is cut, clone this
+> repo and run Orbit AI from source with `pnpm install && pnpm -r build`.
 
 ## Architecture
 
-Orbit AI is a monorepo (pnpm + Turborepo) with six layered packages:
+Orbit AI is a monorepo (pnpm + Turborepo) with eight public packages:
 
 ```
 ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
@@ -96,6 +95,9 @@ Orbit AI is a monorepo (pnpm + Turborepo) with six layered packages:
 - **mcp** is a Model Context Protocol server exposing 23 tools over stdio or HTTP.
 - **integrations** provides Gmail, Google Calendar, and Stripe connectors with full
   OAuth lifecycle management and webhook support.
+- **demo-seed** provides deterministic multi-tenant demo data for local testing and
+  examples.
+- **create-orbit-app** scaffolds a runnable starter backed by the demo seed.
 
 ## Development
 

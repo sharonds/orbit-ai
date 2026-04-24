@@ -3,6 +3,15 @@
   "version": "0.1.0-alpha.0",
   "description": "Integration connectors for Orbit AI CRM (Gmail, Google Calendar, Stripe)",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sharonds/orbit-ai.git",
+    "directory": "packages/integrations"
+  },
+  "homepage": "https://github.com/sharonds/orbit-ai#readme",
+  "bugs": {
+    "url": "https://github.com/sharonds/orbit-ai/issues"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -41,6 +50,9 @@
   },
   "files": [
     "dist",
+    "!dist/**/__tests__/**",
+    "!dist/**/*.test.*",
+    "!dist/**/fixtures/**",
     "README.md",
     "LICENSE"
   ],

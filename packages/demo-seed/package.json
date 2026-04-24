@@ -2,13 +2,37 @@
   "name": "@orbit-ai/demo-seed",
   "version": "0.1.0-alpha.0",
   "description": "Deterministic multi-tenant demo dataset for Orbit AI — designed to power E2E tests, starters, and demo content.",
+  "license": "MIT",
   "type": "module",
+  "keywords": [
+    "crm",
+    "ai-agents",
+    "orbit-ai",
+    "demo-data",
+    "seed"
+  ],
+  "author": "Orbit AI Contributors",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sharonds/orbit-ai.git",
+    "directory": "packages/demo-seed"
+  },
+  "homepage": "https://github.com/sharonds/orbit-ai#readme",
+  "bugs": {
+    "url": "https://github.com/sharonds/orbit-ai/issues"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "!dist/**/__tests__/**",
+    "!dist/**/*.test.*",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=22.0.0"
   },

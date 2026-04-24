@@ -2,6 +2,7 @@ import { createCoreServices, resolvePublicEntityServiceKey, type OrbitEnvelope, 
 import type { OrbitClientOptions } from '../config.js'
 import type { OrbitTransport, TransportRequest } from './index.js'
 import { OrbitApiError } from '../errors.js'
+import { serializeEntityRecord, deserializeEntityInput, serializeSearchPage, serializeSearchResult } from './serialization.js'
 
 /**
  * In-process transport for the Orbit AI SDK.
@@ -103,6 +104,7 @@ export class DirectTransport implements OrbitTransport {
     const startIdx = segments[0] === 'v1' ? 1 : 0
     const entity = segments[startIdx]
     const action = segments[startIdx + 1]
+    const verb = segments[startIdx + 2] // present for 4-segment workflow routes
 
     if (!entity) throw new Error(`Unknown path: ${path}`)
 
@@ -117,12 +119,39 @@ export class DirectTransport implements OrbitTransport {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const serviceKey = resolvePublicEntityServiceKey(entity)
     const service = (this.services as any)[serviceKey] as
-      | { list?: Function; create?: Function; get?: Function; update?: Function; delete?: Function; search?: Function; batch?: Function }
+      | { list?: Function; create?: Function; get?: Function; update?: Function; delete?: Function; search?: Function; batch?: Function; move?: Function; pipeline?: Function; stats?: Function; enroll?: Function; unenroll?: Function; attach?: Function; detach?: Function; log?: Function }
       | undefined
     if (!service) throw new Error(`Unknown entity: ${entity}`)
 
+    const coreInput = body && typeof body === 'object' && !Array.isArray(body)
+      ? deserializeEntityInput(entity, body as Record<string, unknown>)
+      : body
+
+    if (method === 'GET' && entity === 'deals' && action === 'pipeline') {
+      if (typeof service.pipeline === 'function') return service.pipeline(this.ctx, query ?? {})
+      throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Deal pipeline view not implemented' }, 501)
+    }
+    if (method === 'GET' && entity === 'deals' && action === 'stats') {
+      if (typeof service.stats === 'function') return service.stats(this.ctx, query ?? {})
+      throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Deal stats not implemented' }, 501)
+    }
+
+    // 4-segment workflow routes: POST /v1/:entity/:id/:verb
+    if (method === 'POST' && action && verb) {
+      if (verb === 'move' && typeof service.move === 'function') return service.move(this.ctx, action, coreInput)
+      if (verb === 'enroll' && typeof service.enroll === 'function') return service.enroll(this.ctx, action, body)
+      if (verb === 'unenroll' && typeof service.unenroll === 'function') return service.unenroll(this.ctx, action)
+      if (verb === 'attach' && typeof service.attach === 'function') return service.attach(this.ctx, action, body)
+      if (verb === 'detach' && typeof service.detach === 'function') return service.detach(this.ctx, action, body)
+      throw new Error(`Unhandled workflow: ${method} ${path}`)
+    }
+
     if (method === 'GET' && !action && service.list) return service.list(this.ctx, query ?? {})
-    if (method === 'POST' && !action && service.create) return service.create(this.ctx, body)
+    if (method === 'POST' && !action && service.create) return service.create(this.ctx, coreInput)
+    if (method === 'POST' && action === 'log') {
+      if (typeof service.log === 'function') return service.log(this.ctx, coreInput)
+      if (typeof service.create === 'function') return service.create(this.ctx, coreInput)
+    }
     if (method === 'GET' && action && action !== 'search' && service.get) {
       const result = await service.get(this.ctx, action)
       if (result === null || result === undefined) {
@@ -133,7 +162,7 @@ export class DirectTransport implements OrbitTransport {
       }
       return result
     }
-    if (method === 'PATCH' && action && service.update) return service.update(this.ctx, action, body)
+    if (method === 'PATCH' && action && service.update) return service.update(this.ctx, action, coreInput)
     if (method === 'DELETE' && action && service.delete) {
       await service.delete(this.ctx, action)
       return { id: action, deleted: true }
@@ -142,6 +171,64 @@ export class DirectTransport implements OrbitTransport {
     if (method === 'POST' && action === 'batch' && typeof service.batch === 'function') return service.batch(this.ctx, body)
 
     throw new Error(`Unhandled dispatch: ${method} ${path}`)
+  }
+
+  private serializeResult(path: string, data: unknown): unknown {
+    const entity = this.responseEntityForPath(path)
+    if (entity === undefined) {
+      console.error(`[orbit/sdk] serializeResult: could not extract entity from path "${path}", returning raw data`)
+      return data
+    }
+    if (entity === null) return data
+    if (entity === 'search') {
+      return data && typeof data === 'object' && !Array.isArray(data)
+        ? serializeSearchResult(data as Record<string, unknown>)
+        : data
+    }
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+      return data
+    }
+    // Pass through stub responses (delete confirmations etc.) without entity serialization
+    const rec = data as Record<string, unknown>
+    if ('deleted' in rec && rec.deleted === true) {
+      return data
+    }
+    return serializeEntityRecord(entity, rec)
+  }
+
+  private serializePage(path: string, rows: unknown[]): unknown[] {
+    const entity = this.responseEntityForPath(path)
+    if (entity === undefined) {
+      console.error(`[orbit/sdk] serializePage: could not extract entity from path "${path}", returning raw rows`)
+      return rows
+    }
+    if (entity === null) return rows
+    if (entity === 'search') return serializeSearchPage(rows)
+    return rows.map((row) =>
+      row && typeof row === 'object' && !Array.isArray(row)
+        ? serializeEntityRecord(entity, row as Record<string, unknown>)
+        : row,
+    )
+  }
+
+  private responseEntityForPath(path: string): string | null | undefined {
+    const segments = path.split('/').filter(Boolean)
+    const startIdx = segments[0] === 'v1' ? 1 : 0
+    const entity = segments[startIdx]
+    const action = segments[startIdx + 1]
+    const verb = segments[startIdx + 2]
+    if (!entity) return undefined
+
+    if (entity === 'search') return 'search'
+    if (entity === 'deals' && (action === 'pipeline' || action === 'stats')) return null
+    if (entity === 'deals' && verb === 'move') return 'deals'
+    if (entity === 'sequences' && verb === 'enroll') return 'sequence_enrollments'
+    if (entity === 'sequence_enrollments' && verb === 'unenroll') return 'sequence_enrollments'
+    if (entity === 'tags' && verb === 'attach') return 'entity_tags'
+    if (entity === 'tags' && verb === 'detach') return null
+    if (entity === 'activities' && action === 'log') return 'activities'
+
+    return entity
   }
 
   private wrapEnvelope(
@@ -167,7 +254,7 @@ export class DirectTransport implements OrbitTransport {
         links.next = `${path}?${params.toString()}`
       }
       return {
-        data: paginated.data as unknown,
+        data: this.serializePage(path, (paginated.data as unknown[]) ?? []),
         meta: {
           request_id: `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 26)}`,
           cursor: null,
@@ -179,7 +266,7 @@ export class DirectTransport implements OrbitTransport {
       }
     }
     return {
-      data: data as unknown,
+      data: this.serializeResult(path, data),
       meta: {
         request_id: `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 26)}`,
         cursor: null,

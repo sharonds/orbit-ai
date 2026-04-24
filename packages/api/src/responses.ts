@@ -5,6 +5,9 @@ import type {
   OrbitErrorCode,
 } from '@orbit-ai/core'
 import './context.js'
+import { serializeEntityRecord, deserializeEntityInput } from './serialization.js'
+
+export { deserializeEntityInput }
 
 export function toEnvelope<T>(
   c: Context,
@@ -30,10 +33,10 @@ export function toEnvelope<T>(
       reqUrl.searchParams.set('cursor', page.nextCursor)
       // Preserve only the path + query so the link is server-relative.
       links.next = `${reqUrl.pathname}${reqUrl.search}`
-    } catch {
-      // c.req.url should always be a valid URL, but if for any reason
-      // it isn't (e.g. test harness using a relative path) fall back
-      // to a path-only construction.
+    } catch (err) {
+      // c.req.url is always a valid URL in production, but test harnesses
+      // may use relative paths — fall back to a path-only construction.
+      console.error('[orbit/api] toEnvelope: failed to construct links.next URL', err)
       const sep = c.req.path.includes('?') ? '&' : '?'
       links.next = `${c.req.path}${sep}cursor=${encodeURIComponent(page.nextCursor)}`
     }
@@ -181,16 +184,14 @@ export function toWebhookDeliveryRead(
 }
 
 /**
- * Sanitize a single entity record before returning it to clients.
+ * Sanitize and serialize a single entity record before returning it to clients.
  *
  * For `webhooks`, delegates to `toWebhookRead` which applies a specific
- * allowlist. For all other entities, strips any field whose key starts
- * with an underscore — a conservative convention for marking
- * internal-only columns (billing state, row versions, internal flags).
- *
- * This is a stopgap until per-entity allowlists land as part of the
- * Phase 3 type-contract work. Consumers writing internal fields into
- * records SHOULD prefix them with `_`; this function then strips them.
+ * allowlist (legacy path, kept for backwards-compat until webhooks migrate).
+ * For all other entities, applies full camelCase→snake_case serialization via
+ * `serializeEntityRecord`, which also strips underscore-prefixed internal
+ * fields, entity-specific strip lists, adds the `object` discriminator, and
+ * converts Date values to ISO strings.
  */
 export function sanitizePublicRead(
   entity: string,
@@ -200,14 +201,10 @@ export function sanitizePublicRead(
     return toWebhookRead(record as Record<string, unknown>)
   }
   if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    console.error(`[orbit/api] sanitizePublicRead: unexpected value type for entity "${entity}": ${Array.isArray(record) ? 'array' : typeof record}`)
     return record
   }
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(record as Record<string, unknown>)) {
-    if (k.startsWith('_')) continue
-    out[k] = v
-  }
-  return out
+  return serializeEntityRecord(entity, record as Record<string, unknown>)
 }
 
 export function sanitizePublicPage(
