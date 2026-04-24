@@ -3,6 +3,7 @@ import type { CoreServices } from '@orbit-ai/core'
 import { SEARCHABLE_OBJECT_TYPES } from '@orbit-ai/core'
 import { toEnvelope, toError } from '../responses.js'
 import { requireScope } from '../scopes.js'
+import { serializeSearchPage } from '../serialization.js'
 import { z } from 'zod'
 
 const SearchBodySchema = z.object({
@@ -28,6 +29,6 @@ export function registerSearchRoutes(app: Hono, services: CoreServices) {
       ...(limit !== undefined ? { limit } : {}),
       ...(cursor !== undefined ? { cursor } : {}),
     })
-    return c.json(toEnvelope(c, result.data, result, { omitNextLink: true }))
+    return c.json(toEnvelope(c, serializeSearchPage(result.data), result, { omitNextLink: true }))
   })
 }

@@ -132,15 +132,13 @@ export function createSearchService(deps: {
   }
 
   function summarizeStage(record: Awaited<ReturnType<StageRepository['search']>>['data'][number]): SearchRecordSummary {
+    // probability, color, isWon, isLost are in ENTITY_STRIP_FIELDS['stages'] — omit them
+    // from search summaries so they are never exposed through either transport.
     return {
       id: record.id,
       name: record.name,
       pipelineId: record.pipelineId,
       stageOrder: record.stageOrder,
-      probability: record.probability,
-      color: record.color ?? null,
-      isWon: record.isWon,
-      isLost: record.isLost,
     }
   }
 
@@ -231,7 +229,7 @@ export function createSearchService(deps: {
           objectType: 'stage' as const,
           id: record.id,
           title: record.name,
-          subtitle: record.color ?? null,
+          subtitle: null,
           record: summarizeStage(record),
           updatedAt: record.updatedAt.toISOString(),
         })),

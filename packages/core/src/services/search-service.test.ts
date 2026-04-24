@@ -90,4 +90,51 @@ describe('search service', () => {
     expect(record).not.toHaveProperty('metadata')
     expect(record).not.toHaveProperty('keyHash')
   })
+
+  it('does not expose strip-listed stage fields in merged search results', async () => {
+    const stageRepo = createInMemoryStageRepository([
+      {
+        id: 'stage_01ARYZ6S41YYYYYYYYYYYYYYYY',
+        organizationId: ctx.orgId,
+        pipelineId: 'pipeline_01ARYZ6S41YYYYYYYYYYYYYYYY',
+        name: 'Qualified',
+        stageOrder: 1,
+        probability: 25,
+        color: '#ff00ff',
+        isWon: false,
+        isLost: false,
+        createdAt: new Date('2026-03-31T12:00:00.000Z'),
+        updatedAt: new Date('2026-03-31T12:00:00.000Z'),
+      },
+    ])
+
+    const sanitizedService = createSearchService({
+      companies: createInMemoryCompanyRepository(),
+      contacts: createInMemoryContactRepository(),
+      deals: createInMemoryDealRepository(),
+      pipelines: createInMemoryPipelineRepository(),
+      stages: stageRepo,
+      users: createInMemoryUserRepository(),
+    })
+
+    const result = await sanitizedService.search(ctx, { query: 'Qualified', limit: 10, object_types: ['stages'] })
+    const row = result.data[0]
+
+    expect(row).toMatchObject({
+      objectType: 'stage',
+      title: 'Qualified',
+      subtitle: null,
+      record: {
+        id: 'stage_01ARYZ6S41YYYYYYYYYYYYYYYY',
+        name: 'Qualified',
+        pipelineId: 'pipeline_01ARYZ6S41YYYYYYYYYYYYYYYY',
+        stageOrder: 1,
+      },
+    })
+    expect(row?.record).not.toHaveProperty('color')
+    expect(row?.record).not.toHaveProperty('probability')
+    expect(row?.record).not.toHaveProperty('isWon')
+    expect(row?.record).not.toHaveProperty('isLost')
+    expect(row?.subtitle).not.toBe('#ff00ff')
+  })
 })
