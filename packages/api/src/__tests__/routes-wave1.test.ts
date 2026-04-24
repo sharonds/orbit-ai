@@ -154,10 +154,14 @@ describe('POST /v1/search', () => {
 
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
-      data: Array<{ id: string; title: string }>
+      data: Array<{ id: string; object_type: string; objectType?: string; title: string; updated_at: string; updatedAt?: string }>
       meta: { has_more: boolean }
     }
     expect(body.data).toHaveLength(1)
+    expect(body.data[0]!.object_type).toBe('contact')
+    expect(body.data[0]).not.toHaveProperty('objectType')
+    expect(body.data[0]!.updated_at).toBe('2026-01-01T00:00:00.000Z')
+    expect(body.data[0]).not.toHaveProperty('updatedAt')
     expect(body.data[0]!.title).toBe('Alice')
     expect(body.meta.has_more).toBe(false)
 

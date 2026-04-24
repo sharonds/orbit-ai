@@ -77,6 +77,28 @@ const ENTITY_INPUT_RENAMES: Record<string, Record<string, string>> = {
   },
 }
 
+function normalizeJsonValue(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString()
+  if (Array.isArray(value)) return value.map((item) => normalizeJsonValue(item))
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, normalizeJsonValue(v)]),
+    )
+  }
+  return value
+}
+
+function serializeSearchValue(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString()
+  if (Array.isArray(value)) return value.map((item) => serializeSearchValue(item))
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [camelToSnake(k), serializeSearchValue(v)]),
+    )
+  }
+  return value
+}
+
 export function serializeEntityRecord(
   entity: string,
   record: Record<string, unknown>,
@@ -94,10 +116,22 @@ export function serializeEntityRecord(
     if (k.startsWith('_') || strip.has(k)) continue
     const renamedKey = renames[k] ?? k
     const publicKey = camelToSnake(renamedKey)
-    out[publicKey] = v instanceof Date ? v.toISOString() : v
+    out[publicKey] = normalizeJsonValue(v)
   }
 
   return out
+}
+
+export function serializeSearchResult(record: Record<string, unknown>): Record<string, unknown> {
+  return serializeSearchValue(record) as Record<string, unknown>
+}
+
+export function serializeSearchPage(rows: unknown[]): unknown[] {
+  return rows.map((row) =>
+    row && typeof row === 'object' && !Array.isArray(row)
+      ? serializeSearchResult(row as Record<string, unknown>)
+      : row,
+  )
 }
 
 export function deserializeEntityInput(

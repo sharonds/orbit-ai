@@ -3,6 +3,7 @@ import {
   camelToSnake,
   snakeToCamel,
   serializeEntityRecord,
+  serializeSearchResult,
   deserializeEntityInput,
 } from '../transport/serialization.js'
 
@@ -118,6 +119,20 @@ describe('serializeEntityRecord (SDK)', () => {
     expect(result.created_at).toBe('2026-06-15T12:00:00.000Z')
   })
 
+  it('serializes nested Date values without renaming custom JSON keys', () => {
+    const result = serializeEntityRecord('contacts', {
+      customFields: {
+        renewalDate: new Date('2026-07-01T00:00:00.000Z'),
+        history: [{ seenAt: new Date('2026-07-02T00:00:00.000Z') }],
+      },
+    })
+
+    expect(result.custom_fields).toEqual({
+      renewalDate: '2026-07-01T00:00:00.000Z',
+      history: [{ seenAt: '2026-07-02T00:00:00.000Z' }],
+    })
+  })
+
   it('preserves null values', () => {
     const result = serializeEntityRecord('deals', {
       id: 'deal_1',
@@ -127,6 +142,34 @@ describe('serializeEntityRecord (SDK)', () => {
     })
     expect(result.stage_id).toBeNull()
     expect(result.pipeline_id).toBeNull()
+  })
+})
+
+describe('serializeSearchResult (SDK)', () => {
+  it('converts search result keys recursively to snake_case', () => {
+    const result = serializeSearchResult({
+      objectType: 'deal',
+      id: 'deal_1',
+      title: 'Deal',
+      subtitle: null,
+      record: {
+        companyId: 'cmp_1',
+        stageOrder: 2,
+      },
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    })
+
+    expect(result).toEqual({
+      object_type: 'deal',
+      id: 'deal_1',
+      title: 'Deal',
+      subtitle: null,
+      record: {
+        company_id: 'cmp_1',
+        stage_order: 2,
+      },
+      updated_at: '2026-01-01T00:00:00.000Z',
+    })
   })
 })
 

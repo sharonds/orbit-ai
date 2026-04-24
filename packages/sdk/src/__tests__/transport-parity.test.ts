@@ -483,7 +483,10 @@ describe('DirectTransport — workflow dispatch', () => {
       entityId: 'cnt_1',
       organizationId: 'org_1',
     }))
-    return { move, enroll, unenroll, attach, ...overrides }
+    const detach = vi.fn(async () => ({ detached: true, tagId: 'tag_1' }))
+    const pipeline = vi.fn(async () => ({ stages: [] }))
+    const stats = vi.fn(async () => ({ total: 0 }))
+    return { move, enroll, unenroll, attach, detach, pipeline, stats, ...overrides }
   }
 
   function makeTransportWithServices(serviceOverrides: Record<string, unknown> = {}) {
@@ -495,10 +498,10 @@ describe('DirectTransport — workflow dispatch', () => {
     const svc = makeServices(serviceOverrides)
     // Inject mock services directly
     ;(transport as any).services = {
-      deals: { move: svc.move },
+      deals: { move: svc.move, pipeline: svc.pipeline, stats: svc.stats },
       sequences: { enroll: svc.enroll },
       sequenceEnrollments: { unenroll: svc.unenroll },
-      tags: { attach: svc.attach },
+      tags: { attach: svc.attach, detach: svc.detach },
     }
     return { transport, svc }
   }
@@ -521,7 +524,7 @@ describe('DirectTransport — workflow dispatch', () => {
 
   it('POST /v1/sequences/:id/enroll dispatches to service.enroll', async () => {
     const { transport, svc } = makeTransportWithServices()
-    await transport.request({
+    const result = await transport.request({
       method: 'POST',
       path: '/v1/sequences/seq_1/enroll',
       body: { contact_id: 'cnt_1' },
@@ -531,6 +534,13 @@ describe('DirectTransport — workflow dispatch', () => {
       'seq_1',
       { contact_id: 'cnt_1' },
     )
+    expect(result.data).toMatchObject({
+      object: 'sequence_enrollment',
+      sequence_id: 'seq_1',
+      contact_id: 'cnt_1',
+      organization_id: 'org_1',
+    })
+    expect(result.data).not.toHaveProperty('object', 'sequence')
   })
 
   it('POST /v1/sequence_enrollments/:id/unenroll dispatches to service.unenroll', async () => {
@@ -548,7 +558,7 @@ describe('DirectTransport — workflow dispatch', () => {
 
   it('POST /v1/tags/:id/attach dispatches to service.attach', async () => {
     const { transport, svc } = makeTransportWithServices()
-    await transport.request({
+    const result = await transport.request({
       method: 'POST',
       path: '/v1/tags/tag_1/attach',
       body: { entity_type: 'contacts', entity_id: 'cnt_1' },
@@ -558,6 +568,53 @@ describe('DirectTransport — workflow dispatch', () => {
       'tag_1',
       { entity_type: 'contacts', entity_id: 'cnt_1' },
     )
+    expect(result.data).toMatchObject({
+      object: 'entity_tag',
+      tag_id: 'tag_1',
+      entity_id: 'cnt_1',
+      organization_id: 'org_1',
+    })
+    expect(result.data).not.toHaveProperty('object', 'tag')
+  })
+
+  it('POST /v1/tags/:id/detach preserves raw status responses', async () => {
+    const { transport, svc } = makeTransportWithServices()
+    const result = await transport.request({
+      method: 'POST',
+      path: '/v1/tags/tag_1/detach',
+      body: { entity_type: 'contacts', entity_id: 'cnt_1' },
+    })
+
+    expect(svc.detach).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: expect.any(String) }),
+      'tag_1',
+      { entity_type: 'contacts', entity_id: 'cnt_1' },
+    )
+    expect(result.data).toEqual({ detached: true, tagId: 'tag_1' })
+  })
+
+  it('GET /v1/deals/pipeline and /stats dispatch to aggregate service methods', async () => {
+    const { transport, svc } = makeTransportWithServices()
+
+    const pipeline = await transport.request({ method: 'GET', path: '/v1/deals/pipeline' })
+    const stats = await transport.request({ method: 'GET', path: '/v1/deals/stats' })
+
+    expect(svc.pipeline).toHaveBeenCalledWith(expect.objectContaining({ orgId: expect.any(String) }), {})
+    expect(svc.stats).toHaveBeenCalledWith(expect.objectContaining({ orgId: expect.any(String) }), {})
+    expect(pipeline.data).toEqual({ stages: [] })
+    expect(stats.data).toEqual({ total: 0 })
+  })
+
+  it('GET /v1/deals/pipeline does not fall through to get-by-id when aggregate method is missing', async () => {
+    const get = vi.fn()
+    const { transport } = makeTransportWithServices({ pipeline: undefined })
+    ;(transport as any).services.deals = { get }
+
+    await expect(transport.request({ method: 'GET', path: '/v1/deals/pipeline' })).rejects.toMatchObject({
+      status: 501,
+      error: { code: 'INTERNAL_ERROR' },
+    })
+    expect(get).not.toHaveBeenCalled()
   })
 
   it('response data is snake_case serialized for workflow result', async () => {
@@ -577,7 +634,8 @@ describe('DirectTransport — workflow dispatch', () => {
   it('POST /v1/activities/log dispatches to service.log', async () => {
     const log = vi.fn(async () => ({
       id: 'act_1',
-      activityType: 'email',
+      type: 'email',
+      contactId: 'cnt_1',
       organizationId: 'org_1',
     }))
     const adapter = createTestAdapter()
@@ -589,11 +647,45 @@ describe('DirectTransport — workflow dispatch', () => {
     await transport.request({
       method: 'POST',
       path: '/v1/activities/log',
-      body: { activity_type: 'email', contact_id: 'cnt_1' },
+      body: { type: 'email', contact_id: 'cnt_1' },
     })
     expect(log).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: expect.any(String) }),
-      { activity_type: 'email', contact_id: 'cnt_1' },
+      { type: 'email', contactId: 'cnt_1' },
     )
+  })
+
+  it('POST /v1/search serializes search results to snake_case in direct mode', async () => {
+    const adapter = createTestAdapter()
+    const transport = new DirectTransport({
+      adapter,
+      context: { orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY' },
+    })
+    ;(transport as any).services = {
+      search: {
+        search: vi.fn(async () => ({
+          data: [{
+            objectType: 'deal',
+            id: 'deal_1',
+            title: 'Deal',
+            subtitle: null,
+            record: { stageId: 'stg_1' },
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          }],
+          hasMore: false,
+          nextCursor: null,
+        })),
+      },
+    }
+
+    const result = await transport.request({ method: 'POST', path: '/v1/search', body: { query: 'Deal' } })
+    expect(result.data).toEqual([{
+      object_type: 'deal',
+      id: 'deal_1',
+      title: 'Deal',
+      subtitle: null,
+      record: { stage_id: 'stg_1' },
+      updated_at: '2026-01-01T00:00:00.000Z',
+    }])
   })
 })

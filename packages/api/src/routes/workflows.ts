@@ -17,6 +17,9 @@ export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
       return notImplemented(c, 'Deal move')
     }
     const body = await c.req.json()
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+      return c.json(toError(c, 'VALIDATION_FAILED', 'Request body must be a JSON object'), 400)
+    }
     const result = await service.move(c.get('orbit'), c.req.param('id'), deserializeEntityInput('deals', body))
     return c.json(toEnvelope(c, sanitizePublicRead('deals', result)))
   })
@@ -100,13 +103,19 @@ export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
       // Fall back to create if log doesn't exist
       if (typeof service.create === 'function') {
         const body = await c.req.json()
-        const result = await service.create(c.get('orbit'), body)
+        if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+          return c.json(toError(c, 'VALIDATION_FAILED', 'Request body must be a JSON object'), 400)
+        }
+        const result = await service.create(c.get('orbit'), deserializeEntityInput('activities', body))
         return c.json(toEnvelope(c, sanitizePublicRead('activities', result)), 201)
       }
       return notImplemented(c, 'Activity log')
     }
     const body = await c.req.json()
-    const result = await service.log(c.get('orbit'), body)
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+      return c.json(toError(c, 'VALIDATION_FAILED', 'Request body must be a JSON object'), 400)
+    }
+    const result = await service.log(c.get('orbit'), deserializeEntityInput('activities', body))
     return c.json(toEnvelope(c, sanitizePublicRead('activities', result)), 201)
   })
 }

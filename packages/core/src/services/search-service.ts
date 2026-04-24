@@ -229,7 +229,7 @@ export function createSearchService(deps: {
           objectType: 'stage' as const,
           id: record.id,
           title: record.name,
-          subtitle: record.color ?? null,
+          subtitle: null,
           record: summarizeStage(record),
           updatedAt: record.updatedAt.toISOString(),
         })),
