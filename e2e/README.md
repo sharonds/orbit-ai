@@ -4,22 +4,22 @@ End-to-end journey tests for Orbit AI. This package is the publish gate for `0.1
 
 ## Journeys
 
-| # | Journey | Spec ref |
-|---|---------|----------|
-| 1 | Contact CRUD via SDK | v2 §1 |
-| 2 | Company CRUD via SDK | v2 §2 |
-| 3 | Deal lifecycle (open → won) | v2 §3 |
-| 4 | Pipeline stage ordering | v2 §4 |
-| 5 | Activity log and retrieval | v2 §5 |
-| 6 | Tag attach / detach / filter | v2 §6 |
-| 7 | Note create and list | v2 §7 |
-| 8 | Sequence enroll and step | v2 §8 |
-| 9 | Payment record and lookup | v2 §9 |
-| 10 | Contract create and sign | v2 §10 |
-| 11 | Channel create and list | v2 §11 |
-| 12 | Product catalog CRUD | v2 §12 |
-| 13 | Demo-seed idempotent load | v2 §13 |
-| 14 | Multi-tenant isolation (org_id boundary) | v2 §14 |
+| # | Journey | Surfaces covered |
+|---|---------|-----------------|
+| 1 | `orbit init` scaffolds config files | CLI |
+| 2 | Configure adapter + working local context | CLI, SQLite direct |
+| 3 | CRUD contacts | SDK HTTP, SDK direct, raw API, CLI, MCP |
+| 4 | CRUD companies | SDK HTTP, SDK direct, raw API, CLI, MCP |
+| 5 | CRUD deals | SDK HTTP, SDK direct, raw API, CLI, MCP |
+| 6 | Move a deal between pipeline stages | SDK HTTP write + SDK direct read |
+| 7 | Inspect schema + add a custom field safely | CLI (`schema list`, `fields create`) |
+| 8 | Preview + apply a reversible migration | CLI (`migrate --preview`, `migrate --apply`) |
+| 9 | SDK in HTTP mode (auth, pagination, typed errors) | SDK HTTP |
+| 10 | SDK in direct-core mode (in-process, shared error semantics) | SDK direct |
+| 11 | MCP server + core tool flows | MCP JSON-RPC (search/create/update/delete) |
+| 12 | Configure Gmail connector | CLI `integrations gmail configure/status` |
+| 13 | Configure Google Calendar connector | CLI `integrations google-calendar configure/status` |
+| 14 | Configure Stripe connector | CLI `integrations stripe configure/status` |
 
 ## Running
 
