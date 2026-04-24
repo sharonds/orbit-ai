@@ -1,0 +1,30 @@
+import { describe, it, expect } from 'vitest'
+import { detectPackageManager, installCommandFor, parseInstallCmd } from './install.js'
+
+describe('detectPackageManager', () => {
+  it('uses npm_config_user_agent when present', () => {
+    expect(detectPackageManager({ npm_config_user_agent: 'pnpm/9.12.3 npm/? node/v22.0.0 linux x64' })).toBe('pnpm')
+    expect(detectPackageManager({ npm_config_user_agent: 'yarn/4.0.0 npm/? node/v22.0.0' })).toBe('yarn')
+    expect(detectPackageManager({ npm_config_user_agent: 'bun/1.0.0' })).toBe('bun')
+    expect(detectPackageManager({ npm_config_user_agent: 'npm/10.0.0 node/v22.0.0' })).toBe('npm')
+  })
+  it('falls back to npm when no user-agent is set', () => {
+    expect(detectPackageManager({})).toBe('npm')
+  })
+})
+
+describe('parseInstallCmd', () => {
+  it('splits a string command into argv tokens', () => {
+    expect(parseInstallCmd('pnpm install')).toEqual(['pnpm', ['install']])
+    expect(parseInstallCmd('npm install --no-fund')).toEqual(['npm', ['install', '--no-fund']])
+  })
+})
+
+describe('installCommandFor', () => {
+  it('prints the right install command for each package manager', () => {
+    expect(installCommandFor('npm')).toBe('npm install')
+    expect(installCommandFor('pnpm')).toBe('pnpm install')
+    expect(installCommandFor('yarn')).toBe('yarn install')
+    expect(installCommandFor('bun')).toBe('bun install')
+  })
+})
