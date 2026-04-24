@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "orbit": "./dist/index.js"
+    "orbit": "dist/index.js"
   },
   "files": [
     "dist/",
