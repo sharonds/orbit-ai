@@ -20,6 +20,7 @@
     "execa": "^9.5.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node": "^24.6.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
