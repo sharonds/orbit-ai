@@ -40,16 +40,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: pnpm build
+        run: pnpm -r build
 
       - name: Typecheck
-        run: pnpm typecheck
+        run: pnpm -r typecheck
 
       - name: Test
-        run: pnpm test
+        run: pnpm -r test
 
       - name: Lint
-        run: pnpm lint
+        run: pnpm -r lint
 
       - name: Version or publish
         uses: changesets/action@v1
