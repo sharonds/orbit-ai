@@ -1,163 +1,385 @@
 # Orbit AI
 
-> **CRM infrastructure for AI agents and developers.** Packages, not a product.
-> (Think: "Resend for CRM" — type-safe primitives, not a UI.)
+> CRM infrastructure for AI agents and developers. Type-safe entities, a REST API,
+> TypeScript SDK, CLI, MCP server, starter scaffolder, and integration connectors
+> that you deploy alongside your own application.
 
-**Status**: `0.1.0-alpha`. All eight public packages are implemented and tested. The first npm release is cut through the Changesets release workflow; before that release lands, install from source (see [Development](#development)).
+**Status:** `0.1.0-alpha.0`. Orbit AI is public alpha software. The core CRUD
+paths, SDK/API basics, CLI package, MCP package, integrations package, starter
+scaffolder, and demo seed package exist, but several advanced routes and workflows
+are intentionally incomplete. The packages are not yet published to npm; install
+from source until the first public npm release lands.
+
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/sharonds/orbit-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/sharonds/orbit-ai/actions/workflows/ci.yml)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Node.js](https://img.shields.io/badge/Node.js-22+-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org)
+[![pnpm](https://img.shields.io/badge/pnpm-9.12-F69220?logo=pnpm&logoColor=white)](https://pnpm.io)
+[![MCP](https://img.shields.io/badge/MCP-server-111827)](packages/mcp)
+
+## What is Orbit AI?
+
+Orbit AI is an open-source CRM foundation for agent-native software. It gives your
+application a consistent model for contacts, companies, deals, pipelines, tasks,
+notes, products, payments, contracts, sequences, tags, imports, and webhooks.
+
+It is **not** a hosted CRM product and it is **not** a UI. Orbit AI is a set of
+packages you run in your own stack:
+
+- Use the **REST API** when another service or language needs CRM access over HTTP.
+- Use the **TypeScript SDK** when writing server-side TypeScript.
+- Use the **MCP server** when Claude, Cursor, Copilot, or another MCP host needs
+  agent tools for CRM records.
+- Use the **CLI** for scripts, local workflows, and operational tasks.
+- Use the **starter scaffolder** when you want a runnable Orbit-backed app shell.
+- Use the **core package** directly in trusted server-side code when you want
+  in-process access with no network boundary.
+
+## Features
+
+- **Type-safe CRM entities** - shared schemas, IDs, validation, pagination, and
+  error contracts across all surfaces.
+- **Multi-surface access** - REST API, SDK, CLI, MCP tools, and direct core
+  transport all use the same entity model.
+- **Multi-tenant foundations** - organization-scoped services, tenant guards, and
+  Postgres Row Level Security policies for defense in depth.
+- **Storage adapters** - SQLite for local development and tests; Postgres-family
+  adapters for production deployments.
+- **Authentication and scopes** - bearer API keys, per-organization context, and
+  scoped access such as `contacts:read` or `*`.
+- **Agent-ready MCP server** - 23 built-in tools, stdio and HTTP transports, and
+  output redaction/truncation helpers.
+- **Schema metadata and custom fields** - schema inspection and custom-field
+  surfaces are present, while migration execution remains an alpha workstream.
+- **Operational protections** - structured errors, request IDs, idempotency,
+  rate limiting, payload limits, and explicit alpha limitations.
+- **Integration connectors** - Gmail, Google Calendar, and Stripe connectors for
+  common CRM-adjacent workflows.
+- **Starter scaffolding** - `@orbit-ai/create-orbit-app` creates a starter backed
+  by the demo seed.
+- **Deterministic demo data** - multi-tenant seed data for examples, tests, and
+  starter applications.
+
+## How It Works
+
+Orbit AI keeps the domain model in `@orbit-ai/core` and exposes it through several
+thin surfaces:
+
+```text
+                         MCP hosts / agents
+                              |
+                              v
+                       @orbit-ai/mcp
+                              |
+SDK clients ---> @orbit-ai/api <--- CLI scripts
+     |                |
+     |                v
+     +--------> @orbit-ai/core <--- starter apps
+                     |
+          +----------+----------+
+          |                     |
+       SQLite              Postgres
+   local dev/tests    production + RLS
+```
+
+The API and MCP HTTP transport authenticate every request with a bearer API key.
+The SDK can either call the API over HTTP or use `DirectTransport` in trusted
+server-side contexts. `DirectTransport` bypasses auth, rate limiting, and scope
+enforcement, so it should only be used inside code you control.
+
+## Choose a Surface
+
+| Surface | Use when |
+|---|---|
+| [`@orbit-ai/mcp`](packages/mcp) | You are connecting an MCP host or coding agent to CRM tools |
+| [`@orbit-ai/sdk`](packages/sdk) | You are writing trusted server-side TypeScript |
+| [`@orbit-ai/api`](packages/api) | You need REST/JSON access from any language or service |
+| [`@orbit-ai/cli`](packages/cli) | You are scripting from a terminal or operating a local deployment |
+| [`@orbit-ai/create-orbit-app`](packages/create-orbit-app) | You want a starter project scaffolded quickly |
+| [`@orbit-ai/core`](packages/core) | You need direct in-process services and adapters in code you control |
 
 ## Packages
 
-| Package | Status | Purpose |
-|---|---|---|
-| [`@orbit-ai/core`](packages/core) | ✅ alpha | Schema engine, entities, storage adapters (SQLite, Postgres, Supabase, Neon), tenant context, migrations |
-| [`@orbit-ai/api`](packages/api) | ✅ alpha | Hono-based REST API with auth, scope enforcement, idempotency, rate limiting, sanitization |
-| [`@orbit-ai/sdk`](packages/sdk) | ✅ alpha | TypeScript client with HTTP and direct-core transports, auto-pagination, type-safe resources |
-| [`@orbit-ai/cli`](packages/cli) | ✅ alpha | Terminal interface — `orbit init`, CRUD commands, schema tooling, `--json` mode, direct and API mode |
-| [`@orbit-ai/mcp`](packages/mcp) | ✅ alpha | Model Context Protocol server with 23 core tools, stdio and HTTP transports |
-| [`@orbit-ai/integrations`](packages/integrations) | ✅ alpha | Gmail, Google Calendar, and Stripe connectors with OAuth lifecycle and webhook support |
-| [`@orbit-ai/demo-seed`](packages/demo-seed) | ✅ alpha | Deterministic multi-tenant demo data for local testing and examples |
-| [`@orbit-ai/create-orbit-app`](packages/create-orbit-app) | ✅ alpha | Starter scaffolder — `npx @orbit-ai/create-orbit-app@alpha my-app` |
+| Package | Purpose |
+|---|---|
+| [`@orbit-ai/core`](packages/core) | Schema engine, entities, storage adapters, tenant context, migrations |
+| [`@orbit-ai/api`](packages/api) | Hono REST API with auth, scopes, idempotency, rate limiting, sanitization |
+| [`@orbit-ai/sdk`](packages/sdk) | TypeScript client with HTTP mode, DirectTransport, and auto-pagination |
+| [`@orbit-ai/cli`](packages/cli) | Terminal interface for setup, CRUD commands, schema tooling, and JSON output |
+| [`@orbit-ai/mcp`](packages/mcp) | Model Context Protocol server with stdio and HTTP transports |
+| [`@orbit-ai/integrations`](packages/integrations) | Gmail, Google Calendar, and Stripe connectors |
+| [`@orbit-ai/demo-seed`](packages/demo-seed) | Deterministic multi-tenant demo data |
+| [`@orbit-ai/create-orbit-app`](packages/create-orbit-app) | Starter scaffolder for new Orbit-backed apps |
 
-## Quick look
+## Quick Start
+
+Orbit AI is not yet on npm. Use the source checkout for now.
+
+```bash
+# 1. Clone
+git clone https://github.com/sharonds/orbit-ai.git
+cd orbit-ai
+
+# 2. Install dependencies
+pnpm install
+
+# 3. Build all packages
+pnpm -r build
+
+# 4. Run tests
+pnpm -r test
+
+# 5. Run the Node.js quickstart
+cd examples/nodejs-quickstart
+pnpm start
+```
+
+Requires **Node.js 22+** and **pnpm 9+**. The SQLite adapter uses `node:sqlite`,
+which is only available in modern Node versions.
+
+## Surface Quick Starts
+
+### SDK over HTTP
+
+Use this when you have a running Orbit API server:
 
 ```typescript
 import { OrbitClient } from '@orbit-ai/sdk'
 
 const client = new OrbitClient({
   apiKey: process.env.ORBIT_API_KEY!,
-  baseUrl: 'https://api.orbit-ai.example.com',
+  baseUrl: process.env.ORBIT_API_BASE_URL!,
 })
 
-// Happy path: list the first page of contacts
-const page = await client.contacts.list({ limit: 10 })
-console.log(page.data) // Contact[]
+const contacts = await client.contacts.list({ limit: 25 })
+console.log(contacts.data)
+```
 
-// Multi-page iteration
-for await (const contact of client.contacts.pages({ limit: 50 }).autoPaginate()) {
-  console.log(contact.id, contact.name)
-}
+### SDK DirectTransport
 
-// Create
+Use this only inside trusted server-side code, tests, and local scripts:
+
+```typescript
+import { OrbitClient } from '@orbit-ai/sdk'
+import {
+  createSqliteOrbitDatabase,
+  createSqliteStorageAdapter,
+  initializeAllSqliteSchemas,
+} from '@orbit-ai/core'
+
+const database = createSqliteOrbitDatabase()
+await initializeAllSqliteSchemas(database)
+
+const client = new OrbitClient({
+  adapter: createSqliteStorageAdapter({ database }),
+  context: { orgId: 'org_demo' },
+})
+
+await client.contacts.create({ name: 'Ada Lovelace' })
+```
+
+### API Server
+
+Create a Hono app with `@orbit-ai/api` and serve it from your runtime of choice:
+
+```typescript
+import { createApi } from '@orbit-ai/api/node'
+import { createCoreServices } from '@orbit-ai/core'
+
+const services = createCoreServices(adapter)
+
+export const app = createApi({
+  adapter,
+  services,
+  version: '2026-04-01',
+})
+```
+
+See [`packages/api`](packages/api) for a full adapter setup example.
+
+### MCP Server
+
+Start the MCP server programmatically with `@orbit-ai/mcp`:
+
+```typescript
+import { OrbitClient } from '@orbit-ai/sdk'
+import { startMcpServer } from '@orbit-ai/mcp'
+
+await startMcpServer({
+  client: new OrbitClient({ adapter, context: { orgId: 'org_demo' } }),
+  transport: 'stdio',
+})
+```
+
+Use HTTP transport when your app needs a remote or multi-tenant MCP endpoint.
+The `orbit mcp serve` CLI command is reserved but not wired in this alpha. See
+[`packages/mcp`](packages/mcp) for transport setup and the full tool list.
+
+## SDK Example
+
+```typescript
+import { OrbitClient } from '@orbit-ai/sdk'
+
+const client = new OrbitClient({
+  apiKey: process.env.ORBIT_API_KEY!,
+  baseUrl: 'https://api.yourapp.com',
+})
+
 const contact = await client.contacts.create({
   name: 'Ada Lovelace',
   email: 'ada@example.com',
 })
+
+await client.activities.create({
+  contactId: contact.id,
+  type: 'email',
+  subject: 'Introduction',
+  body: 'Sent intro email.',
+})
+
+for await (const item of client.contacts.pages({ limit: 100 }).autoPaginate()) {
+  console.log(item.id, item.name)
+}
 ```
 
-A runnable example lives at [`examples/nodejs-quickstart`](examples/nodejs-quickstart).
+## API Authentication
 
-## Installation
+HTTP surfaces use standard bearer authentication plus an explicit API version:
 
-```bash
-pnpm add @orbit-ai/sdk
-# or for the server-side packages:
-pnpm add @orbit-ai/core @orbit-ai/api
+```http
+Authorization: Bearer <api-key>
+Orbit-Version: 2026-04-01
 ```
 
-> **Pre-publish note**: until the first `0.1.0-alpha` npm release is cut, clone this
-> repo and run Orbit AI from source with `pnpm install && pnpm -r build`.
+API keys are organization-scoped. Keys can have `*` access or narrower scopes such
+as `contacts:read`, `contacts:write`, or other entity-specific scopes.
 
-## Architecture
+## Tech Stack
 
-Orbit AI is a monorepo (pnpm + Turborepo) with eight public packages:
+| Layer | Technology |
+|---|---|
+| Language | TypeScript 5.9, strict mode |
+| Runtime | Node.js 22+ |
+| Workspace | pnpm, Turborepo |
+| API | Hono, Zod |
+| SDK | TypeScript client, async pagination helpers |
+| MCP | `@modelcontextprotocol/sdk`, stdio and HTTP transports |
+| CLI | Commander, Ink, React |
+| Starter | Clack prompts, execa |
+| Database | SQLite via `node:sqlite`, Postgres via `pg` |
+| Schema/data | Zod, Drizzle ORM, drizzle-zod, ULID |
+| Integrations | Google APIs, Google Auth Library, Stripe |
+| Testing | Vitest, `node:test`, launch-gate E2E tests |
+| Release | Changesets, pinned GitHub Actions, npm provenance support |
 
+## Project Structure
+
+```text
+orbit-ai/
+|-- packages/
+|   |-- core/              # Entity schemas, services, adapters, tenant guards
+|   |-- api/               # REST server, middleware, routes, OpenAPI generation
+|   |-- sdk/               # TypeScript SDK and transport layer
+|   |-- cli/               # Command-line interface
+|   |-- mcp/               # MCP server, tools, resources, transports
+|   |-- integrations/      # Gmail, Google Calendar, Stripe connectors
+|   |-- demo-seed/         # Deterministic demo data
+|   `-- create-orbit-app/  # Starter scaffolder
+|-- examples/
+|   `-- nodejs-quickstart/
+|-- e2e/                   # Cross-surface launch-gate journeys
+|-- docs/
+|   `-- security/          # Security architecture and hardening notes
+|-- scripts/               # Release and package artifact verification
+|-- AGENTS.md              # Agent/developer operating guide
+|-- llms.txt               # Compact machine-readable project index
+|-- SECURITY.md            # Vulnerability reporting and security model
+`-- CONTRIBUTING.md        # Contributor workflow and code style
 ```
-┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-│  @orbit-ai/api   │  │  @orbit-ai/sdk   │  │  @orbit-ai/cli   │
-│  (REST server)   │  │  (client lib)    │  │  (terminal)      │
-└────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘
-         │                     │                      │
-         └─────────────────────┼──────────────────────┘
-                               │  depends on
-                    ┌──────────▼──────────┐
-                    │   @orbit-ai/core    │
-                    │  (schema + adpts.)  │
-                    └──────────┬──────────┘
-                               │
-          ┌────────────────────┼────────────────────┐
-          │                                         │
-┌─────────▼──────────┐              ┌───────────────▼──────┐
-│  @orbit-ai/mcp     │              │ @orbit-ai/integrations│
-│  (MCP server,      │              │ (Gmail, Calendar,     │
-│   23 tools)        │              │  Stripe)              │
-└────────────────────┘              └──────────────────────┘
-```
 
-- **core** is the source of truth for schema, entities, storage adapters, tenant
-  isolation, and migrations. It has no network or HTTP dependencies.
-- **api** is a Hono-based REST server that wraps core with auth, scopes, idempotency,
-  rate limiting, and sanitization. It exposes `/v1/*` routes.
-- **sdk** is a TypeScript client that can talk to an api server over HTTP, or run
-  in-process directly against a core adapter (DirectTransport) for tests and trusted
-  server-side use.
-- **cli** is a terminal interface built on Commander.js with interactive prompts,
-  `--json` mode for scripting, and support for both API and direct modes.
-- **mcp** is a Model Context Protocol server exposing 23 tools over stdio or HTTP.
-- **integrations** provides Gmail, Google Calendar, and Stripe connectors with full
-  OAuth lifecycle management and webhook support.
-- **demo-seed** provides deterministic multi-tenant demo data for local testing and
-  examples.
-- **create-orbit-app** scaffolds a runnable starter backed by the demo seed.
+## Agent & MCP Integration
+
+Orbit AI is built for agent workflows:
+
+- [`AGENTS.md`](AGENTS.md) gives coding agents the project model, auth contract,
+  common workflows, error codes, and alpha limitations.
+- [`llms.txt`](llms.txt) provides a compact machine-readable index.
+- [`@orbit-ai/mcp`](packages/mcp) exposes 23 tools for contacts, companies, deals,
+  pipelines, activities, tasks, notes, schema operations, imports, and more.
+- The REST API and SDK use structured errors so agents can recover from validation,
+  auth, rate-limit, and not-found failures predictably.
 
 ## Development
 
 ```bash
-# Install deps (pnpm required — never use npm or yarn in this repo)
-pnpm install
-
 # Build all packages
 pnpm -r build
 
-# Run all tests (vitest)
-pnpm -r test
-
-# Typecheck + lint
+# Typecheck
 pnpm -r typecheck
+
+# Lint
 pnpm -r lint
 
-# Run the quickstart example
-cd examples/nodejs-quickstart && pnpm start
+# Test all packages
+pnpm -r test
+
+# Verify release workflow logic
+pnpm test:release-workflow
+
+# Run a release dry run
+pnpm release:dry-run
 ```
-
-Requires **Node.js 22+** (the SQLite adapter uses `node:sqlite`).
-
-## Supported storage adapters
-
-| Adapter | Status | Notes |
-|---|---|---|
-| SQLite (`node:sqlite`) | ✅ | Local dev + tests. Not for production tenant isolation. |
-| Postgres (raw `pg`) | ✅ | Production target. RLS policies shipped. |
-| Supabase | ✅ | Via the Postgres adapter + RLS. |
-| Neon | ✅ | Via the Postgres adapter + branching. |
 
 ## Security
 
-See [`SECURITY.md`](SECURITY.md) for vulnerability disclosure, and
-[`docs/security/`](docs/security) for the threat model and database hardening
-checklist.
+See [`SECURITY.md`](SECURITY.md) for vulnerability reporting and
+[`docs/security/`](docs/security) for security architecture and database hardening.
 
-**Quick notes for alpha users:**
-- API keys are hashed with SHA-256 before storage. HMAC-SHA256 + server pepper is
-  planned for v1 GA.
-- Multi-tenant isolation is enforced in two layers: application-level `orgId` filtering
-  in every repository + Postgres RLS policies for Postgres-family adapters. SQLite has
-  no RLS — application-layer filtering only.
-- Idempotency and rate limiting are **in-memory by default** — single-instance deployments
-  only. For multi-instance, implement the `IdempotencyStore` interface and pass it via
-  `CreateApiOptions`.
-- The full list of known alpha gaps is documented in [`AGENTS.md`](AGENTS.md#known-alpha-limitations).
+Important alpha notes:
+
+- API keys are currently SHA-256 hashed before storage. HMAC-SHA256 with a
+  server-side pepper is planned for v1.
+- Idempotency and rate limiting stores are in-memory by default and are suitable
+  for single-instance deployments only.
+- SQLite has no database-level RLS. Do not use SQLite for multi-tenant production.
+- `DirectTransport` is for trusted server-side code only because it bypasses HTTP
+  auth, scope checks, and rate limiting.
+- Batch mutation route types exist, but batch write implementation is not complete.
+
+## Disclaimer
+
+Orbit AI is alpha infrastructure software. You are responsible for deploying it
+securely, managing API keys, configuring production databases, and validating that
+the authorization model fits your application. Do not expose SQLite-backed
+multi-tenant deployments to production traffic.
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Issues and pull requests are welcome. Please read [`CONTRIBUTING.md`](CONTRIBUTING.md)
+before opening a PR.
+
+High-level expectations:
+
+- Use pnpm, not npm or yarn.
+- Keep PRs focused on one concern.
+- Add tests for non-trivial behavior changes.
+- Run build, typecheck, lint, and tests before requesting review.
+- Report security issues privately through GitHub Private Vulnerability Reporting.
+
+## Sponsorship
+
+If Orbit AI is useful in your work, you can support development through
+[GitHub Sponsors](https://github.com/sponsors/sharonds). Sponsorship helps fund
+maintenance, security hardening, docs, and release work.
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+[MIT](LICENSE)
 
-## What's next
+## Acknowledgments
 
-- **npm publish** — `0.1.0-alpha.1` will be the first public npm release. Until then, install from source: `pnpm install && pnpm -r build`.
-- **Hosted tier** — a managed Orbit AI API endpoint (beta) is planned alongside the npm release.
-- **E2E test suite** — cross-surface launch-gate journeys now live in [`e2e/`](e2e); multi-tenant denial expansion remains a post-alpha follow-up.
-- **Documentation site** — a full docs site is planned post-publish.
+Built with [TypeScript](https://www.typescriptlang.org), [Hono](https://hono.dev),
+[Zod](https://zod.dev), [Drizzle ORM](https://orm.drizzle.team),
+[Vitest](https://vitest.dev), [Turborepo](https://turbo.build/repo), and the
+[Model Context Protocol SDK](https://github.com/modelcontextprotocol/typescript-sdk).

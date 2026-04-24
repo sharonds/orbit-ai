@@ -66,7 +66,7 @@ Orbit AI uses a three-layer security model:
    providing defence-in-depth if the application layer is bypassed. SQLite has no RLS;
    only application-layer filtering applies.
 
-For the full threat model see [`docs/security/orbit-ai-threat-model.md`](docs/security/orbit-ai-threat-model.md).
+For the security architecture see [`docs/security/security-architecture.md`](docs/security/security-architecture.md).
 For the database hardening checklist see [`docs/security/database-hardening-checklist.md`](docs/security/database-hardening-checklist.md).
 
 ## Known alpha gaps
@@ -83,8 +83,8 @@ vulnerabilities:
 - Search and batch mutation types exist in the type system but the full implementation
   is incomplete. Do not rely on them for production data.
 
-The full list of known gaps is in
-[`docs/review/2026-04-08-post-stack-audit.md`](docs/review/2026-04-08-post-stack-audit.md).
+The full list of known alpha limitations is in
+[`AGENTS.md`](AGENTS.md#known-alpha-limitations).
 
 ## Credit
 
