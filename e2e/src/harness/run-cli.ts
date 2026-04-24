@@ -21,11 +21,21 @@ export interface CliResult {
   readonly json?: unknown
 }
 
+function baseCliEnv(): Record<string, string> {
+  const env: Record<string, string> = { NODE_ENV: 'test' }
+  for (const key of ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP']) {
+    const value = process.env[key]
+    if (value !== undefined) env[key] = value
+  }
+  return env
+}
+
 export async function runCli(invocation: CliInvocation): Promise<CliResult> {
   try {
     const res = await execa('node', [CLI_ENTRY, ...invocation.args], {
       cwd: invocation.cwd,
-      env: { ...process.env, ...invocation.env, NODE_ENV: 'test' },
+      env: { ...baseCliEnv(), ...invocation.env },
+      extendEnv: false,
       reject: false,
     })
     let json: unknown

@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Journeys 12–14: Gmail, Google Calendar, Stripe connector configure/status (requires `--skip-validation`)
 - CI: `journeys` job (SQLite, all 14 journeys) + `journeys-postgres` job (Postgres matrix, journeys 2–11)
 - **Hardening**: `engine.ts` `preview`/`apply` stubs now call `assertOrgContext`; `addField` validates `fieldType` against 12-type allowlist; `direct-transport.ts` throws `OrbitApiError` (not plain `Error`) for unhandled routes; `build-stack.ts` Postgres `ON CONFLICT DO UPDATE` prevents stale key hash across CI runs
+- **Review fixes**: DirectTransport now dispatches workflow sub-routes (`deals.move/pipeline/stats`, `activities.log`, `sequences.enroll`, `sequenceEnrollments.unenroll`, `tags.attach/detach`); schema reads paginate custom fields instead of truncating at 500; migration preview/apply rejects empty bodies; e2e Postgres setup is limited to local test databases with per-run API keys; CLI e2e subprocesses use an allowlisted env; Stripe configure rejects API keys passed via argv
 
 ### @orbit-ai/demo-seed — Initial release
 

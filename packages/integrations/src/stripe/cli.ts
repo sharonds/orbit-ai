@@ -16,14 +16,22 @@ export function buildStripeCommands(runtime: CliRuntimeContext): IntegrationComm
       name: 'stripe/configure',
       description: 'Configure the Stripe connector with an API key',
       options: [
-        { flags: '--api-key <key>', description: `Stripe secret API key (prefer ${STRIPE_API_KEY_ENV})` },
+        { flags: '--api-key <key>', description: `Rejected for security; use ${STRIPE_API_KEY_ENV} or --api-key-env` },
         { flags: '--api-key-env <name>', description: 'Environment variable containing the Stripe API key' },
         { flags: '--skip-validation', description: 'Skip live validation — required in alpha', defaultValue: false },
       ],
       async action(...actionArgs: unknown[]) {
         const args = (actionArgs[0] ?? {}) as StripeConfigureArgs
+        if (args.apiKey) {
+          runtime.print({
+            configured: false,
+            provider: STRIPE_SLUG,
+            error: `Do not pass Stripe API keys on the command line. Use ${STRIPE_API_KEY_ENV} or --api-key-env instead.`,
+          })
+          return
+        }
+
         const apiKey =
-          args.apiKey ??
           (args.apiKeyEnv ? process.env[args.apiKeyEnv] : undefined) ??
           process.env[STRIPE_API_KEY_ENV]
 

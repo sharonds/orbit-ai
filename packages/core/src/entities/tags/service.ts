@@ -3,6 +3,8 @@ import { generateId } from '../../ids/generate-id.js'
 import type { EntityService } from '../../services/entity-service.js'
 import { assertDeleted, assertFound } from '../../services/service-helpers.js'
 import { createOrbitError } from '../../types/errors.js'
+import type { EntityTagRepository } from '../entity-tags/repository.js'
+import { entityTagRecordSchema, type EntityTagRecord } from '../entity-tags/validators.js'
 import type { TagRepository } from './repository.js'
 import {
   tagCreateInputSchema,
@@ -58,8 +60,34 @@ function coerceTagConflict(error: unknown, name: string): never {
 
 export function createTagService(deps: {
   tags: TagRepository
+  entityTags: EntityTagRepository
   tx: TransactionScope
-}): EntityService<TagCreateInput, TagUpdateInput, TagRecord> {
+}): EntityService<TagCreateInput, TagUpdateInput, TagRecord> & {
+  attach(ctx: Parameters<EntityService<TagCreateInput, TagUpdateInput, TagRecord>['create']>[0], id: string, input: Record<string, unknown>): Promise<EntityTagRecord>
+  detach(ctx: Parameters<EntityService<TagCreateInput, TagUpdateInput, TagRecord>['create']>[0], id: string, input: Record<string, unknown>): Promise<{ id: string; detached: true }>
+} {
+  function parseEntityTagInput(input: Record<string, unknown>): { entityType: string; entityId: string } {
+    const entityType = input.entityType ?? input.entity_type
+    const entityId = input.entityId ?? input.entity_id
+
+    if (typeof entityType !== 'string' || entityType.length === 0) {
+      throw createOrbitError({
+        code: 'VALIDATION_FAILED',
+        message: 'Tag attachment entityType is required',
+        field: 'entityType',
+      })
+    }
+    if (typeof entityId !== 'string' || entityId.length === 0) {
+      throw createOrbitError({
+        code: 'VALIDATION_FAILED',
+        message: 'Tag attachment entityId is required',
+        field: 'entityId',
+      })
+    }
+
+    return { entityType, entityId }
+  }
+
   return {
     async create(ctx, input) {
       const parsed = tagCreateInputSchema.parse(input)
@@ -122,6 +150,46 @@ export function createTagService(deps: {
     },
     async search(ctx, query) {
       return deps.tags.search(ctx, query)
+    },
+    async attach(ctx, id, input) {
+      assertFound(await deps.tags.get(ctx, id), `Tag ${id} not found`)
+      const parsed = parseEntityTagInput(input)
+      const now = new Date()
+
+      return deps.entityTags.create(
+        ctx,
+        entityTagRecordSchema.parse({
+          id: generateId('entityTag'),
+          organizationId: ctx.orgId,
+          tagId: id,
+          entityType: parsed.entityType,
+          entityId: parsed.entityId,
+          createdAt: now,
+          updatedAt: now,
+        }),
+      )
+    },
+    async detach(ctx, id, input) {
+      assertFound(await deps.tags.get(ctx, id), `Tag ${id} not found`)
+      const parsed = parseEntityTagInput(input)
+      const existing = await deps.entityTags.list(ctx, {
+        filter: {
+          tag_id: id,
+          entity_type: parsed.entityType,
+          entity_id: parsed.entityId,
+        },
+        limit: 1,
+      })
+      const current = existing.data[0]
+      if (!current) {
+        throw createOrbitError({
+          code: 'RESOURCE_NOT_FOUND',
+          message: `Tag ${id} is not attached to ${parsed.entityType}:${parsed.entityId}`,
+        })
+      }
+
+      assertDeleted(await deps.entityTags.delete(ctx, current.id), `Entity tag ${current.id} not found`)
+      return { id: current.id, detached: true }
     },
   }
 }

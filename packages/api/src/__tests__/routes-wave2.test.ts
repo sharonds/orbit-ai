@@ -544,7 +544,7 @@ describe('Workflow routes', () => {
     expect(res.status).toBe(501)
   })
 
-  it('POST /v1/sequences/:id/enroll returns 501 when not implemented', async () => {
+  it('POST /v1/sequences/:id/enroll falls back to sequence enrollment create', async () => {
     const services = mockWave2CoreServices()
     const app = createRouteTestApp()
     registerWorkflowRoutes(app, services)
@@ -554,7 +554,11 @@ describe('Workflow routes', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ contact_id: 'c_01' }),
     })
-    expect(res.status).toBe(501)
+    expect(res.status).toBe(201)
+    expect((services as any).sequenceEnrollments.create).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_test' }),
+      { contactId: 'c_01', sequenceId: 'seq_01' },
+    )
   })
 
   it('POST /v1/tags/:id/attach returns 501 when not implemented', async () => {
@@ -700,7 +704,7 @@ describe('Object / Schema routes', () => {
   })
 
   // M-SEC-1: Zod validation for migration preview/apply
-  it('POST /v1/schema/migrations/preview accepts empty body and calls service', async () => {
+  it('POST /v1/schema/migrations/preview rejects empty body before calling service', async () => {
     const services = mockWave2CoreServices()
     ;(services as any).schema = {
       preview: vi.fn(async () => ({ operations: [], destructive: false, status: 'ok' })),
@@ -714,8 +718,8 @@ describe('Object / Schema routes', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
     })
-    expect(res.status).toBe(200)
-    expect((services as any).schema.preview).toHaveBeenCalledTimes(1)
+    expect(res.status).toBe(400)
+    expect((services as any).schema.preview).not.toHaveBeenCalled()
   })
 
   it('POST /v1/schema/migrations/preview accepts valid non-empty body and calls service', async () => {
@@ -737,7 +741,7 @@ describe('Object / Schema routes', () => {
     expect((services as any).schema.preview).toHaveBeenCalledTimes(1)
   })
 
-  it('POST /v1/schema/migrations/apply accepts empty body and calls service', async () => {
+  it('POST /v1/schema/migrations/apply rejects empty body before calling service', async () => {
     const services = mockWave2CoreServices()
     ;(services as any).schema = {
       apply: vi.fn(async () => ({ applied: [], status: 'ok' })),
@@ -751,8 +755,8 @@ describe('Object / Schema routes', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({}),
     })
-    expect(res.status).toBe(200)
-    expect((services as any).schema.apply).toHaveBeenCalledTimes(1)
+    expect(res.status).toBe(400)
+    expect((services as any).schema.apply).not.toHaveBeenCalled()
   })
 
   it('POST /v1/schema/migrations/apply accepts valid non-empty body and calls service', async () => {

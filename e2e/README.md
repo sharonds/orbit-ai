@@ -24,6 +24,9 @@ End-to-end journey tests for Orbit AI. This package is the publish gate for `0.1
 ## Running
 
 ```bash
+# Build workspace packages first; the CLI journeys execute packages/cli/dist/index.js.
+pnpm -r build
+
 # Run all journeys (SQLite, no extra env vars needed)
 pnpm -F @orbit-ai/e2e test
 

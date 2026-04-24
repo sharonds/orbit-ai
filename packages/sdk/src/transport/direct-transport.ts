@@ -123,8 +123,11 @@ export class DirectTransport implements OrbitTransport {
         listObjects?: (ctx: OrbitAuthContext) => Promise<unknown>
         getObject?: (ctx: OrbitAuthContext, type: string) => Promise<unknown>
         addField?: (ctx: OrbitAuthContext, type: string, body: Record<string, unknown>) => Promise<unknown>
+        updateField?: (ctx: OrbitAuthContext, type: string, fieldName: string, body: Record<string, unknown>) => Promise<unknown>
+        deleteField?: (ctx: OrbitAuthContext, type: string, fieldName: string) => Promise<unknown>
       }
       const subEntity = segments[startIdx + 2] // e.g. 'fields'
+      const subAction = segments[startIdx + 3] // e.g. field name
       if (method === 'GET' && !action) {
         if (typeof schema.listObjects !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: listObjects not implemented' }, 501)
         return schema.listObjects(this.ctx)
@@ -139,7 +142,15 @@ export class DirectTransport implements OrbitTransport {
       }
       if (method === 'POST' && action && subEntity === 'fields') {
         if (typeof schema.addField !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: addField not implemented' }, 501)
-        return schema.addField(this.ctx, action, body as Record<string, unknown>)
+        return schema.addField(this.ctx, action, this.bodyObject(body, path))
+      }
+      if (method === 'PATCH' && action && subEntity === 'fields' && subAction) {
+        if (typeof schema.updateField !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: updateField not implemented' }, 501)
+        return schema.updateField(this.ctx, action, subAction, this.bodyObject(body, path))
+      }
+      if (method === 'DELETE' && action && subEntity === 'fields' && subAction) {
+        if (typeof schema.deleteField !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: deleteField not implemented' }, 501)
+        return schema.deleteField(this.ctx, action, subAction)
       }
       throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unhandled schema route: ${method} ${path}` }, 404)
     }
@@ -156,11 +167,11 @@ export class DirectTransport implements OrbitTransport {
       const subOp = segments[startIdx + 3] // 'rollback' when id is present
       if (method === 'POST' && operation === 'preview') {
         if (typeof schema.preview !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: preview not implemented' }, 501)
-        return schema.preview(this.ctx, (body ?? {}) as Record<string, unknown>)
+        return schema.preview(this.ctx, this.migrationBody(body, path))
       }
       if (method === 'POST' && operation === 'apply') {
         if (typeof schema.apply !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: apply not implemented' }, 501)
-        return schema.apply(this.ctx, (body ?? {}) as Record<string, unknown>)
+        return schema.apply(this.ctx, this.migrationBody(body, path))
       }
       if (method === 'POST' && subOp === 'rollback' && operation) {
         if (typeof schema.rollback !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: rollback not implemented' }, 501)
@@ -172,7 +183,23 @@ export class DirectTransport implements OrbitTransport {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const serviceKey = resolvePublicEntityServiceKey(entity)
     const service = (this.services as any)[serviceKey] as
-      | { list?: Function; create?: Function; get?: Function; update?: Function; delete?: Function; search?: Function; batch?: Function; move?: Function; pipeline?: Function; stats?: Function; enroll?: Function; unenroll?: Function; attach?: Function; detach?: Function; log?: Function }
+      | {
+        list?: Function
+        create?: Function
+        get?: Function
+        update?: Function
+        delete?: Function
+        search?: Function
+        batch?: Function
+        move?: Function
+        pipeline?: Function
+        stats?: Function
+        enroll?: Function
+        unenroll?: Function
+        attach?: Function
+        detach?: Function
+        log?: Function
+      }
       | undefined
     if (!service) throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unknown entity: ${entity}` }, 404)
 
@@ -180,23 +207,56 @@ export class DirectTransport implements OrbitTransport {
       ? deserializeEntityInput(entity, body as Record<string, unknown>)
       : body
 
-    if (method === 'GET' && entity === 'deals' && action === 'pipeline') {
-      if (typeof service.pipeline === 'function') return service.pipeline(this.ctx, query ?? {})
-      throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Deal pipeline view not implemented' }, 501)
+    if (entity === 'deals' && method === 'POST' && action && segments[startIdx + 2] === 'move') {
+      const input = this.camelizeBody(this.bodyObject(body, path))
+      if (typeof service.move === 'function') return service.move(this.ctx, action, input)
+      const stageId = input.stageId
+      if (typeof stageId !== 'string' || stageId.length === 0) {
+        throw new OrbitApiError({ code: 'VALIDATION_FAILED', message: 'Deal move stageId is required', field: 'stageId' }, 400)
+      }
+      if (typeof service.update !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Deal move not implemented' }, 501)
+      return service.update(this.ctx, action, { stageId })
     }
-    if (method === 'GET' && entity === 'deals' && action === 'stats') {
-      if (typeof service.stats === 'function') return service.stats(this.ctx, query ?? {})
-      throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Deal stats not implemented' }, 501)
+    if (entity === 'deals' && method === 'GET' && action === 'pipeline') {
+      if (typeof service.pipeline === 'function') return service.pipeline(this.ctx)
+      if (!this.canBuildDealAggregates()) throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Deal pipeline view not implemented' }, 501)
+      return this.buildDealPipelineView()
     }
-
-    // 4-segment workflow routes: POST /v1/:entity/:id/:verb
-    if (method === 'POST' && action && verb) {
-      if (verb === 'move' && typeof service.move === 'function') return service.move(this.ctx, action, coreInput)
-      if (verb === 'enroll' && typeof service.enroll === 'function') return service.enroll(this.ctx, action, body)
-      if (verb === 'unenroll' && typeof service.unenroll === 'function') return service.unenroll(this.ctx, action)
-      if (verb === 'attach' && typeof service.attach === 'function') return service.attach(this.ctx, action, body)
-      if (verb === 'detach' && typeof service.detach === 'function') return service.detach(this.ctx, action, body)
-      throw new Error(`Unhandled workflow: ${method} ${path}`)
+    if (entity === 'deals' && method === 'GET' && action === 'stats') {
+      if (typeof service.stats === 'function') return service.stats(this.ctx)
+      if (!this.canBuildDealAggregates()) throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Deal stats not implemented' }, 501)
+      return this.buildDealStats()
+    }
+    if (entity === 'sequences' && method === 'POST' && action && segments[startIdx + 2] === 'enroll') {
+      const input: Record<string, unknown> = { ...this.camelizeBody(this.bodyObject(body, path)), sequenceId: action }
+      if (typeof service.enroll === 'function') return service.enroll(this.ctx, action, input)
+      if (typeof input.contactId !== 'string' || input.contactId.length === 0) {
+        throw new OrbitApiError({ code: 'VALIDATION_FAILED', message: 'Sequence enrollment contactId is required', field: 'contactId' }, 400)
+      }
+      return this.services.sequenceEnrollments.create(this.ctx, input as Parameters<typeof this.services.sequenceEnrollments.create>[1])
+    }
+    if (entity === 'sequence_enrollments' && method === 'POST' && action && segments[startIdx + 2] === 'unenroll') {
+      if (typeof service.unenroll === 'function') return service.unenroll(this.ctx, action)
+      if (typeof service.update !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Sequence unenrollment not implemented' }, 501)
+      return service.update(this.ctx, action, {
+        status: 'exited',
+        exitedAt: new Date(),
+        exitReason: 'unenrolled',
+      })
+    }
+    if (entity === 'tags' && method === 'POST' && action && segments[startIdx + 2] === 'attach') {
+      if (typeof service.attach !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Tag attach not implemented' }, 501)
+      return service.attach(this.ctx, action, this.camelizeBody(this.bodyObject(body, path)))
+    }
+    if (entity === 'tags' && method === 'POST' && action && segments[startIdx + 2] === 'detach') {
+      if (typeof service.detach !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Tag detach not implemented' }, 501)
+      return service.detach(this.ctx, action, this.camelizeBody(this.bodyObject(body, path)))
+    }
+    if (entity === 'activities' && method === 'POST' && action === 'log') {
+      const input = this.camelizeBody(this.bodyObject(body, path))
+      if (typeof service.log === 'function') return service.log(this.ctx, input)
+      if (typeof service.create === 'function') return service.create(this.ctx, input)
+      throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Activity log not implemented' }, 501)
     }
 
     if (method === 'GET' && !action && service.list) return service.list(this.ctx, query ?? {})
@@ -282,6 +342,98 @@ export class DirectTransport implements OrbitTransport {
     if (entity === 'activities' && action === 'log') return 'activities'
 
     return entity
+  }
+
+  private bodyObject(body: unknown, path: string): Record<string, unknown> {
+    if (body === undefined || body === null) return {}
+    if (typeof body !== 'object' || Array.isArray(body)) {
+      throw new OrbitApiError({ code: 'VALIDATION_FAILED', message: `Request body for ${path} must be an object` }, 400)
+    }
+    return body as Record<string, unknown>
+  }
+
+  private migrationBody(body: unknown, path: string): Record<string, unknown> {
+    const data = this.bodyObject(body, path)
+    if (Object.keys(data).length === 0) {
+      throw new OrbitApiError({ code: 'VALIDATION_FAILED', message: 'Migration input must include at least one field' }, 400)
+    }
+    return data
+  }
+
+  private camelizeBody(body: Record<string, unknown>): Record<string, unknown> {
+    const result: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(body)) {
+      const camelKey = key.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase())
+      if (camelKey.endsWith('At') && typeof value === 'string') {
+        result[camelKey] = new Date(value)
+      } else {
+        result[camelKey] = value
+      }
+    }
+    return result
+  }
+
+  private async listAll(service: { list: Function }, query: Record<string, unknown> = {}): Promise<Record<string, unknown>[]> {
+    const rows: Record<string, unknown>[] = []
+    let cursor: string | undefined
+    do {
+      const result = await service.list(this.ctx, { ...query, limit: 500, ...(cursor ? { cursor } : {}) }) as {
+        data: Record<string, unknown>[]
+        nextCursor?: string | null
+      }
+      rows.push(...result.data)
+      cursor = result.nextCursor ?? undefined
+    } while (cursor)
+    return rows
+  }
+
+  private canBuildDealAggregates(): boolean {
+    return (
+      typeof this.services.pipelines?.list === 'function' &&
+      typeof this.services.stages?.list === 'function' &&
+      typeof this.services.deals?.list === 'function'
+    )
+  }
+
+  private async buildDealPipelineView(): Promise<Record<string, unknown>> {
+    const pipelines = await this.listAll(this.services.pipelines)
+    const stages = await this.listAll(this.services.stages)
+    const deals = await this.listAll(this.services.deals)
+
+    return {
+      pipelines: pipelines.map((pipeline) => ({
+        ...pipeline,
+        stages: stages
+          .filter((stage) => stage.pipelineId === pipeline.id)
+          .map((stage) => ({
+            ...stage,
+            deals: deals.filter((deal) => deal.stageId === stage.id),
+          })),
+      })),
+    }
+  }
+
+  private async buildDealStats(): Promise<Record<string, unknown>> {
+    const deals = await this.listAll(this.services.deals)
+    const byStatus: Record<string, number> = {}
+    let totalValue = 0
+
+    for (const deal of deals) {
+      const status = typeof deal.status === 'string' ? deal.status : 'unknown'
+      byStatus[status] = (byStatus[status] ?? 0) + 1
+      if (deal.value !== null && deal.value !== undefined) {
+        const value = Number(deal.value)
+        if (Number.isFinite(value)) totalValue += value
+      }
+    }
+
+    return {
+      count: deals.length,
+      totalValue,
+      total_value: totalValue,
+      byStatus,
+      by_status: byStatus,
+    }
   }
 
   private wrapEnvelope(

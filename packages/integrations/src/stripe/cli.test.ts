@@ -75,6 +75,18 @@ describe('stripe CLI commands', () => {
     }
   })
 
+  it('configure rejects API keys passed through argv', async () => {
+    const cmds = buildStripeCommands(runtime)
+    const configure = cmds.find((c) => c.name === 'stripe/configure')!
+
+    await configure.action({ apiKey: 'sk_test_from_argv', skipValidation: true } satisfies StripeConfigureArgs)
+
+    expect(printed[0]).toMatchObject({ configured: false, provider: 'stripe' })
+    const result = printed[0] as { error?: string }
+    expect(result.error).toContain('ORBIT_STRIPE_API_KEY')
+    expect(await store.getCredentials('org_01TEST', 'stripe', 'user_01TEST')).toBeNull()
+  })
+
   it('configure when saveCredentials throws prints configured=false with error', async () => {
     const prev = process.env.ORBIT_STRIPE_API_KEY
     process.env.ORBIT_STRIPE_API_KEY = 'sk_test_throw'

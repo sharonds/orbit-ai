@@ -858,6 +858,7 @@ export function createCoreServices(
     get tags() {
       tagsService ??= createTagService({
         tags: getTagsRepository(),
+        entityTags: getEntityTagsRepository(),
         tx,
       })
 

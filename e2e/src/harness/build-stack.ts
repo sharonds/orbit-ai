@@ -27,7 +27,24 @@ export interface Stack {
   readonly teardown: () => Promise<void>
 }
 
-const RAW_API_KEY = 'sk_test_e2e_alpha1_key_do_not_use_in_prod'
+const POSTGRES_TEST_DATABASE_NAMES = new Set(['orbit_e2e', 'orbit_e2e_test', 'orbit_ai_test'])
+
+function createRawApiKey(): string {
+  return `sk_test_e2e_${crypto.randomUUID().replace(/-/g, '')}`
+}
+
+function assertSafePostgresE2eUrl(databaseUrl: string): void {
+  const url = new URL(databaseUrl)
+  const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1'
+  const databaseName = url.pathname.replace(/^\//, '')
+
+  if (!isLocalhost || !POSTGRES_TEST_DATABASE_NAMES.has(databaseName)) {
+    throw new Error(
+      `Refusing to run Postgres e2e tests against ${url.hostname}/${databaseName}. ` +
+      `Use localhost with one of: ${[...POSTGRES_TEST_DATABASE_NAMES].join(', ')}.`,
+    )
+  }
+}
 
 async function sha256hex(input: string): Promise<string> {
   const data = new TextEncoder().encode(input)
@@ -55,10 +72,12 @@ function buildFetchInterceptor(api: ReturnType<typeof createApi>, previousFetch:
 
 export async function buildStack(opts: StackOptions): Promise<Stack> {
   const adapterType = opts.adapter ?? 'sqlite'
+  const rawApiKey = createRawApiKey()
 
   if (adapterType === 'postgres') {
     const databaseUrl = process.env.DATABASE_URL
     if (!databaseUrl) throw new Error('DATABASE_URL is required when adapter is postgres')
+    assertSafePostgresE2eUrl(databaseUrl)
 
     const database = new PostgresOrbitDatabase({ connectionString: databaseUrl })
     const adapter = createPostgresStorageAdapter({
@@ -75,11 +94,13 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
         : undefined
 
     // Insert test API key directly into the database
-    const keyHash = await sha256hex(RAW_API_KEY)
+    const keyHash = await sha256hex(rawApiKey)
+    const keyId = `key_e2e_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`
+    const keyPrefix = rawApiKey.slice(0, 16)
     const now = new Date().toISOString()
     await database.execute(sql`
       INSERT INTO api_keys (id, organization_id, name, key_hash, key_prefix, scopes, created_at, updated_at)
-      VALUES (${'key_e2e00000000000000001'}, ${acme.organization.id}, ${'e2e-test-key'}, ${keyHash}, ${'sk_test_e2e'}, ${'["*"]'}::jsonb, ${now}::timestamptz, ${now}::timestamptz)
+      VALUES (${keyId}, ${acme.organization.id}, ${'e2e-test-key'}, ${keyHash}, ${keyPrefix}, ${'["*"]'}::jsonb, ${now}::timestamptz, ${now}::timestamptz)
       ON CONFLICT (key_prefix) DO UPDATE SET organization_id = excluded.organization_id, key_hash = excluded.key_hash, updated_at = excluded.updated_at
     `)
 
@@ -89,7 +110,7 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
 
     const sdkHttp = new OrbitClient({
       baseUrl: 'http://test.local',
-      apiKey: RAW_API_KEY,
+      apiKey: rawApiKey,
       version: '2026-04-01',
       maxRetries: 0,
     })
@@ -105,10 +126,11 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
       sdkDirect,
       acmeOrgId: acme.organization.id,
       betaOrgId: beta?.organization.id,
-      rawApiKey: RAW_API_KEY,
+      rawApiKey,
       async teardown() {
         globalThis.fetch = previousFetch
         try {
+          await database.execute(sql`DELETE FROM api_keys WHERE id = ${keyId}`)
           await adapter.disconnect()
         } catch (err) {
           console.error('build-stack: adapter.disconnect failed:', err instanceof Error ? err.message : String(err))
@@ -134,7 +156,7 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
       ? await seed(adapter, { profile: TENANT_PROFILES.beta })
       : undefined
 
-  apiKeyHash = await sha256hex(RAW_API_KEY)
+  apiKeyHash = await sha256hex(rawApiKey)
   apiKeyAuth = {
     id: 'key_01e2e0000000000000000001',
     organizationId: acme.organization.id,
@@ -150,7 +172,7 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
 
   const sdkHttp = new OrbitClient({
     baseUrl: 'http://test.local',
-    apiKey: RAW_API_KEY,
+    apiKey: rawApiKey,
     version: '2026-04-01',
     maxRetries: 0,
   })
@@ -167,7 +189,7 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
     sdkDirect,
     acmeOrgId: acme.organization.id,
     betaOrgId: beta?.organization.id,
-    rawApiKey: RAW_API_KEY,
+    rawApiKey,
     async teardown() {
       globalThis.fetch = previousFetch
       try {

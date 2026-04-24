@@ -6,7 +6,10 @@ import { toEnvelope, toError, sanitizeSchemaRead } from '../responses.js'
 
 // Defensive schema for migration input.
 // The `passthrough()` call allows any additional fields the service understands.
-const MigrationInputSchema = z.object({}).passthrough()
+const MigrationInputSchema = z.object({}).passthrough().refine(
+  (value) => Object.keys(value).length > 0,
+  { message: 'Migration input must include at least one field' },
+)
 
 function notImplemented(c: any, operation: string) {
   return c.json(toError(c, 'INTERNAL_ERROR', `${operation} not implemented`), 501)

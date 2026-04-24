@@ -532,7 +532,7 @@ describe('DirectTransport — workflow dispatch', () => {
     expect(svc.enroll).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: expect.any(String) }),
       'seq_1',
-      { contact_id: 'cnt_1' },
+      { contactId: 'cnt_1', sequenceId: 'seq_1' },
     )
     expect(result.data).toMatchObject({
       object: 'sequence_enrollment',
@@ -566,7 +566,7 @@ describe('DirectTransport — workflow dispatch', () => {
     expect(svc.attach).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: expect.any(String) }),
       'tag_1',
-      { entity_type: 'contacts', entity_id: 'cnt_1' },
+      { entityType: 'contacts', entityId: 'cnt_1' },
     )
     expect(result.data).toMatchObject({
       object: 'entity_tag',
@@ -588,7 +588,7 @@ describe('DirectTransport — workflow dispatch', () => {
     expect(svc.detach).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: expect.any(String) }),
       'tag_1',
-      { entity_type: 'contacts', entity_id: 'cnt_1' },
+      { entityType: 'contacts', entityId: 'cnt_1' },
     )
     expect(result.data).toEqual({ detached: true, tagId: 'tag_1' })
   })
@@ -599,8 +599,8 @@ describe('DirectTransport — workflow dispatch', () => {
     const pipeline = await transport.request({ method: 'GET', path: '/v1/deals/pipeline' })
     const stats = await transport.request({ method: 'GET', path: '/v1/deals/stats' })
 
-    expect(svc.pipeline).toHaveBeenCalledWith(expect.objectContaining({ orgId: expect.any(String) }), {})
-    expect(svc.stats).toHaveBeenCalledWith(expect.objectContaining({ orgId: expect.any(String) }), {})
+    expect(svc.pipeline).toHaveBeenCalledWith(expect.objectContaining({ orgId: expect.any(String) }))
+    expect(svc.stats).toHaveBeenCalledWith(expect.objectContaining({ orgId: expect.any(String) }))
     expect(pipeline.data).toEqual({ stages: [] })
     expect(stats.data).toEqual({ total: 0 })
   })

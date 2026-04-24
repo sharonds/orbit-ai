@@ -1,5 +1,6 @@
 import { generateId } from '../ids/generate-id.js'
 import { assertOrgContext } from '../services/service-helpers.js'
+import { createOrbitError } from '../types/errors.js'
 import type { OrbitAuthContext } from '../adapters/interface.js'
 import type { CustomFieldDefinitionRepository } from '../entities/custom-field-definitions/repository.js'
 import type { CustomFieldDefinitionRecord } from '../entities/custom-field-definitions/validators.js'
@@ -29,6 +30,8 @@ export interface SchemaObjectSummary {
   customFields: CustomFieldDefinitionRecord[]
 }
 
+const ALLOWED_FIELD_TYPES = ['text', 'number', 'boolean', 'date', 'datetime', 'select', 'multi_select', 'url', 'email', 'phone', 'currency', 'relation'] as const
+
 export class OrbitSchemaEngine {
   private readonly getRepository: (() => CustomFieldDefinitionRepository) | null
 
@@ -43,9 +46,36 @@ export class OrbitSchemaEngine {
     return this.getRepository()
   }
 
+  private async listAllCustomFields(
+    ctx: OrbitAuthContext,
+    filter?: Record<string, unknown>,
+  ): Promise<CustomFieldDefinitionRecord[]> {
+    const fields: CustomFieldDefinitionRecord[] = []
+    let cursor: string | undefined
+
+    do {
+      const result = await this.repository.list(ctx, {
+        limit: 500,
+        ...(cursor ? { cursor } : {}),
+        ...(filter ? { filter } : {}),
+      })
+      fields.push(...result.data)
+      cursor = result.nextCursor ?? undefined
+    } while (cursor)
+
+    return fields
+  }
+
+  private validationFailed(message: string, field: string): never {
+    throw createOrbitError({
+      code: 'VALIDATION_FAILED',
+      message,
+      field,
+    })
+  }
+
   async listObjects(ctx: OrbitAuthContext): Promise<SchemaObjectSummary[]> {
-    const result = await this.repository.list(ctx, { limit: 500 })
-    const allFields = result.data
+    const allFields = await this.listAllCustomFields(ctx)
 
     return PUBLIC_CRM_ENTITY_TYPES.map((type) => ({
       type,
@@ -57,11 +87,8 @@ export class OrbitSchemaEngine {
     if (!PUBLIC_CRM_ENTITY_TYPES.includes(type as PublicCrmEntityType)) {
       return null
     }
-    const result = await this.repository.list(ctx, {
-      limit: 500,
-      filter: { entity_type: type },
-    })
-    return { type, customFields: result.data }
+    const customFields = await this.listAllCustomFields(ctx, { entity_type: type })
+    return { type, customFields }
   }
 
   async addField(
@@ -74,17 +101,16 @@ export class OrbitSchemaEngine {
     const type = body.type as string | undefined
 
     if (!name || typeof name !== 'string') {
-      throw Object.assign(new Error('Field name is required'), { code: 'VALIDATION_FAILED' })
+      this.validationFailed('Field name is required', 'name')
     }
     if (!type || typeof type !== 'string') {
-      throw Object.assign(new Error('Field type is required'), { code: 'VALIDATION_FAILED' })
+      this.validationFailed('Field type is required', 'type')
     }
-    const ALLOWED_FIELD_TYPES = ['text', 'number', 'boolean', 'date', 'datetime', 'select', 'multi_select', 'url', 'email', 'phone', 'currency', 'relation'] as const
     if (!ALLOWED_FIELD_TYPES.includes(type as typeof ALLOWED_FIELD_TYPES[number])) {
-      throw Object.assign(new Error(`Unknown field type: ${type}. Allowed: ${ALLOWED_FIELD_TYPES.join(', ')}`), { code: 'VALIDATION_FAILED' })
+      this.validationFailed(`Unknown field type: ${type}. Allowed: ${ALLOWED_FIELD_TYPES.join(', ')}`, 'type')
     }
     if (!PUBLIC_CRM_ENTITY_TYPES.includes(entityType as PublicCrmEntityType)) {
-      throw Object.assign(new Error(`Unknown entity type: ${entityType}`), { code: 'VALIDATION_FAILED' })
+      this.validationFailed(`Unknown entity type: ${entityType}`, 'entityType')
     }
 
     const now = new Date()

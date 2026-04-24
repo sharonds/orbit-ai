@@ -14,7 +14,7 @@ describe('Journey 7 — inspect schema + add a custom field safely', () => {
       })
       expect(schemaList.exitCode).toBe(0)
 
-      // Output is OrbitEnvelope: { data: Array<{ type: string, customFields: [] }> }
+      // Output is OrbitEnvelope: { data: Array<{ type: string, custom_fields: [] }> }
       const listEnv = schemaList.json as { data?: Array<{ type?: string }> } | Array<{ type?: string }> | null
       const objects = Array.isArray(listEnv) ? listEnv : (listEnv as { data?: Array<{ type?: string }> })?.data ?? []
       const types = objects.map((o) => o.type).filter((t): t is string => Boolean(t))
@@ -38,11 +38,11 @@ describe('Journey 7 — inspect schema + add a custom field safely', () => {
       })
       expect(after.exitCode).toBe(0)
 
-      // Output is OrbitEnvelope: { data: { type: 'contacts', customFields: [...] } }
-      const getEnv = after.json as { data?: { customFields?: Array<{ fieldName: string }> } } | { customFields?: Array<{ fieldName: string }> } | null
-      const contactsObj = (getEnv as { data?: { customFields?: Array<{ fieldName: string }> } })?.data ?? (getEnv as { customFields?: Array<{ fieldName: string }> })
-      const fields = contactsObj?.customFields ?? []
-      expect(fields.some((f) => f.fieldName === 'lifetime_value'), 'lifetime_value field should be present').toBe(true)
+      // Output is OrbitEnvelope: { data: { type: 'contacts', custom_fields: [...] } }
+      const getEnv = after.json as { data?: { custom_fields?: Array<{ field_name?: string; fieldName?: string }> } } | { custom_fields?: Array<{ field_name?: string; fieldName?: string }> } | null
+      const contactsObj = (getEnv as { data?: { custom_fields?: Array<{ field_name?: string; fieldName?: string }> } })?.data ?? (getEnv as { custom_fields?: Array<{ field_name?: string; fieldName?: string }> })
+      const fields = contactsObj?.custom_fields ?? []
+      expect(fields.some((f) => (f.field_name ?? f.fieldName) === 'lifetime_value'), 'lifetime_value field should be present').toBe(true)
     } finally {
       await workspace.cleanup()
     }
