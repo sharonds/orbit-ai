@@ -86,11 +86,13 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
     })
     await adapter.migrate()
 
-    // Seed tenants
-    const acme = await seed(adapter, { profile: TENANT_PROFILES.acme })
+    // Postgres CI runs multiple journey files against the same safe local test
+    // database, so each stack build resets the deterministic demo tenants.
+    const postgresSeedOptions = { mode: 'reset' as const, allowResetOfExistingOrg: true }
+    const acme = await seed(adapter, { profile: TENANT_PROFILES.acme, ...postgresSeedOptions })
     const beta =
       opts.tenant === 'both' || opts.tenant === 'beta'
-        ? await seed(adapter, { profile: TENANT_PROFILES.beta })
+        ? await seed(adapter, { profile: TENANT_PROFILES.beta, ...postgresSeedOptions })
         : undefined
 
     // Insert test API key directly into the database

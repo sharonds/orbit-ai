@@ -157,5 +157,5 @@ MIT — see [`LICENSE`](LICENSE).
 
 - **npm publish** — `0.1.0-alpha.1` will be the first public npm release. Until then, install from source: `pnpm install && pnpm -r build`.
 - **Hosted tier** — a managed Orbit AI API endpoint (beta) is planned alongside the npm release.
-- **E2E test suite** — cross-surface journey tests and multi-tenant denial tests are in progress.
+- **E2E test suite** — cross-surface launch-gate journeys now live in [`e2e/`](e2e); multi-tenant denial expansion remains a post-alpha follow-up.
 - **Documentation site** — a full docs site is planned post-publish.
