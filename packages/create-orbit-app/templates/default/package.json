@@ -1,0 +1,26 @@
+{
+  "name": "__APP_NAME__",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Orbit AI starter — pre-populated with the Acme Events demo tenant.",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx --watch src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@orbit-ai/core": "__ORBIT_VERSION__",
+    "@orbit-ai/sdk": "__ORBIT_VERSION__",
+    "@orbit-ai/demo-seed": "__ORBIT_VERSION__"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
