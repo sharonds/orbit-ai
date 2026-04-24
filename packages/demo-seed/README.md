@@ -6,7 +6,7 @@ Deterministic, multi-tenant realistic demo dataset for Orbit AI. Designed to pow
 
 ## Status
 
-Alpha (`0.1.0-alpha`). Install from npm after the release is cut, or depend on it via the monorepo `workspace:*` protocol while developing locally.
+Alpha (`0.1.0-alpha.x`). Install from npm after the release is cut, or depend on it via the monorepo `workspace:*` protocol while developing locally.
 
 ## Install
 
