@@ -78,6 +78,8 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
       console.error(`Target directory ${targetDir} is not empty. Choose another name or clear it first.`)
       process.exit(1)
     }
+    console.error(`Target directory ${targetDir} already exists. Choose another name or remove it first.`)
+    process.exit(1)
   }
 
   const sourceDir = path.resolve(__dirname, '..', 'templates', resolved.template)

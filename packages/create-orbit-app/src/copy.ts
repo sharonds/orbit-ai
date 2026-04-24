@@ -21,11 +21,28 @@ const RENAME_MAP: Record<string, string> = {
 const BINARY_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.pdf'])
 
 export async function copyTemplate(input: CopyTemplateInput): Promise<void> {
-  await prepareTargetDirectory(input.targetDir)
-  await walkAndCopy(input.sourceDir, input.targetDir, input.replacements)
+  const tempTarget = await prepareTargetDirectory(input.targetDir)
+  try {
+    await walkAndCopy(input.sourceDir, tempTarget, input.replacements)
+    await commitTargetDirectory(tempTarget, input.targetDir)
+  } catch (err) {
+    await fs.rm(tempTarget, { recursive: true, force: true }).catch(() => {})
+    throw err
+  }
 }
 
-export async function prepareTargetDirectory(target: string): Promise<void> {
+export async function prepareTargetDirectory(target: string): Promise<string> {
+  const parent = path.dirname(target)
+  const base = path.basename(target)
+  await fs.mkdir(parent, { recursive: true })
+  await assertTargetDoesNotExist(target)
+
+  const tempTarget = await fs.mkdtemp(path.join(parent, `.${base}-`))
+  await assertSafeDirectory(tempTarget)
+  return tempTarget
+}
+
+async function assertTargetDoesNotExist(target: string): Promise<void> {
   try {
     const stats = await fs.lstat(target)
     if (stats.isSymbolicLink()) {
@@ -38,26 +55,37 @@ export async function prepareTargetDirectory(target: string): Promise<void> {
     if (entries.length > 0) {
       throw new Error(`Target directory ${target} is not empty — refusing to overwrite.`)
     }
+    throw new Error(`Target path ${target} already exists — refusing to overwrite.`)
   } catch (err) {
     const e = err as NodeJS.ErrnoException
-    if (e.code === 'ENOENT') {
-      await fs.mkdir(target, { recursive: true })
-      await assertSafeDirectory(target)
-    } else if (
+    if (e.code === 'ENOENT') return
+    if (
       err instanceof Error &&
-      (err.message.includes('is not empty') ||
+      (err.message.includes('already exists') ||
         err.message.includes('symbolic link') ||
-        err.message.includes('not a directory'))
+        err.message.includes('not a directory') ||
+        err.message.includes('is not empty'))
     ) {
-      // Preserve our own user-facing target validation errors untouched.
       throw err
-    } else {
-      throw new Error(
-        `Failed to inspect target ${target}: ${(err as Error).message}`,
-        { cause: err },
-      )
     }
+    throw new Error(
+      `Failed to inspect target ${target}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    )
   }
+}
+
+async function commitTargetDirectory(tempTarget: string, target: string): Promise<void> {
+  try {
+    await fs.rename(tempTarget, target)
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException
+    if (e.code === 'EEXIST' || e.code === 'ENOTEMPTY') {
+      throw new Error(`Target path ${target} already exists — refusing to overwrite.`, { cause: err })
+    }
+    throw err
+  }
+  await assertSafeDirectory(target)
 }
 
 async function assertSafeDirectory(target: string): Promise<void> {

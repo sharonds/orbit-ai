@@ -43,6 +43,19 @@ describe('copyTemplate', () => {
     }
   })
 
+  it('refuses to use an existing empty target directory', async () => {
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), 'src-'))
+    const dst = fs.mkdtempSync(path.join(os.tmpdir(), 'dst-'))
+    try {
+      await expect(
+        copyTemplate({ sourceDir: src, targetDir: dst, replacements: {} }),
+      ).rejects.toThrow(/already exists/i)
+    } finally {
+      fs.rmSync(src, { recursive: true, force: true })
+      fs.rmSync(dst, { recursive: true, force: true })
+    }
+  })
+
   it('renames _gitignore to .gitignore (dotfile convention)', async () => {
     const src = fs.mkdtempSync(path.join(os.tmpdir(), 'src-'))
     const dst = fs.mkdtempSync(path.join(os.tmpdir(), 'dst-'))
@@ -86,13 +99,16 @@ describe('copyTemplate', () => {
     }
   })
 
-  it('creates then validates a missing target directory before copying', async () => {
+  it('prepares a temporary target directory without creating the final target', async () => {
     const dst = fs.mkdtempSync(path.join(os.tmpdir(), 'dst-'))
     const target = path.join(dst, 'out')
     try {
-      await prepareTargetDirectory(target)
-      expect(fs.lstatSync(target).isDirectory()).toBe(true)
-      expect(fs.lstatSync(target).isSymbolicLink()).toBe(false)
+      const tempTarget = await prepareTargetDirectory(target)
+      expect(tempTarget).not.toBe(target)
+      expect(path.dirname(tempTarget)).toBe(dst)
+      expect(fs.existsSync(target)).toBe(false)
+      expect(fs.lstatSync(tempTarget).isDirectory()).toBe(true)
+      expect(fs.lstatSync(tempTarget).isSymbolicLink()).toBe(false)
     } finally {
       fs.rmSync(dst, { recursive: true, force: true })
     }

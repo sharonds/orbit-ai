@@ -84,6 +84,19 @@ describe('run() error paths', () => {
     expect(messages).toMatch(/not empty/i)
   })
 
+  it('exits 1 when the target directory already exists even if empty', async () => {
+    const targetDir = path.join(workDir, 'my-app')
+    fs.mkdirSync(targetDir)
+
+    const exitSpy = stubExit()
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(run(['my-app', '--yes', '--no-install'])).rejects.toThrow(/exit:1/)
+    expect(exitSpy).toHaveBeenCalledWith(1)
+    const messages = errSpy.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(messages).toMatch(/already exists/i)
+  })
+
   it('exits 1 when the target path exists as a file', async () => {
     const targetPath = path.join(workDir, 'my-app')
     fs.writeFileSync(targetPath, 'not a directory')
