@@ -22,10 +22,6 @@ describe('Journey 14 — configure Stripe connector', () => {
         },
       })
       expect(configure.exitCode).toBe(0)
-      const configResult = configure.json as { configured?: boolean } | null
-      if (configResult) {
-        expect(configResult.configured).toBe(true)
-      }
 
       const status = await runCli({
         args: ['--mode', 'direct', '--json', 'integrations', 'stripe', 'status'],

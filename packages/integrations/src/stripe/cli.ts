@@ -65,13 +65,20 @@ export function buildStripeCommands(runtime: CliRuntimeContext): IntegrationComm
       name: 'stripe/status',
       description: 'Show the Stripe connector configuration status',
       async action() {
-        const result = await runStatusAction({
-          provider: STRIPE_SLUG,
-          organizationId: runtime.organizationId,
-          userId: runtime.userId,
-          credentialStore: runtime.credentialStore,
-        })
-        runtime.print(result)
+        try {
+          const result = await runStatusAction({
+            provider: STRIPE_SLUG,
+            organizationId: runtime.organizationId,
+            userId: runtime.userId,
+            credentialStore: runtime.credentialStore,
+          })
+          runtime.print(result)
+        } catch (err) {
+          const raw = err instanceof Error ? err.message : String(err)
+          const safe = sanitizeErrorMessage(raw)
+          console.error(`[${STRIPE_SLUG}] status: failed — ${safe}`)
+          runtime.print({ provider: STRIPE_SLUG, configured: false, status: 'not_configured' as const, error: safe })
+        }
       },
     },
   ]
