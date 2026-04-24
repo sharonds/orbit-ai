@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     name: Build, typecheck, lint, test
@@ -16,6 +19,8 @@ jobs:
       - name: Checkout
         # Pinned from actions/checkout v4.3.1.
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
 
       # Changesets/action v1 opens its version PR from a same-repo branch named
       # `changeset-release/main`. Keep the repo+actor checks so fork branches
