@@ -113,7 +113,7 @@ function parseStdinCredentials(input: string): Partial<StoredCredentials> | { er
     if (typeof parsed.accessToken === 'string') credentials.accessToken = parsed.accessToken
     if (typeof parsed.refreshToken === 'string') credentials.refreshToken = parsed.refreshToken
     return credentials
-  } catch {
+  } catch (_err) {
     return { error: 'OAuth token stdin input must be JSON with accessToken and refreshToken fields.' }
   }
 }
