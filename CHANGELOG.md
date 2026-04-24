@@ -25,6 +25,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Changed**: Publish manifests now ship README and LICENSE files, exclude compiled tests from tarballs, and declare public npm access consistently.
 - **Added**: CI guard preventing manual package version bumps outside the Changesets release branch.
 
+### @orbit-ai/e2e — New package (alpha.1 publish gate)
+
+- **New package** `@orbit-ai/e2e` (private, not published): 14 end-to-end journey tests covering all published surfaces
+- Shared test harness: `buildStack()` (SQLite + Postgres), `prepareCliWorkspace()`, `runCli()` (execa subprocess), `spawnMcp()` (in-process InMemoryTransport)
+- Journey 1: `orbit init` config scaffolding
+- Journey 2: file-backed SQLite adapter + direct-mode org context
+- Journeys 3–5: CRUD contacts/companies/deals across 5 surfaces (SDK HTTP, SDK direct, raw API, CLI, MCP)
+- Journey 6: deal pipeline stage transitions
+- Journey 7: schema inspection + safe custom field creation
+- Journey 8: migration preview + apply with destructive gate
+- Journey 9: SDK HTTP mode — pagination and typed error semantics
+- Journey 10: SDK direct-core mode — in-process read/write
+- Journey 11: MCP server tool registration and JSON-RPC calls
+- Journeys 12–14: Gmail, Google Calendar, Stripe connector configure/status (requires `--skip-validation`)
+- CI: `journeys` job (SQLite, all 14 journeys) + `journeys-postgres` job (Postgres matrix, journeys 2–11)
+- **Hardening**: `engine.ts` `preview`/`apply` stubs now call `assertOrgContext`; `addField` validates `fieldType` against 12-type allowlist; `direct-transport.ts` throws `OrbitApiError` (not plain `Error`) for unhandled routes; `build-stack.ts` Postgres `ON CONFLICT DO UPDATE` prevents stale key hash across CI runs
+- **Review fixes**: DirectTransport now dispatches workflow sub-routes (`deals.move/pipeline/stats`, `activities.log`, `sequences.enroll`, `sequenceEnrollments.unenroll`, `tags.attach/detach`); schema reads paginate custom fields instead of truncating at 500; migration preview/apply rejects empty bodies; e2e Postgres setup is limited to local test databases with per-run API keys; CLI e2e subprocesses use an allowlisted env; Stripe configure rejects API keys passed via argv
+
 ### @orbit-ai/demo-seed — Initial release
 
 - **New package**: deterministic, multi-tenant demo dataset built on `@orbit-ai/core` services

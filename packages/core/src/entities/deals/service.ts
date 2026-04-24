@@ -125,7 +125,11 @@ export function createDealService(deps: {
   contacts: ContactRepository
   companies: CompanyRepository
   tx: TransactionScope
-}): EntityService<DealCreateInput, DealUpdateInput, DealRecord> {
+}): EntityService<DealCreateInput, DealUpdateInput, DealRecord> & {
+  move(ctx: Parameters<EntityService<DealCreateInput, DealUpdateInput, DealRecord>['create']>[0], id: string, input: Record<string, unknown>): Promise<DealRecord>
+  pipeline(ctx: Parameters<EntityService<DealCreateInput, DealUpdateInput, DealRecord>['create']>[0]): Promise<Record<string, unknown>>
+  stats(ctx: Parameters<EntityService<DealCreateInput, DealUpdateInput, DealRecord>['create']>[0]): Promise<Record<string, unknown>>
+} {
   function relationNotFound(message: string) {
     return createOrbitError({
       code: 'RELATION_NOT_FOUND',
@@ -133,7 +137,25 @@ export function createDealService(deps: {
     })
   }
 
-  return {
+  async function listAll<T extends Record<string, unknown>>(
+    ctx: Parameters<EntityService<DealCreateInput, DealUpdateInput, DealRecord>['create']>[0],
+    repository: { list: (ctx: Parameters<EntityService<DealCreateInput, DealUpdateInput, DealRecord>['create']>[0], query: Record<string, unknown>) => Promise<{ data: T[]; nextCursor: string | null }> },
+  ): Promise<T[]> {
+    const rows: T[] = []
+    let cursor: string | undefined
+    do {
+      const result = await repository.list(ctx, { limit: 500, ...(cursor ? { cursor } : {}) })
+      rows.push(...result.data)
+      cursor = result.nextCursor ?? undefined
+    } while (cursor)
+    return rows
+  }
+
+  const service: EntityService<DealCreateInput, DealUpdateInput, DealRecord> & {
+    move(ctx: Parameters<EntityService<DealCreateInput, DealUpdateInput, DealRecord>['create']>[0], id: string, input: Record<string, unknown>): Promise<DealRecord>
+    pipeline(ctx: Parameters<EntityService<DealCreateInput, DealUpdateInput, DealRecord>['create']>[0]): Promise<Record<string, unknown>>
+    stats(ctx: Parameters<EntityService<DealCreateInput, DealUpdateInput, DealRecord>['create']>[0]): Promise<Record<string, unknown>>
+  } = {
     async create(ctx, input) {
       const parsed = dealCreateInputSchema.parse(input)
       const graph = await resolveDealGraph(ctx, deps, {
@@ -253,5 +275,58 @@ export function createDealService(deps: {
     async search(ctx, query) {
       return deps.deals.search(ctx, query)
     },
+    async move(ctx, id, input) {
+      const stageId = input.stageId ?? input.stage_id
+      if (typeof stageId !== 'string' || stageId.length === 0) {
+        throw createOrbitError({
+          code: 'VALIDATION_FAILED',
+          message: 'Deal move stageId is required',
+          field: 'stageId',
+        })
+      }
+
+      return service.update(ctx, id, { stageId })
+    },
+    async pipeline(ctx) {
+      const pipelines = await listAll(ctx, deps.pipelines)
+      const stages = await listAll(ctx, deps.stages)
+      const deals = await listAll(ctx, deps.deals)
+
+      return {
+        pipelines: pipelines.map((pipeline) => ({
+          ...pipeline,
+          stages: stages
+            .filter((stage) => stage.pipelineId === pipeline.id)
+            .map((stage) => ({
+              ...stage,
+              deals: deals.filter((deal) => deal.stageId === stage.id),
+            })),
+        })),
+      }
+    },
+    async stats(ctx) {
+      const deals = await listAll(ctx, deps.deals)
+      const byStatus: Record<string, number> = {}
+      let totalValue = 0
+
+      for (const deal of deals) {
+        const status = typeof deal.status === 'string' ? deal.status : 'unknown'
+        byStatus[status] = (byStatus[status] ?? 0) + 1
+        if (deal.value !== null && deal.value !== undefined) {
+          const value = Number(deal.value)
+          if (Number.isFinite(value)) totalValue += value
+        }
+      }
+
+      return {
+        count: deals.length,
+        totalValue,
+        total_value: totalValue,
+        byStatus,
+        by_status: byStatus,
+      }
+    },
   }
+
+  return service
 }

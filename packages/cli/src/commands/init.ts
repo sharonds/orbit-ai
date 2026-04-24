@@ -15,8 +15,9 @@ export function registerInitCommand(program: Command): void {
     .option('--yes', 'Skip confirmation prompts (non-interactive)')
     .option('--overwrite', 'Overwrite existing files')
     .option('--env-file <path>', 'Write .env file (only .env.example is allowed)')
-    .action(async (opts) => {
-      await runInit({ ...opts, cwd: process.cwd() })
+    .action(async (_opts, cmd) => {
+      const merged = cmd.optsWithGlobals() as InitOptions
+      await runInit({ ...merged, cwd: process.cwd() })
     })
 }
 

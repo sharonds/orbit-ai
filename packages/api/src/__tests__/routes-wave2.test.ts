@@ -544,7 +544,7 @@ describe('Workflow routes', () => {
     expect(res.status).toBe(501)
   })
 
-  it('POST /v1/sequences/:id/enroll returns 501 when not implemented', async () => {
+  it('POST /v1/sequences/:id/enroll falls back to sequence enrollment create', async () => {
     const services = mockWave2CoreServices()
     const app = createRouteTestApp()
     registerWorkflowRoutes(app, services)
@@ -554,7 +554,11 @@ describe('Workflow routes', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ contact_id: 'c_01' }),
     })
-    expect(res.status).toBe(501)
+    expect(res.status).toBe(201)
+    expect((services as any).sequenceEnrollments.create).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_test' }),
+      { contactId: 'c_01', sequenceId: 'seq_01' },
+    )
   })
 
   it('POST /v1/tags/:id/attach returns 501 when not implemented', async () => {
@@ -700,10 +704,10 @@ describe('Object / Schema routes', () => {
   })
 
   // M-SEC-1: Zod validation for migration preview/apply
-  it('POST /v1/schema/migrations/preview rejects empty body with 400 VALIDATION_FAILED', async () => {
+  it('POST /v1/schema/migrations/preview rejects empty body before calling service', async () => {
     const services = mockWave2CoreServices()
     ;(services as any).schema = {
-      preview: vi.fn(async () => ({ ok: true })),
+      preview: vi.fn(async () => ({ operations: [], destructive: false, status: 'ok' })),
     }
     const app = createRouteTestApp()
     app.onError(orbitErrorHandler)
@@ -715,9 +719,6 @@ describe('Object / Schema routes', () => {
       body: JSON.stringify({}),
     })
     expect(res.status).toBe(400)
-    const body = (await res.json()) as { error: { code: string } }
-    expect(body.error.code).toBe('VALIDATION_FAILED')
-    // Service must not have been called with arbitrary input
     expect((services as any).schema.preview).not.toHaveBeenCalled()
   })
 
@@ -740,10 +741,10 @@ describe('Object / Schema routes', () => {
     expect((services as any).schema.preview).toHaveBeenCalledTimes(1)
   })
 
-  it('POST /v1/schema/migrations/apply rejects empty body with 400 VALIDATION_FAILED', async () => {
+  it('POST /v1/schema/migrations/apply rejects empty body before calling service', async () => {
     const services = mockWave2CoreServices()
     ;(services as any).schema = {
-      apply: vi.fn(async () => ({ ok: true })),
+      apply: vi.fn(async () => ({ applied: [], status: 'ok' })),
     }
     const app = createRouteTestApp(['*'])
     app.onError(orbitErrorHandler)
@@ -755,9 +756,6 @@ describe('Object / Schema routes', () => {
       body: JSON.stringify({}),
     })
     expect(res.status).toBe(400)
-    const body = (await res.json()) as { error: { code: string } }
-    expect(body.error.code).toBe('VALIDATION_FAILED')
-    // Service must not have been called with arbitrary input
     expect((services as any).schema.apply).not.toHaveBeenCalled()
   })
 

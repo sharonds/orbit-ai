@@ -59,16 +59,17 @@ async function runMigrate(
   }
 
   const client = resolveClient({ flags })
+  const pendingMigrationRequest = { operation: 'pending' }
 
   if (opts.preview) {
-    const preview = await client.schema.previewMigration({})
+    const preview = await client.schema.previewMigration(pendingMigrationRequest)
     process.stdout.write(JSON.stringify(preview, null, 2) + '\n')
     return
   }
 
   if (opts.apply) {
     // Preview first to detect destructive operations
-    const preview = await client.schema.previewMigration({})
+    const preview = await client.schema.previewMigration(pendingMigrationRequest)
     // Rely only on the explicit destructive flag — regex matching on serialised JSON
     // causes false positives for field names or descriptions containing "drop"/"rename"
     const hasDestructive =
@@ -97,7 +98,7 @@ async function runMigrate(
       }
     }
 
-    const result = await client.schema.applyMigration({})
+    const result = await client.schema.applyMigration(pendingMigrationRequest)
     if (isJsonMode()) {
       process.stdout.write(JSON.stringify(result, null, 2) + '\n')
     } else {
@@ -122,4 +123,3 @@ async function runMigrate(
     return
   }
 }
-
