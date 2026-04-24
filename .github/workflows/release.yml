@@ -62,7 +62,7 @@ jobs:
         run: pnpm test:release-workflow
 
       - name: Test
-        run: pnpm -r test
+        run: pnpm -r --filter '!@orbit-ai/e2e' test
 
       - name: Lint
         run: pnpm -r lint

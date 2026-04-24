@@ -49,6 +49,10 @@ validate the issue before any public disclosure.
 - Issues in packages not yet released (`@orbit-ai/cli`, `@orbit-ai/mcp`,
   `@orbit-ai/integrations`)
 
+Third-party dependency vulnerabilities are out of scope for external vulnerability
+reports, but they are still tracked internally through Dependabot, Socket, and
+release-readiness review.
+
 ## Security model (summary)
 
 Orbit AI uses a three-layer security model:
