@@ -140,6 +140,28 @@ describe('registerIntegrationSubcommands', () => {
     await program.parseAsync(['node', 'orbit', 'integrations', 'gmail'])
     expect(action).toHaveBeenCalledOnce()
   })
+
+  it('awaits nested async integration actions and keeps root flags available', async () => {
+    const program = new Command()
+    program.exitOverride()
+    program.configureOutput({ writeOut: () => {}, writeErr: () => {} })
+    program.option('--apply-integrations-schema')
+
+    const action = vi.fn(async (...args: unknown[]) => {
+      const command = args[args.length - 1] as Command
+      let root: Command = command
+      while (root.parent) root = root.parent
+      expect(root.opts()).toMatchObject({ applyIntegrationsSchema: true })
+      await new Promise((resolve) => setTimeout(resolve, 1))
+    })
+
+    registerIntegrationSubcommands(program, [
+      { name: 'gmail/configure', description: 'Configure Gmail', action },
+    ])
+
+    await program.parseAsync(['node', 'orbit', '--apply-integrations-schema', 'integrations', 'gmail', 'configure'])
+    expect(action).toHaveBeenCalledOnce()
+  })
 })
 
 describe('registerIntegrationsCommand', () => {
