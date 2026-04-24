@@ -13,7 +13,7 @@ export interface Options {
 }
 
 // Lowercase-only — npm rejects uppercase in unscoped package names.
-const PROJECT_NAME_RE = /^[a-z0-9][a-z0-9-_]*$/
+export const PROJECT_NAME_RE = /^[a-z0-9][a-z0-9-_]*$/
 
 export function parseOptions(argv: readonly string[]): Options {
   // `allowNegative: true` means `--no-install` automatically negates `install` to false.

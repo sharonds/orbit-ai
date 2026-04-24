@@ -28,8 +28,17 @@ export async function copyTemplate(input: CopyTemplateInput): Promise<void> {
     }
   } catch (err) {
     const e = err as NodeJS.ErrnoException
-    if (e.code !== 'ENOENT') throw err
-    await fs.mkdir(target, { recursive: true })
+    if (e.code === 'ENOENT') {
+      await fs.mkdir(target, { recursive: true })
+    } else if (err instanceof Error && err.message.includes('is not empty')) {
+      // Preserve our own "not empty" error untouched.
+      throw err
+    } else {
+      throw new Error(
+        `Failed to inspect target ${target}: ${(err as Error).message}`,
+        { cause: err },
+      )
+    }
   }
 
   await walkAndCopy(input.sourceDir, target, input.replacements)
@@ -45,19 +54,26 @@ async function walkAndCopy(
     const fromPath = path.join(from, entry.name)
     const targetName = RENAME_MAP[entry.name] ?? entry.name
     const toPath = path.join(to, targetName)
-    if (entry.isDirectory()) {
-      await fs.mkdir(toPath, { recursive: true })
-      await walkAndCopy(fromPath, toPath, replacements)
-    } else if (entry.isFile()) {
-      const ext = path.extname(entry.name).toLowerCase()
-      if (BINARY_EXTS.has(ext)) {
-        await fs.copyFile(fromPath, toPath)
-      } else {
-        const content = await fs.readFile(fromPath, 'utf8')
-        await fs.writeFile(toPath, applyReplacements(content, replacements))
+    try {
+      if (entry.isDirectory()) {
+        await fs.mkdir(toPath, { recursive: true })
+        await walkAndCopy(fromPath, toPath, replacements)
+      } else if (entry.isFile()) {
+        const ext = path.extname(entry.name).toLowerCase()
+        if (BINARY_EXTS.has(ext)) {
+          await fs.copyFile(fromPath, toPath)
+        } else {
+          const content = await fs.readFile(fromPath, 'utf8')
+          await fs.writeFile(toPath, applyReplacements(content, replacements))
+        }
       }
+      // Symlinks and special files: ignore in templates.
+    } catch (err) {
+      throw new Error(
+        `Failed to copy template file ${fromPath} -> ${toPath}: ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err },
+      )
     }
-    // Symlinks and special files: ignore in templates.
   }
 }
 

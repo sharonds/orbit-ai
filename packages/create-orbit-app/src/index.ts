@@ -1,4 +1,5 @@
 import * as fs from 'node:fs'
+import { rm } from 'node:fs/promises'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseOptions, type Options } from './options.js'
@@ -65,14 +66,22 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
   const sourceDir = path.resolve(__dirname, '..', 'templates', resolved.template)
   const version = getOrbitVersion()
 
-  await copyTemplate({
-    sourceDir,
-    targetDir,
-    replacements: {
-      __APP_NAME__: resolved.projectName,
-      __ORBIT_VERSION__: version,
-    },
-  })
+  try {
+    await copyTemplate({
+      sourceDir,
+      targetDir,
+      replacements: {
+        __APP_NAME__: resolved.projectName,
+        __ORBIT_VERSION__: version,
+      },
+    })
+  } catch (err) {
+    console.error('Failed to scaffold project:', err instanceof Error ? err.message : String(err))
+    // Best-effort cleanup of a partially-written target directory. Swallow cleanup errors —
+    // the scaffold failure is the primary signal we want to surface.
+    await rm(targetDir, { recursive: true, force: true }).catch(() => {})
+    process.exit(1)
+  }
 
   let packageManager = detectPackageManager(process.env)
   if (resolved.install) {
@@ -85,7 +94,15 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
     } catch (err) {
       console.error('Install failed. You can run it manually:')
       console.error(`  cd ${resolved.projectName} && ${installCommandFor(packageManager)}`)
-      console.error(err instanceof Error ? err.message : String(err))
+      // Surface execa-specific fields (stderr, shortMessage) when present — they carry
+      // the actual failure cause that a plain .message often omits.
+      const msg =
+        err && typeof err === 'object' && 'stderr' in err && typeof (err as { stderr?: unknown }).stderr === 'string' && (err as { stderr: string }).stderr.length > 0
+          ? (err as { stderr: string }).stderr
+          : err instanceof Error
+            ? err.message
+            : String(err)
+      console.error(msg)
       process.exit(1)
     }
   }

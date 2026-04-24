@@ -1,5 +1,5 @@
 import { cancel, intro, isCancel, outro, select, text } from '@clack/prompts'
-import { TEMPLATES, type Options, type TemplateName } from './options.js'
+import { PROJECT_NAME_RE, TEMPLATES, type Options, type TemplateName } from './options.js'
 
 export interface PromptAnswers {
   readonly projectName: string
@@ -32,11 +32,11 @@ export async function runInteractivePrompts(opts: Options): Promise<ResolvedOpti
       placeholder: 'my-orbit-app',
       validate(value) {
         if (!value) return 'Required'
-        if (!/^[a-z0-9][a-z0-9-_]*$/.test(value)) return 'Lowercase letters, digits, - _ only'
+        if (!PROJECT_NAME_RE.test(value)) return 'Lowercase letters, digits, - _ only'
         return undefined
       },
     })
-    if (isCancel(answer)) { cancel('Cancelled'); process.exit(0) }
+    if (isCancel(answer)) { cancel('Cancelled'); process.exit(130) }
     projectName = answer as string
   }
 
@@ -50,7 +50,7 @@ export async function runInteractivePrompts(opts: Options): Promise<ResolvedOpti
         options: TEMPLATES.map((t) => ({ value: t, label: t })),
         initialValue: 'default' as TemplateName,
       })
-      if (isCancel(answer)) { cancel('Cancelled'); process.exit(0) }
+      if (isCancel(answer)) { cancel('Cancelled'); process.exit(130) }
       template = answer as TemplateName
     }
   }
