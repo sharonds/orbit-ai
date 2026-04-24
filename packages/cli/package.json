@@ -2,6 +2,7 @@
   "name": "@orbit-ai/cli",
   "version": "0.1.0-alpha.0",
   "description": "Terminal interface for Orbit AI CRM",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "orbit": "./dist/index.js"
