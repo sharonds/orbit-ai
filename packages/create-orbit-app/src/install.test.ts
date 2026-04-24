@@ -1,0 +1,85 @@
+import { describe, it, expect } from 'vitest'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import * as os from 'node:os'
+import { detectPackageManager, inferPackageManagerFromCommand, installCommandFor, parseInstallCmd, runInstall } from './install.js'
+
+describe('detectPackageManager', () => {
+  it('uses npm_config_user_agent when present', () => {
+    expect(detectPackageManager({ npm_config_user_agent: 'pnpm/9.12.3 npm/? node/v22.0.0 linux x64' })).toBe('pnpm')
+    expect(detectPackageManager({ npm_config_user_agent: 'yarn/4.0.0 npm/? node/v22.0.0' })).toBe('yarn')
+    expect(detectPackageManager({ npm_config_user_agent: 'bun/1.0.0' })).toBe('bun')
+    expect(detectPackageManager({ npm_config_user_agent: 'npm/10.0.0 node/v22.0.0' })).toBe('npm')
+  })
+  it('falls back to npm when no user-agent is set', () => {
+    expect(detectPackageManager({})).toBe('npm')
+  })
+})
+
+describe('parseInstallCmd', () => {
+  it('splits a string command into argv tokens', () => {
+    expect(parseInstallCmd('pnpm install')).toEqual(['pnpm', ['install']])
+    expect(parseInstallCmd('npm install --no-fund')).toEqual(['npm', ['install', '--no-fund']])
+  })
+})
+
+describe('inferPackageManagerFromCommand', () => {
+  it('recognizes known package manager binaries in custom install commands', () => {
+    expect(inferPackageManagerFromCommand('pnpm install')).toBe('pnpm')
+    expect(inferPackageManagerFromCommand('npm ci')).toBe('npm')
+    expect(inferPackageManagerFromCommand('yarn install --immutable')).toBe('yarn')
+    expect(inferPackageManagerFromCommand('bun install')).toBe('bun')
+  })
+
+  it('returns undefined for non-package-manager commands', () => {
+    expect(inferPackageManagerFromCommand('node ./scripts/install.js')).toBeUndefined()
+  })
+})
+
+describe('installCommandFor', () => {
+  it('prints the right install command for each package manager', () => {
+    expect(installCommandFor('npm')).toBe('npm install')
+    expect(installCommandFor('pnpm')).toBe('pnpm install')
+    expect(installCommandFor('yarn')).toBe('yarn install')
+    expect(installCommandFor('bun')).toBe('bun install')
+  })
+})
+
+describe('runInstall (execa smoke)', () => {
+  // Write a tiny JS file and run it via `node <path>`. Avoids `-e "..."`
+  // quoting issues after parseInstallCmd whitespace-splits the command.
+  function writeExitScript(dir: string, code: number): string {
+    const file = path.join(dir, `exit-${code}.js`)
+    fs.writeFileSync(file, `process.exit(${code})\n`)
+    return file
+  }
+
+  it('resolves when the custom command exits zero', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'coa-install-ok-'))
+    try {
+      const script = writeExitScript(cwd, 0)
+      await expect(runInstall({ cwd, customCmd: `node ${script}` })).resolves.toBeDefined()
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('returns the custom command package manager when recognized', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'coa-install-pm-'))
+    try {
+      await expect(runInstall({ cwd, packageManager: 'pnpm', customCmd: 'npm --version' })).resolves.toBe('npm')
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects when the custom command exits nonzero', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'coa-install-fail-'))
+    try {
+      const script = writeExitScript(cwd, 1)
+      await expect(runInstall({ cwd, customCmd: `node ${script}` })).rejects.toThrow()
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+})

@@ -2,14 +2,14 @@
 
 ## Project
 
-Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). All 7 public packages implemented: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`, `@orbit-ai/integrations`, `@orbit-ai/demo-seed`; `@orbit-ai/e2e` is a private launch-gate test package. 1,784 package tests passing. Not yet published to npm.
+Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). All 8 public packages implemented: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`, `@orbit-ai/integrations`, `@orbit-ai/demo-seed`, `@orbit-ai/create-orbit-app`; `@orbit-ai/e2e` is a private launch-gate test package. 1,796 package tests passing. Not yet published to npm.
 
 ## Commands
 
 ```bash
 pnpm install              # Install all workspace dependencies
 pnpm -r build             # Build all packages (core must build first)
-pnpm -r test              # Run all package tests (vitest) — expect 1784 passing
+pnpm -r test              # Run all package tests (vitest) — expect 1796 passing
 pnpm -r typecheck         # TypeScript type checking
 pnpm -r lint              # Lint all packages
 
@@ -29,6 +29,7 @@ packages/cli/           # @orbit-ai/cli — Terminal interface (Commander.js)
 packages/mcp/           # @orbit-ai/mcp — Model Context Protocol server
 packages/integrations/  # @orbit-ai/integrations — Gmail, Google Calendar, Stripe connectors
 packages/demo-seed/      # @orbit-ai/demo-seed — deterministic multi-tenant demo data
+packages/create-orbit-app/ # @orbit-ai/create-orbit-app — `npx @orbit-ai/create-orbit-app@alpha` scaffolder
 e2e/                     # @orbit-ai/e2e — private launch-gate journey tests
 examples/               # nodejs-quickstart (runnable E2E smoke test)
 docs/                   # Strategy, specs, security, review artifacts, implementation plans
@@ -174,7 +175,7 @@ pnpm -r test        # must be ≥ current baseline (update baseline below after 
 pnpm -r lint
 ```
 
-**Test baseline**: 1784 package tests (update this number after each merge to main)
+**Test baseline**: 1796 package tests (update this number after each merge to main)
 
 **Before any npm-publish branch**: verify `CHANGELOG.md` is updated and `files` field in each `package.json` is correct (`dist/`, `README.md`, `LICENSE` only).
 
@@ -216,7 +217,7 @@ When updating, keep sections concise. Prefer tables and numbered lists over pros
 ## Gotchas
 
 - This is NOT `smb-sale-crm-app` (the Next.js CRM app). This is the extracted infrastructure project.
-- All 7 public packages (`core`, `api`, `sdk`, `cli`, `mcp`, `integrations`, `demo-seed`) are implemented but NOT yet published to npm.
+- All 8 public packages (`core`, `api`, `sdk`, `cli`, `mcp`, `integrations`, `demo-seed`, `create-orbit-app`) are implemented but NOT yet published to npm.
 - The `files` field in each package.json limits `pnpm pack` to `dist/`, `README.md`, `LICENSE`.
 - Core build script runs `rm -rf dist && tsc` to prevent stale test artifacts in tarballs.
 - SDK barrel does NOT export resource classes (ContactResource etc.) — only types. Consumers access resources via `client.contacts`, not by constructing classes.

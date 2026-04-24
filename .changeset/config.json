@@ -7,6 +7,7 @@
       "@orbit-ai/api",
       "@orbit-ai/cli",
       "@orbit-ai/core",
+      "@orbit-ai/create-orbit-app",
       "@orbit-ai/demo-seed",
       "@orbit-ai/integrations",
       "@orbit-ai/mcp",

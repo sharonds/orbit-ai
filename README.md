@@ -3,7 +3,7 @@
 > **CRM infrastructure for AI agents and developers.** Packages, not a product.
 > (Think: "Resend for CRM" — type-safe primitives, not a UI.)
 
-**Status**: `0.1.0-alpha`. All seven public packages are implemented and tested. The first npm release is cut through the Changesets release workflow; before that release lands, install from source (see [Development](#development)).
+**Status**: `0.1.0-alpha`. All eight public packages are implemented and tested. The first npm release is cut through the Changesets release workflow; before that release lands, install from source (see [Development](#development)).
 
 ## Packages
 
@@ -16,6 +16,7 @@
 | [`@orbit-ai/mcp`](packages/mcp) | ✅ alpha | Model Context Protocol server with 23 core tools, stdio and HTTP transports |
 | [`@orbit-ai/integrations`](packages/integrations) | ✅ alpha | Gmail, Google Calendar, and Stripe connectors with OAuth lifecycle and webhook support |
 | [`@orbit-ai/demo-seed`](packages/demo-seed) | ✅ alpha | Deterministic multi-tenant demo data for local testing and examples |
+| [`@orbit-ai/create-orbit-app`](packages/create-orbit-app) | ✅ alpha | Starter scaffolder — `npx @orbit-ai/create-orbit-app@alpha my-app` |
 
 ## Quick look
 
@@ -58,7 +59,7 @@ pnpm add @orbit-ai/core @orbit-ai/api
 
 ## Architecture
 
-Orbit AI is a monorepo (pnpm + Turborepo) with seven public packages:
+Orbit AI is a monorepo (pnpm + Turborepo) with eight public packages:
 
 ```
 ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
@@ -96,6 +97,7 @@ Orbit AI is a monorepo (pnpm + Turborepo) with seven public packages:
   OAuth lifecycle management and webhook support.
 - **demo-seed** provides deterministic multi-tenant demo data for local testing and
   examples.
+- **create-orbit-app** scaffolds a runnable starter backed by the demo seed.
 
 ## Development
 
