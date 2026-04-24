@@ -2,7 +2,7 @@
 
 ## Project
 
-Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). All 6 packages implemented: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`, `@orbit-ai/integrations`. 1,605 tests passing. Not yet published to npm.
+Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). Packages: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`, `@orbit-ai/integrations`, `@orbit-ai/demo-seed`, and the unscoped `create-orbit-app` scaffolder. Not yet published to npm.
 
 ## Commands
 
@@ -28,6 +28,8 @@ packages/api/           # @orbit-ai/api — Hono REST API server
 packages/cli/           # @orbit-ai/cli — Terminal interface (Commander.js)
 packages/mcp/           # @orbit-ai/mcp — Model Context Protocol server
 packages/integrations/  # @orbit-ai/integrations — Gmail, Google Calendar, Stripe connectors
+packages/demo-seed/      # @orbit-ai/demo-seed — Acme Events fixture (contacts/companies/deals)
+packages/create-orbit-app/ # create-orbit-app (unscoped) — `npx create-orbit-app@alpha` scaffolder
 examples/               # nodejs-quickstart (runnable E2E smoke test)
 docs/                   # Strategy, specs, security, review artifacts, implementation plans
 ```
