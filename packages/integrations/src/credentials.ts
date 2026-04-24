@@ -69,15 +69,15 @@ export class TableBackedCredentialStore implements CredentialStore {
   ) {}
 
   async getCredentials(orgId: string, provider: string, userId?: string): Promise<StoredCredentials | null> {
-    try {
+    return this.db.withTenantContext({ orgId, ...(userId === undefined ? {} : { userId }) }, async (db) => {
       const rows = userId === undefined
-        ? await this.db.unsafeRawDatabase.query<IntegrationConnectionRow>(sql`
+        ? await db.query<IntegrationConnectionRow>(sql`
             SELECT credentials_encrypted, refresh_token_encrypted, access_token_expires_at, scopes, provider_account_id
             FROM integration_connections
             WHERE organization_id = ${orgId} AND provider = ${provider} AND user_id IS NULL
             LIMIT 1
           `)
-        : await this.db.unsafeRawDatabase.query<IntegrationConnectionRow>(sql`
+        : await db.query<IntegrationConnectionRow>(sql`
             SELECT credentials_encrypted, refresh_token_encrypted, access_token_expires_at, scopes, provider_account_id
             FROM integration_connections
             WHERE organization_id = ${orgId} AND provider = ${provider} AND user_id = ${userId}
@@ -108,14 +108,11 @@ export class TableBackedCredentialStore implements CredentialStore {
         if (!Number.isNaN(ms)) result.expiresAt = ms
       }
       return result
-    } catch (err) {
-      console.error(`[TableBackedCredentialStore] getCredentials failed: ${err instanceof Error ? err.message : String(err)}`)
-      throw err
-    }
+    })
   }
 
   async saveCredentials(orgId: string, provider: string, userId: string, credentials: StoredCredentials): Promise<void> {
-    try {
+    await this.db.withTenantContext({ orgId, userId }, async (db) => {
       const payload: DecryptedCredentialsPayload = { accessToken: credentials.accessToken }
       if (credentials.providerAccountId) payload.providerAccountId = credentials.providerAccountId
 
@@ -127,7 +124,7 @@ export class TableBackedCredentialStore implements CredentialStore {
       const id = randomUUID()
       const now = new Date().toISOString()
 
-      await this.db.unsafeRawDatabase.execute(sql`
+      await db.execute(sql`
         INSERT INTO integration_connections (
           id, organization_id, provider, connection_type, user_id, status,
           credentials_encrypted, refresh_token_encrypted, access_token_expires_at,
@@ -146,28 +143,22 @@ export class TableBackedCredentialStore implements CredentialStore {
           status = 'active',
           updated_at = excluded.updated_at
       `)
-    } catch (err) {
-      console.error(`[TableBackedCredentialStore] saveCredentials failed: ${err instanceof Error ? err.message : String(err)}`)
-      throw err
-    }
+    })
   }
 
   async deleteCredentials(orgId: string, provider: string, userId?: string): Promise<void> {
-    try {
+    await this.db.withTenantContext({ orgId, ...(userId === undefined ? {} : { userId }) }, async (db) => {
       if (userId === undefined) {
-        await this.db.unsafeRawDatabase.execute(sql`
+        await db.execute(sql`
           DELETE FROM integration_connections
           WHERE organization_id = ${orgId} AND provider = ${provider} AND user_id IS NULL
         `)
       } else {
-        await this.db.unsafeRawDatabase.execute(sql`
+        await db.execute(sql`
           DELETE FROM integration_connections
           WHERE organization_id = ${orgId} AND provider = ${provider} AND user_id = ${userId}
         `)
       }
-    } catch (err) {
-      console.error(`[TableBackedCredentialStore] deleteCredentials failed: ${err instanceof Error ? err.message : String(err)}`)
-      throw err
-    }
+    })
   }
 }
