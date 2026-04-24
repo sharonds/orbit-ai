@@ -39,7 +39,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build
         run: pnpm -r build
@@ -94,7 +94,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Create or update release pull request
         # Pinned from changesets/action v1.7.0.
@@ -129,14 +129,53 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          count="$(
+          set -o pipefail
+
+          pr_number="$(
             gh api \
               -H "Accept: application/vnd.github+json" \
               "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
-              --jq "map(select(.head.ref == \"changeset-release/main\" and .head.repo.full_name == \"${GITHUB_REPOSITORY}\" and .user.login == \"github-actions[bot]\" and .merged_at != null)) | length"
+              --jq "map(select(.head.ref == \"changeset-release/main\" and .head.repo.full_name == \"${GITHUB_REPOSITORY}\" and .user.login == \"github-actions[bot]\" and .merged_at != null)) | if length == 1 then .[0].number else empty end"
           )"
-          if [ "$count" != "1" ]; then
+          if [ -z "$pr_number" ]; then
             echo "ERROR: refusing to publish because this commit is not from the generated Changesets release PR."
+            exit 1
+          fi
+
+          release_pr_files="$(
+            gh api \
+              --paginate \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/files" \
+              --jq '.[].filename'
+          )"
+
+          invalid_files=""
+          package_version_files=0
+          while IFS= read -r file; do
+            if [ -z "$file" ]; then
+              continue
+            fi
+
+            if [[ "$file" =~ ^packages/[^/]+/package\.json$ ]]; then
+              package_version_files=$((package_version_files + 1))
+              continue
+            fi
+
+            if [[ "$file" =~ ^(CHANGELOG\.md|pnpm-lock\.yaml|\.changeset/pre\.json|\.changeset/[^/]+\.md|packages/[^/]+/CHANGELOG\.md)$ ]]; then
+              continue
+            fi
+
+            invalid_files+="${file}"$'\n'
+          done <<< "$release_pr_files"
+          if [ -n "$invalid_files" ]; then
+            echo "ERROR: refusing to publish because the generated release PR changed unexpected files:"
+            printf '%s\n' "$invalid_files"
+            exit 1
+          fi
+
+          if [ "$package_version_files" -eq 0 ]; then
+            echo "ERROR: refusing to publish because the generated release PR did not update any package version manifests."
             exit 1
           fi
 

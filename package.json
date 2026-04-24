@@ -9,7 +9,7 @@
     "changeset:version": "changeset version && pnpm install --lockfile-only",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
-    "release": "changeset publish",
+    "release": "changeset publish --tag alpha",
     "release:dry-run": "pnpm -r build && node scripts/release-dry-run.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
