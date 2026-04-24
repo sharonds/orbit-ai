@@ -4,7 +4,7 @@ import { OrbitApiError } from '@orbit-ai/sdk'
 
 describe('Journey 10 — SDK in direct-core mode', () => {
   it('reads/writes in-process without HTTP, and surfaces typed errors', async () => {
-    const stack = await buildStack({ tenant: 'acme' })
+    const stack = await buildStack({ tenant: 'acme', adapter: (process.env.ORBIT_E2E_ADAPTER ?? 'sqlite') as 'sqlite' | 'postgres' })
     try {
       // Create a contact via direct transport
       const contact = await stack.sdkDirect.contacts.create({

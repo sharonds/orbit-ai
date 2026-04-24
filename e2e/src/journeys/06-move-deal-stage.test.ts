@@ -3,7 +3,7 @@ import { buildStack } from '../harness/build-stack.js'
 
 describe('Journey 6 — move a deal between pipeline stages', () => {
   it('updates deal stage and preserves identity (HTTP write, direct read)', async () => {
-    const stack = await buildStack({ tenant: 'acme' })
+    const stack = await buildStack({ tenant: 'acme', adapter: (process.env.ORBIT_E2E_ADAPTER ?? 'sqlite') as 'sqlite' | 'postgres' })
     try {
       // Get available stages — core returns camelCase fields (pipelineId, organizationId, etc.)
       const stagesPage = await stack.sdkHttp.stages.list({ limit: 10 })

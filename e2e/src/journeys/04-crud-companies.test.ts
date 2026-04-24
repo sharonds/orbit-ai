@@ -4,7 +4,7 @@ import { runCrudMatrix } from './_crud-matrix.js'
 
 describe('Journey 4 — CRUD companies (5 surfaces)', () => {
   it('create/list/get/update/delete companies across HTTP, direct, API, CLI, MCP', async () => {
-    const stack = await buildStack({ tenant: 'acme' })
+    const stack = await buildStack({ tenant: 'acme', adapter: (process.env.ORBIT_E2E_ADAPTER ?? 'sqlite') as 'sqlite' | 'postgres' })
     try {
       await runCrudMatrix(stack, {
         entity: 'companies',

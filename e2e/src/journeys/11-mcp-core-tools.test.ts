@@ -4,7 +4,7 @@ import { spawnMcp } from '../harness/run-mcp.js'
 
 describe('Journey 11 — MCP server + core tool flows', () => {
   it('registers core tools and executes search_records + create_record + get_record', async () => {
-    const stack = await buildStack({ tenant: 'acme' })
+    const stack = await buildStack({ tenant: 'acme', adapter: (process.env.ORBIT_E2E_ADAPTER ?? 'sqlite') as 'sqlite' | 'postgres' })
     const mcp = await spawnMcp({ adapter: stack.adapter, organizationId: stack.acmeOrgId })
     try {
       // tools/list — assert core generic tools are registered
@@ -38,7 +38,7 @@ describe('Journey 11 — MCP server + core tool flows', () => {
         },
       })
       expect(createResp.isError).toBeFalsy()
-      const createData = JSON.parse(createResp.content![0].text) as { id?: string; data?: { id: string } }
+      const createData = JSON.parse(createResp.content![0]!.text) as { id?: string; data?: { id: string } }
       const createdId = createData.id ?? createData.data?.id ?? ''
       expect(createdId).toMatch(/^contact_/)
 
@@ -48,7 +48,7 @@ describe('Journey 11 — MCP server + core tool flows', () => {
         arguments: { object_type: 'contacts', record_id: createdId },
       })
       expect(getResp.isError).toBeFalsy()
-      const getData = JSON.parse(getResp.content![0].text) as { id?: string; data?: { id: string } }
+      const getData = JSON.parse(getResp.content![0]!.text) as { id?: string; data?: { id: string } }
       expect(getData.id ?? getData.data?.id).toBe(createdId)
     } finally {
       await mcp.close()

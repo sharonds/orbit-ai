@@ -4,7 +4,7 @@ import { OrbitApiError } from '@orbit-ai/sdk'
 
 describe('Journey 9 — SDK in HTTP mode', () => {
   it('authenticates with API key, paginates, and surfaces typed API errors', async () => {
-    const stack = await buildStack({ tenant: 'acme' })
+    const stack = await buildStack({ tenant: 'acme', adapter: (process.env.ORBIT_E2E_ADAPTER ?? 'sqlite') as 'sqlite' | 'postgres' })
     try {
       // Pagination: seed has 200 contacts; pull 2 pages of 50
       const page1 = await stack.sdkHttp.contacts.list({ limit: 50 })

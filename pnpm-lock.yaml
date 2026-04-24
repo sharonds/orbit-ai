@@ -50,6 +50,9 @@ importers:
       '@orbit-ai/sdk':
         specifier: workspace:*
         version: link:../packages/sdk
+      drizzle-orm:
+        specifier: ^0.44.5
+        version: 0.44.7(@types/pg@8.20.0)(pg@8.20.0)
       execa:
         specifier: ^9.5.0
         version: 9.6.1

@@ -2,7 +2,7 @@ import { createMcpServer } from '@orbit-ai/mcp'
 import { OrbitClient } from '@orbit-ai/sdk'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import type { SqliteStorageAdapter } from '@orbit-ai/core'
+import type { StorageAdapter } from '@orbit-ai/core'
 
 export interface McpHandle {
   request(
@@ -18,7 +18,7 @@ export interface McpHandle {
 }
 
 export interface SpawnMcpOptions {
-  adapter: SqliteStorageAdapter
+  adapter: StorageAdapter
   organizationId: string
 }
 
@@ -39,19 +39,22 @@ export async function spawnMcp(opts: SpawnMcpOptions): Promise<McpHandle> {
   await server.connect(serverTransport)
   await mcpClient.connect(clientTransport)
 
-  return {
-    async request(method: string, params: Record<string, unknown>) {
-      if (method === 'tools/list') {
-        return mcpClient.listTools()
-      }
-      if (method === 'tools/call') {
-        const p = params as { name: string; arguments?: Record<string, unknown> }
-        return mcpClient.callTool({ name: p.name, arguments: p.arguments })
-      }
-      return (mcpClient as unknown as { request(method: string, params: unknown): Promise<unknown> }).request(method, params)
-    },
+  async function dispatchRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
+    if (method === 'tools/list') {
+      return mcpClient.listTools()
+    }
+    if (method === 'tools/call') {
+      const p = params as { name: string; arguments?: Record<string, unknown> }
+      return mcpClient.callTool({ name: p.name, arguments: p.arguments })
+    }
+    return (mcpClient as unknown as { request(method: string, params: unknown): Promise<unknown> }).request(method, params)
+  }
+
+  const handle: McpHandle = {
+    request: dispatchRequest as McpHandle['request'],
     async close() {
       await mcpClient.close()
     },
   }
+  return handle
 }
