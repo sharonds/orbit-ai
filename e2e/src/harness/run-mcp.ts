@@ -48,7 +48,7 @@ export async function spawnMcp(opts: SpawnMcpOptions): Promise<McpHandle> {
         const p = params as { name: string; arguments?: Record<string, unknown> }
         return mcpClient.callTool({ name: p.name, arguments: p.arguments })
       }
-      throw new Error(`Unsupported method: ${method}`)
+      return (mcpClient as unknown as { request(method: string, params: unknown): Promise<unknown> }).request(method, params)
     },
     async close() {
       await mcpClient.close()
