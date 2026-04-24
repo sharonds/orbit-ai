@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mergeOptionsWithAnswers } from './prompts.js'
+import { mergeOptionsWithAnswers, validateProjectNameAnswer } from './prompts.js'
 import type { Options } from './options.js'
 
 describe('mergeOptionsWithAnswers', () => {
@@ -18,5 +18,11 @@ describe('mergeOptionsWithAnswers', () => {
     const merged = mergeOptionsWithAnswers(opts, answers)
     expect(merged.projectName).toBe('from-prompt')
     expect(merged.template).toBe('default')
+  })
+})
+
+describe('validateProjectNameAnswer', () => {
+  it('explains that project names must start with a lowercase letter or digit', () => {
+    expect(validateProjectNameAnswer('-my-app')).toMatch(/start with a lowercase letter or digit/i)
   })
 })

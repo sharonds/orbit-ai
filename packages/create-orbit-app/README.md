@@ -1,4 +1,4 @@
-# create-orbit-app
+# @orbit-ai/create-orbit-app
 
 Scaffold a new Orbit AI starter in under 60 seconds.
 
@@ -8,10 +8,10 @@ Scaffold a new Orbit AI starter in under 60 seconds.
 
 ```bash
 # Alpha (current):
-npx create-orbit-app@alpha my-app
+npx @orbit-ai/create-orbit-app@alpha my-app
 
 # Non-interactive:
-npx create-orbit-app@alpha my-app --template default --yes
+npx @orbit-ai/create-orbit-app@alpha my-app --template default --yes
 ```
 
 Requires **Node.js 22+**.

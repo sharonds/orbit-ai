@@ -16,6 +16,13 @@ export function parseInstallCmd(cmd: string): [string, string[]] {
   return [parts[0], parts.slice(1)]
 }
 
+export function inferPackageManagerFromCommand(cmd: string): PackageManager | undefined {
+  const [binary] = parseInstallCmd(cmd)
+  const name = binary.split(/[\\/]/).pop()
+  if (name === 'npm' || name === 'pnpm' || name === 'yarn' || name === 'bun') return name
+  return undefined
+}
+
 export function installCommandFor(pm: PackageManager): string {
   return `${pm} install`
 }
@@ -28,9 +35,10 @@ export interface RunInstallInput {
 
 export async function runInstall(input: RunInstallInput): Promise<PackageManager> {
   const pm = input.packageManager ?? detectPackageManager(process.env)
+  const commandPackageManager = input.customCmd ? inferPackageManagerFromCommand(input.customCmd) : undefined
   const [cmd, args] = input.customCmd
     ? parseInstallCmd(input.customCmd)
     : parseInstallCmd(installCommandFor(pm))
   await execa(cmd, args, { cwd: input.cwd, stdio: 'inherit' })
-  return pm
+  return commandPackageManager ?? pm
 }

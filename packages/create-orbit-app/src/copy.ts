@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises'
+import type { Dirent } from 'node:fs'
 import * as path from 'node:path'
 
 export interface CopyTemplateInput {
@@ -22,6 +23,13 @@ const BINARY_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '
 export async function copyTemplate(input: CopyTemplateInput): Promise<void> {
   const target = input.targetDir
   try {
+    const stats = await fs.lstat(target)
+    if (stats.isSymbolicLink()) {
+      throw new Error(`Target path ${target} is a symbolic link — refusing to scaffold outside the requested directory.`)
+    }
+    if (!stats.isDirectory()) {
+      throw new Error(`Target path ${target} exists and is not a directory.`)
+    }
     const entries = await fs.readdir(target)
     if (entries.length > 0) {
       throw new Error(`Target directory ${target} is not empty — refusing to overwrite.`)
@@ -30,8 +38,13 @@ export async function copyTemplate(input: CopyTemplateInput): Promise<void> {
     const e = err as NodeJS.ErrnoException
     if (e.code === 'ENOENT') {
       await fs.mkdir(target, { recursive: true })
-    } else if (err instanceof Error && err.message.includes('is not empty')) {
-      // Preserve our own "not empty" error untouched.
+    } else if (
+      err instanceof Error &&
+      (err.message.includes('is not empty') ||
+        err.message.includes('symbolic link') ||
+        err.message.includes('not a directory'))
+    ) {
+      // Preserve our own user-facing target validation errors untouched.
       throw err
     } else {
       throw new Error(
@@ -49,7 +62,15 @@ async function walkAndCopy(
   to: string,
   replacements: Record<string, string>,
 ): Promise<void> {
-  const entries = await fs.readdir(from, { withFileTypes: true })
+  let entries: Dirent[]
+  try {
+    entries = await fs.readdir(from, { withFileTypes: true })
+  } catch (err) {
+    throw new Error(
+      `Failed to read template directory ${from}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    )
+  }
   for (const entry of entries) {
     const fromPath = path.join(from, entry.name)
     const targetName = RENAME_MAP[entry.name] ?? entry.name

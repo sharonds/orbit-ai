@@ -13,5 +13,8 @@ describe('getOrbitVersionFrom', () => {
     expect(() => getOrbitVersionFrom('/nonexistent/package.json')).toThrow(
       /installation may be corrupt/,
     )
+    expect(() => getOrbitVersionFrom('/nonexistent/package.json')).toThrow(
+      /npx @orbit-ai\/create-orbit-app@alpha/,
+    )
   })
 })

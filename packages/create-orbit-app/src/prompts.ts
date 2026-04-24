@@ -22,6 +22,14 @@ export function mergeOptionsWithAnswers(
   }
 }
 
+export function validateProjectNameAnswer(value: string): string | undefined {
+  if (!value) return 'Required'
+  if (!PROJECT_NAME_RE.test(value)) {
+    return 'Must start with a lowercase letter or digit; lowercase letters, digits, - and _ only'
+  }
+  return undefined
+}
+
 export async function runInteractivePrompts(opts: Options): Promise<ResolvedOptions> {
   intro('create-orbit-app')
 
@@ -30,11 +38,7 @@ export async function runInteractivePrompts(opts: Options): Promise<ResolvedOpti
     const answer = await text({
       message: 'Project name',
       placeholder: 'my-orbit-app',
-      validate(value) {
-        if (!value) return 'Required'
-        if (!PROJECT_NAME_RE.test(value)) return 'Lowercase letters, digits, - _ only'
-        return undefined
-      },
+      validate: validateProjectNameAnswer,
     })
     if (isCancel(answer)) { cancel('Cancelled'); process.exit(130) }
     projectName = answer as string

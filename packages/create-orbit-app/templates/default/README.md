@@ -1,6 +1,6 @@
 # __APP_NAME__
 
-Scaffolded with [create-orbit-app](https://www.npmjs.com/package/create-orbit-app).
+Scaffolded with [@orbit-ai/create-orbit-app](https://www.npmjs.com/package/@orbit-ai/create-orbit-app).
 
 ## Run
 

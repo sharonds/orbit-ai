@@ -56,4 +56,33 @@ describe('copyTemplate', () => {
       fs.rmSync(dst, { recursive: true, force: true })
     }
   })
+
+  it('wraps missing template source errors with source path context', async () => {
+    const dst = fs.mkdtempSync(path.join(os.tmpdir(), 'dst-'))
+    const missing = path.join(os.tmpdir(), 'missing-template-source')
+    try {
+      await expect(
+        copyTemplate({ sourceDir: missing, targetDir: path.join(dst, 'out'), replacements: {} }),
+      ).rejects.toThrow(new RegExp(`template directory ${missing.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
+    } finally {
+      fs.rmSync(dst, { recursive: true, force: true })
+    }
+  })
+
+  it('refuses to scaffold into a symlink target', async () => {
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), 'src-'))
+    const realTarget = fs.mkdtempSync(path.join(os.tmpdir(), 'real-target-'))
+    const linkTarget = path.join(os.tmpdir(), `target-link-${Date.now()}`)
+    fs.writeFileSync(path.join(src, 'package.json'), '{"name":"__APP_NAME__"}')
+    fs.symlinkSync(realTarget, linkTarget, 'dir')
+    try {
+      await expect(
+        copyTemplate({ sourceDir: src, targetDir: linkTarget, replacements: { __APP_NAME__: 'my-app' } }),
+      ).rejects.toThrow(/symbolic link/i)
+    } finally {
+      fs.rmSync(src, { recursive: true, force: true })
+      fs.rmSync(realTarget, { recursive: true, force: true })
+      fs.rmSync(linkTarget, { force: true })
+    }
+  })
 })

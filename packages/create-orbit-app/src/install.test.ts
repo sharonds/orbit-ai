@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as os from 'node:os'
-import { detectPackageManager, installCommandFor, parseInstallCmd, runInstall } from './install.js'
+import { detectPackageManager, inferPackageManagerFromCommand, installCommandFor, parseInstallCmd, runInstall } from './install.js'
 
 describe('detectPackageManager', () => {
   it('uses npm_config_user_agent when present', () => {
@@ -20,6 +20,19 @@ describe('parseInstallCmd', () => {
   it('splits a string command into argv tokens', () => {
     expect(parseInstallCmd('pnpm install')).toEqual(['pnpm', ['install']])
     expect(parseInstallCmd('npm install --no-fund')).toEqual(['npm', ['install', '--no-fund']])
+  })
+})
+
+describe('inferPackageManagerFromCommand', () => {
+  it('recognizes known package manager binaries in custom install commands', () => {
+    expect(inferPackageManagerFromCommand('pnpm install')).toBe('pnpm')
+    expect(inferPackageManagerFromCommand('npm ci')).toBe('npm')
+    expect(inferPackageManagerFromCommand('yarn install --immutable')).toBe('yarn')
+    expect(inferPackageManagerFromCommand('bun install')).toBe('bun')
+  })
+
+  it('returns undefined for non-package-manager commands', () => {
+    expect(inferPackageManagerFromCommand('node ./scripts/install.js')).toBeUndefined()
   })
 })
 
@@ -46,6 +59,15 @@ describe('runInstall (execa smoke)', () => {
     try {
       const script = writeExitScript(cwd, 0)
       await expect(runInstall({ cwd, customCmd: `node ${script}` })).resolves.toBeDefined()
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('returns the custom command package manager when recognized', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'coa-install-pm-'))
+    try {
+      await expect(runInstall({ cwd, packageManager: 'pnpm', customCmd: 'npm --version' })).resolves.toBe('npm')
     } finally {
       fs.rmSync(cwd, { recursive: true, force: true })
     }

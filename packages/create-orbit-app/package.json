@@ -1,7 +1,7 @@
 {
-  "name": "create-orbit-app",
+  "name": "@orbit-ai/create-orbit-app",
   "version": "0.1.0-alpha.0",
-  "description": "Scaffold a new Orbit AI starter in under 60 seconds. Alpha usage: npx create-orbit-app@alpha my-app",
+  "description": "Scaffold a new Orbit AI starter in under 60 seconds. Alpha usage: npx @orbit-ai/create-orbit-app@alpha my-app",
   "type": "module",
   "bin": {
     "create-orbit-app": "./bin/create-orbit-app.js"
@@ -20,6 +20,7 @@
   ],
   "scripts": {
     "build": "rm -rf dist && tsc",
+    "prepublishOnly": "pnpm run build && node dist/publishGuard.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",

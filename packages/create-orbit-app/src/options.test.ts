@@ -35,7 +35,7 @@ describe('parseOptions', () => {
   it('rejects unsafe or invalid project names', () => {
     expect(() => parseOptions(['../evil'])).toThrow(/invalid project name/i)
     expect(() => parseOptions(['my app'])).toThrow(/invalid project name/i)
-    // npm requires lowercase for unscoped package names
+    // npm requires lowercase for the generated unscoped package name.
     expect(() => parseOptions(['MyApp'])).toThrow(/invalid project name/i)
     expect(() => parseOptions(['CamelCase'])).toThrow(/invalid project name/i)
   })

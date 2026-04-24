@@ -53,6 +53,17 @@ describe('run() error paths', () => {
     expect(messages).toMatch(/--yes/)
   })
 
+  it('exits 2 when --yes is used without a project name', async () => {
+    process.stdin.isTTY = false
+    const exitSpy = stubExit()
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(run(['--yes'])).rejects.toThrow(/exit:2/)
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    const messages = errSpy.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(messages).toMatch(/project name is required/i)
+  })
+
   it('exits 1 when the target directory exists and is not empty', async () => {
     const targetDir = path.join(workDir, 'my-app')
     fs.mkdirSync(targetDir)
@@ -65,6 +76,34 @@ describe('run() error paths', () => {
     expect(exitSpy).toHaveBeenCalledWith(1)
     const messages = errSpy.mock.calls.map((c) => String(c[0])).join('\n')
     expect(messages).toMatch(/not empty/i)
+  })
+
+  it('exits 1 when the target path exists as a file', async () => {
+    const targetPath = path.join(workDir, 'my-app')
+    fs.writeFileSync(targetPath, 'not a directory')
+
+    const exitSpy = stubExit()
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(run(['my-app', '--yes', '--no-install'])).rejects.toThrow(/exit:1/)
+    expect(exitSpy).toHaveBeenCalledWith(1)
+    const messages = errSpy.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(messages).toMatch(/exists and is not a directory/i)
+  })
+
+  it('exits 1 when the target path exists as a symlink', async () => {
+    const linkTarget = path.join(workDir, 'elsewhere')
+    const targetPath = path.join(workDir, 'my-app')
+    fs.mkdirSync(linkTarget)
+    fs.symlinkSync(linkTarget, targetPath, 'dir')
+
+    const exitSpy = stubExit()
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(run(['my-app', '--yes', '--no-install'])).rejects.toThrow(/exit:1/)
+    expect(exitSpy).toHaveBeenCalledWith(1)
+    const messages = errSpy.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(messages).toMatch(/symbolic link/i)
   })
 
   it('exits 1 and prints a manual-recovery hint when install fails', async () => {

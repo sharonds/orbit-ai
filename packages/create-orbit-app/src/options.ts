@@ -12,7 +12,7 @@ export interface Options {
   readonly help: boolean
 }
 
-// Lowercase-only — npm rejects uppercase in unscoped package names.
+// Lowercase-only because the generated starter package name is unscoped.
 export const PROJECT_NAME_RE = /^[a-z0-9][a-z0-9-_]*$/
 
 export function parseOptions(argv: readonly string[]): Options {

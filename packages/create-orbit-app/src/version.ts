@@ -26,11 +26,11 @@ export function getOrbitVersionFrom(pkgPath: string): string {
     pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { name?: string; version?: string }
   } catch (err) {
     throw new Error(
-      `create-orbit-app: unable to read own package.json at ${pkgPath} — installation may be corrupt. Reinstall with 'npm i -g create-orbit-app'. Cause: ${err instanceof Error ? err.message : String(err)}`,
+      `create-orbit-app: unable to read own package.json at ${pkgPath} — installation may be corrupt. Try re-running via 'npx @orbit-ai/create-orbit-app@alpha', clearing the npm cache, or reinstalling @orbit-ai/create-orbit-app if it was installed globally. Cause: ${err instanceof Error ? err.message : String(err)}`,
       { cause: err },
     )
   }
-  if (pkg.name !== 'create-orbit-app' || !pkg.version) {
+  if (pkg.name !== '@orbit-ai/create-orbit-app' || !pkg.version) {
     throw new Error(`create-orbit-app: unexpected package.json at ${pkgPath}`)
   }
   return pkg.version

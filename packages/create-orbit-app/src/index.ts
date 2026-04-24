@@ -24,8 +24,8 @@ Options:
   --help, -h            Show this help
 
 Examples:
-  npx create-orbit-app@alpha my-app
-  npx create-orbit-app@alpha my-app --template default --yes
+  npx @orbit-ai/create-orbit-app@alpha my-app
+  npx @orbit-ai/create-orbit-app@alpha my-app --template default --yes
 `.trim()
 
 export async function run(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
@@ -45,6 +45,12 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
     ? { ...opts, template: opts.template ?? ('default' as const) }
     : opts
 
+  if (optsWithDefaults.yes && !optsWithDefaults.projectName) {
+    console.error('A project name is required when using --yes.')
+    console.error('Example: create-orbit-app my-app --template default --yes')
+    process.exit(2)
+  }
+
   // Guard against non-TTY environments (CI, piped stdin) — prompts would hang.
   const needsPrompting = !optsWithDefaults.yes && (!optsWithDefaults.projectName || !optsWithDefaults.template)
   if (needsPrompting && !process.stdin.isTTY) {
@@ -58,9 +64,20 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
     : await runInteractivePrompts(optsWithDefaults)
 
   const targetDir = path.resolve(process.cwd(), resolved.projectName)
-  if (fs.existsSync(targetDir) && fs.readdirSync(targetDir).length > 0) {
-    console.error(`Target directory ${targetDir} is not empty. Choose another name or clear it first.`)
-    process.exit(1)
+  if (fs.existsSync(targetDir)) {
+    const targetStats = fs.lstatSync(targetDir)
+    if (targetStats.isSymbolicLink()) {
+      console.error(`Target path ${targetDir} is a symbolic link. Choose another name or clear it first.`)
+      process.exit(1)
+    }
+    if (!targetStats.isDirectory()) {
+      console.error(`Target path ${targetDir} exists and is not a directory. Choose another name or clear it first.`)
+      process.exit(1)
+    }
+    if (fs.readdirSync(targetDir).length > 0) {
+      console.error(`Target directory ${targetDir} is not empty. Choose another name or clear it first.`)
+      process.exit(1)
+    }
   }
 
   const sourceDir = path.resolve(__dirname, '..', 'templates', resolved.template)
