@@ -106,7 +106,7 @@ export class DirectTransport implements OrbitTransport {
     const action = segments[startIdx + 1]
     const verb = segments[startIdx + 2] // present for 4-segment workflow routes
 
-    if (!entity) throw new Error(`Unknown path: ${path}`)
+    if (!entity) throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unknown path: ${path}` }, 404)
 
     // Special routes
     if (method === 'POST' && entity === 'search') {
@@ -141,7 +141,7 @@ export class DirectTransport implements OrbitTransport {
         if (typeof schema.addField !== 'function') throw new Error('Schema engine: addField not implemented')
         return schema.addField(this.ctx, action, body as Record<string, unknown>)
       }
-      throw new Error(`Unhandled schema dispatch: ${method} ${path}`)
+      throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unhandled schema route: ${method} ${path}` }, 404)
     }
 
     // Schema migration routes: /v1/schema/migrations/preview|apply|:id/rollback
@@ -166,7 +166,7 @@ export class DirectTransport implements OrbitTransport {
         if (typeof schema.rollback !== 'function') throw new Error('Schema engine: rollback not implemented')
         return schema.rollback(this.ctx, operation)
       }
-      throw new Error(`Unhandled schema migration dispatch: ${method} ${path}`)
+      throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unhandled schema migration route: ${method} ${path}` }, 404)
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -174,7 +174,7 @@ export class DirectTransport implements OrbitTransport {
     const service = (this.services as any)[serviceKey] as
       | { list?: Function; create?: Function; get?: Function; update?: Function; delete?: Function; search?: Function; batch?: Function; move?: Function; pipeline?: Function; stats?: Function; enroll?: Function; unenroll?: Function; attach?: Function; detach?: Function; log?: Function }
       | undefined
-    if (!service) throw new Error(`Unknown entity: ${entity}`)
+    if (!service) throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unknown entity: ${entity}` }, 404)
 
     const coreInput = body && typeof body === 'object' && !Array.isArray(body)
       ? deserializeEntityInput(entity, body as Record<string, unknown>)
@@ -223,7 +223,7 @@ export class DirectTransport implements OrbitTransport {
     if (method === 'POST' && action === 'search' && service.search) return service.search(this.ctx, body)
     if (method === 'POST' && action === 'batch' && typeof service.batch === 'function') return service.batch(this.ctx, body)
 
-    throw new Error(`Unhandled dispatch: ${method} ${path}`)
+    throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unhandled route: ${method} ${path}` }, 404)
   }
 
   private serializeResult(path: string, data: unknown): unknown {

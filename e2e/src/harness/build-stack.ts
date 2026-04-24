@@ -80,7 +80,7 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
     await database.execute(sql`
       INSERT INTO api_keys (id, organization_id, name, key_hash, key_prefix, scopes, created_at, updated_at)
       VALUES (${'key_e2e00000000000000001'}, ${acme.organization.id}, ${'e2e-test-key'}, ${keyHash}, ${'sk_test_e2e'}, ${'["*"]'}::jsonb, ${now}::timestamptz, ${now}::timestamptz)
-      ON CONFLICT (key_prefix) DO NOTHING
+      ON CONFLICT (key_prefix) DO UPDATE SET organization_id = excluded.organization_id, key_hash = excluded.key_hash, updated_at = excluded.updated_at
     `)
 
     const api = createApi({ adapter, version: '2026-04-01' })
@@ -108,7 +108,11 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
       rawApiKey: RAW_API_KEY,
       async teardown() {
         globalThis.fetch = previousFetch
-        await adapter.disconnect()
+        try {
+          await adapter.disconnect()
+        } catch (err) {
+          console.error('build-stack: adapter.disconnect failed:', err instanceof Error ? err.message : String(err))
+        }
       },
     }
   }
@@ -166,7 +170,11 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
     rawApiKey: RAW_API_KEY,
     async teardown() {
       globalThis.fetch = previousFetch
-      await adapter.disconnect()
+      try {
+        await adapter.disconnect()
+      } catch (err) {
+        console.error('build-stack: adapter.disconnect failed:', err instanceof Error ? err.message : String(err))
+      }
     },
   }
 }

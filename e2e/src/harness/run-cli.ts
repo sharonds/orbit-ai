@@ -39,6 +39,7 @@ export async function runCli(invocation: CliInvocation): Promise<CliResult> {
     }
     return { exitCode: res.exitCode ?? 0, stdout: res.stdout, stderr: res.stderr, json }
   } catch (err) {
+    console.error('runCli: unexpected error:', err instanceof Error ? err.message : String(err))
     const e = err as { exitCode?: number; stdout?: string; stderr?: string }
     return {
       exitCode: e.exitCode ?? 1,

@@ -54,6 +54,9 @@ export async function spawnMcp(opts: SpawnMcpOptions): Promise<McpHandle> {
     request: dispatchRequest as McpHandle['request'],
     async close() {
       await mcpClient.close()
+      if (typeof (server as { close?: () => Promise<void> }).close === 'function') {
+        await (server as { close: () => Promise<void> }).close()
+      }
     },
   }
   return handle

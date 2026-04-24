@@ -79,6 +79,10 @@ export class OrbitSchemaEngine {
     if (!type || typeof type !== 'string') {
       throw Object.assign(new Error('Field type is required'), { code: 'VALIDATION_FAILED' })
     }
+    const ALLOWED_FIELD_TYPES = ['text', 'number', 'boolean', 'date', 'datetime', 'select', 'multi_select', 'url', 'email', 'phone', 'currency', 'relation'] as const
+    if (!ALLOWED_FIELD_TYPES.includes(type as typeof ALLOWED_FIELD_TYPES[number])) {
+      throw Object.assign(new Error(`Unknown field type: ${type}. Allowed: ${ALLOWED_FIELD_TYPES.join(', ')}`), { code: 'VALIDATION_FAILED' })
+    }
     if (!PUBLIC_CRM_ENTITY_TYPES.includes(entityType as PublicCrmEntityType)) {
       throw Object.assign(new Error(`Unknown entity type: ${entityType}`), { code: 'VALIDATION_FAILED' })
     }
@@ -107,17 +111,18 @@ export class OrbitSchemaEngine {
   }
 
   async preview(
-    _ctx: OrbitAuthContext,
+    ctx: OrbitAuthContext,
     _data: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    // In alpha, addField applies immediately — no pending migrations to preview.
+    assertOrgContext(ctx)
     return { operations: [], destructive: false, status: 'ok' }
   }
 
   async apply(
-    _ctx: OrbitAuthContext,
+    ctx: OrbitAuthContext,
     _data: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
+    assertOrgContext(ctx)
     return { applied: [], status: 'ok' }
   }
 }

@@ -1,4 +1,5 @@
 import { expect } from 'vitest'
+import { OrbitApiError } from '@orbit-ai/sdk'
 import type { Stack } from '../harness/build-stack.js'
 import { prepareCliWorkspace } from '../harness/prepare-cli-workspace.js'
 import { runCli } from '../harness/run-cli.js'
@@ -51,10 +52,11 @@ async function runSdkCrud(stack: Stack, input: CrudMatrixInput): Promise<void> {
     await resource.delete(created.id)
 
     try {
-      const afterDelete = await resource.get(created.id)
-      expect(afterDelete, `${label}: record should not exist after delete`).toBeFalsy()
+      await resource.get(created.id)
+      expect.fail(`${label}: get after delete should have thrown`)
     } catch (err) {
-      expect(err).toBeTruthy()
+      expect(err).toBeInstanceOf(OrbitApiError)
+      expect((err as OrbitApiError).error.code).toBe('RESOURCE_NOT_FOUND')
     }
   }
 }
