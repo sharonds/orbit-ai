@@ -23,8 +23,8 @@ if (publishablePackages.length === 0) {
 for (const { dir, manifest } of publishablePackages) {
   console.log(`\n=== ${manifest.name}@${manifest.version} ===`)
   const result = spawnSync(
-    'npm',
-    ['publish', '--dry-run', '--access', 'public', '--tag', 'alpha', '--ignore-scripts'],
+    'pnpm',
+    ['publish', '--dry-run', '--access', 'public', '--tag', 'alpha', '--no-git-checks'],
     { cwd: dir, encoding: 'utf8', stdio: 'inherit' },
   )
 

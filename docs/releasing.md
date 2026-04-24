@@ -59,7 +59,7 @@ pnpm install --frozen-lockfile
 pnpm release:dry-run
 ```
 
-The dry run builds every package and runs `npm publish --dry-run` for each
+The dry run builds every package and runs `pnpm publish --dry-run` for each
 public `@orbit-ai/*` package. Use it to confirm the packages, versions, files,
 registry auth, and publish plan before merging the generated release PR. Running
 the dry run on `main` before the version PR merges checks the pre-versioned
