@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 // e2e/src/harness/ is 3 levels deep from repo root
-const CLI_ENTRY = path.resolve(__dirname, '../../../../packages/cli/dist/index.js')
+const CLI_ENTRY = path.resolve(__dirname, '../../../packages/cli/dist/index.js')
 
 export interface CliInvocation {
   readonly args: readonly string[]
