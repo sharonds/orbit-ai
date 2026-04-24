@@ -51,8 +51,8 @@ importers:
         specifier: workspace:*
         version: link:../packages/sdk
       drizzle-orm:
-        specifier: ^0.44.5
-        version: 0.44.7(@types/pg@8.20.0)(pg@8.20.0)
+        specifier: ^0.45.2
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
       execa:
         specifier: ^9.5.0
         version: 9.6.1
@@ -82,8 +82,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk
       drizzle-orm:
-        specifier: ^0.44.7
-        version: 0.44.7(@types/pg@8.20.0)(pg@8.20.0)
+        specifier: ^0.45.2
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
     devDependencies:
       tsx:
         specifier: ^4.19.2
@@ -122,8 +122,8 @@ importers:
         specifier: ^12.0.0
         version: 12.1.0
       drizzle-orm:
-        specifier: ^0.44.5
-        version: 0.44.7(@types/pg@8.20.0)(pg@8.20.0)
+        specifier: ^0.45.2
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
       ink:
         specifier: ^5.0.0
         version: 5.2.1(@types/react@18.3.28)(react@18.3.1)
@@ -153,11 +153,11 @@ importers:
   packages/core:
     dependencies:
       drizzle-orm:
-        specifier: ^0.44.5
-        version: 0.44.7(@types/pg@8.20.0)(pg@8.20.0)
+        specifier: ^0.45.2
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
       drizzle-zod:
         specifier: ^0.8.3
-        version: 0.8.3(drizzle-orm@0.44.7(@types/pg@8.20.0)(pg@8.20.0))(zod@4.3.6)
+        version: 0.8.3(drizzle-orm@0.45.2(@types/pg@8.20.0)(pg@8.20.0))(zod@4.3.6)
       pg:
         specifier: ^8.16.3
         version: 8.20.0
@@ -228,8 +228,8 @@ importers:
         specifier: ^12.0.0
         version: 12.1.0
       drizzle-orm:
-        specifier: ^0.44.5
-        version: 0.44.7(@types/pg@8.20.0)(pg@8.20.0)
+        specifier: ^0.45.2
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
       google-auth-library:
         specifier: ^9.0.0
         version: 9.15.1
@@ -979,8 +979,8 @@ packages:
     resolution: {integrity: sha512-IrPdXQsk2BbzvCBGBOTmmSH5SodmqZNt4ERAZDmW4CT+tL8VtvinqywuANaFu4bOMWki16nqf0e4oC0QIaDr/g==}
     engines: {node: '>=10'}
 
-  drizzle-orm@0.44.7:
-    resolution: {integrity: sha512-quIpnYznjU9lHshEOAYLoZ9s3jweleHlZIAWR/jX9gAWNg/JhQ1wj0KGRf7/Zm+obRrYd9GjPVJg790QY9N5AQ==}
+  drizzle-orm@0.45.2:
+    resolution: {integrity: sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q==}
     peerDependencies:
       '@aws-sdk/client-rds-data': '>=3'
       '@cloudflare/workers-types': '>=4'
@@ -2894,14 +2894,14 @@ snapshots:
 
   dotenv@8.6.0: {}
 
-  drizzle-orm@0.44.7(@types/pg@8.20.0)(pg@8.20.0):
+  drizzle-orm@0.45.2(@types/pg@8.20.0)(pg@8.20.0):
     optionalDependencies:
       '@types/pg': 8.20.0
       pg: 8.20.0
 
-  drizzle-zod@0.8.3(drizzle-orm@0.44.7(@types/pg@8.20.0)(pg@8.20.0))(zod@4.3.6):
+  drizzle-zod@0.8.3(drizzle-orm@0.45.2(@types/pg@8.20.0)(pg@8.20.0))(zod@4.3.6):
     dependencies:
-      drizzle-orm: 0.44.7(@types/pg@8.20.0)(pg@8.20.0)
+      drizzle-orm: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
       zod: 4.3.6
 
   dunder-proto@1.0.1:
