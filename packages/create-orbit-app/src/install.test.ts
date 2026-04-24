@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { detectPackageManager, installCommandFor, parseInstallCmd } from './install.js'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import * as os from 'node:os'
+import { detectPackageManager, installCommandFor, parseInstallCmd, runInstall } from './install.js'
 
 describe('detectPackageManager', () => {
   it('uses npm_config_user_agent when present', () => {
@@ -26,5 +29,35 @@ describe('installCommandFor', () => {
     expect(installCommandFor('pnpm')).toBe('pnpm install')
     expect(installCommandFor('yarn')).toBe('yarn install')
     expect(installCommandFor('bun')).toBe('bun install')
+  })
+})
+
+describe('runInstall (execa smoke)', () => {
+  // Write a tiny JS file and run it via `node <path>`. Avoids `-e "..."`
+  // quoting issues after parseInstallCmd whitespace-splits the command.
+  function writeExitScript(dir: string, code: number): string {
+    const file = path.join(dir, `exit-${code}.js`)
+    fs.writeFileSync(file, `process.exit(${code})\n`)
+    return file
+  }
+
+  it('resolves when the custom command exits zero', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'coa-install-ok-'))
+    try {
+      const script = writeExitScript(cwd, 0)
+      await expect(runInstall({ cwd, customCmd: `node ${script}` })).resolves.toBeDefined()
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects when the custom command exits nonzero', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'coa-install-fail-'))
+    try {
+      const script = writeExitScript(cwd, 1)
+      await expect(runInstall({ cwd, customCmd: `node ${script}` })).rejects.toThrow()
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
   })
 })
