@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Release pipeline
+
+- **Added**: Changesets-based alpha publish pipeline with fixed-version grouping for all public `@orbit-ai/*` packages.
+- **Added**: GitHub Actions release workflow that validates, opens the Changesets version PR, and publishes to npm with provenance.
+- **Added**: Maintainer release playbook covering changesets, dry-runs, emergency publish handling, npm/GitHub setup, and troubleshooting.
+- **Changed**: Publish manifests now ship README and LICENSE files, exclude compiled tests from tarballs, and declare public npm access consistently.
+- **Added**: CI guard preventing manual package version bumps outside the Changesets release branch.
+
 ### @orbit-ai/demo-seed — Initial release
 
 - **New package**: deterministic, multi-tenant demo dataset built on `@orbit-ai/core` services

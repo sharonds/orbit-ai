@@ -41,6 +41,9 @@
   },
   "files": [
     "dist",
+    "!dist/**/__tests__/**",
+    "!dist/**/*.test.*",
+    "!dist/**/fixtures/**",
     "README.md",
     "LICENSE"
   ],
