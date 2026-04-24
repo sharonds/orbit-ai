@@ -42,9 +42,10 @@ Releases are driven from `main`.
 3. Review that PR carefully. It should remove consumed changesets, update
    package versions, update changelogs, and refresh the lockfile.
 4. Merge the version PR.
-5. The release workflow runs again on `main`. Only a push whose head commit
-   message contains `chore(release): version packages` is allowed to publish
-   packages to npm with provenance enabled and create GitHub releases.
+5. The release workflow runs again on `main`. Only a same-repo
+   `github-actions[bot]` push whose head commit message contains
+   `chore(release): version packages` is allowed to publish packages to npm with
+   provenance enabled and create GitHub releases.
 
 Do not publish from feature branches. The supported path is changeset PRs into
 `main`, then the generated version PR, then publish after that PR is merged.
@@ -61,10 +62,12 @@ pnpm release:dry-run
 
 The dry run builds every package and runs `pnpm publish --dry-run` for each
 public `@orbit-ai/*` package with lifecycle scripts disabled, matching the
-credential-bearing publish step. Use it to confirm the packages, versions,
-files, registry auth, and publish plan before merging the generated release PR.
-Running the dry run on `main` before the version PR merges checks the
-pre-versioned state, not the release candidate.
+credential-bearing publish step. CI builds in the read-only validation job and
+the publish job downloads those built artifacts before exposing npm credentials.
+Use the dry run to confirm the packages, versions, files, registry auth, and
+publish plan before merging the generated release PR. Running the dry run on
+`main` before the version PR merges checks the pre-versioned state, not the
+release candidate.
 
 ## Emergency Publish
 
@@ -74,8 +77,9 @@ cannot produce the same provenance metadata as the workflow.
 
 If the workflow is broken but GitHub Actions still runs, use a temporary manual
 workflow with `id-token: write`, run `pnpm -r build` before exposing npm
-credentials, then run `NPM_CONFIG_IGNORE_SCRIPTS=true pnpm release`. Remove the
-temporary workflow after the release.
+credentials, install publish dependencies with scripts disabled, then run
+`NPM_CONFIG_IGNORE_SCRIPTS=true pnpm release`. Remove the temporary workflow
+after the release.
 
 Use a local publish only if maintainers explicitly accept a no-provenance
 emergency release.

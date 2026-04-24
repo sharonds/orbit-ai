@@ -16,11 +16,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Changesets/action v1 opens its version PR from a branch named
-      # `changeset-release/main` (verified against changesets/action source).
-      # If that branch name changes in a future major, update this guard.
+      # Changesets/action v1 opens its version PR from a same-repo branch named
+      # `changeset-release/main`. Keep the repo+actor checks so fork branches
+      # with the same name cannot bypass this guard.
       - name: Verify no manual package.json version bumps on non-release commits
-        if: ${{ github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main' }}
+        if: ${{ github.event_name == 'pull_request' && !(github.head_ref == 'changeset-release/main' && github.event.pull_request.head.repo.full_name == github.repository && github.actor == 'github-actions[bot]') }}
         run: |
           git fetch origin ${{ github.base_ref }}
           if git diff origin/${{ github.base_ref }}...HEAD -- 'packages/*/package.json' | grep -E '^\+\s*"version":' ; then
