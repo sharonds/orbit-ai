@@ -44,7 +44,7 @@
     "@orbit-ai/sdk": "workspace:*",
     "commander": "^12.0.0",
     "drizzle-orm": "^0.44.5",
-    "google-auth-library": "^9.0.0",
+    "google-auth-library": "^10.6.2",
     "googleapis": "^144.0.0",
     "stripe": "^22.1.0",
     "zod": "^4.1.11"
