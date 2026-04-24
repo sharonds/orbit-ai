@@ -64,6 +64,9 @@ The dry run builds every package and runs `pnpm publish --dry-run` for each
 public `@orbit-ai/*` package with lifecycle scripts disabled, matching the
 credential-bearing publish step. CI builds in the read-only validation job and
 the publish job downloads those built artifacts before exposing npm credentials.
+The publish job also runs `pnpm release:verify-artifacts` before publishing to
+confirm each publishable package has its declared `main`, `types`, `exports`,
+and CLI `bin` files in `packages/*/dist`.
 Use the dry run to confirm the packages, versions, files, registry auth, and
 publish plan before merging the generated release PR. Running the dry run on
 `main` before the version PR merges checks the pre-versioned state, not the
@@ -105,6 +108,57 @@ emergency release.
 Manual publish should leave the repository in the same state as the automated
 workflow: versions and changelogs committed on `main`, npm packages published,
 and GitHub releases present.
+
+## Bad Publish Recovery
+
+Use this path when a publish already reached npm but the release is incomplete,
+broken, or has incorrect metadata. Prefer fix-forward releases over unpublish
+whenever users may already have installed the version.
+
+1. Stop further release attempts and record the affected package names,
+   versions, workflow run, npm publish output, and GitHub release links.
+2. Check the npm state for every fixed-group package:
+
+   ```bash
+   for package in api cli core demo-seed integrations mcp sdk; do
+     npm view "@orbit-ai/${package}" dist-tags versions --json
+   done
+   ```
+
+3. If only some packages published, do not manually publish the missing
+   packages until maintainers decide whether the package group can remain at
+   that version. Partial fixed-group releases should usually be replaced by a
+   new alpha for every public package.
+4. Prefer a fix-forward alpha when the version is public, the package contents
+   are installable enough for users to have consumed, or more than a few minutes
+   have passed. Land the fix, add a changeset, let the generated release PR bump
+   all fixed-group packages, and publish the replacement through the normal
+   workflow.
+5. Use `npm unpublish` only for a just-published alpha that is clearly unusable
+   and still within npm policy. Confirm no users or downstream automation have
+   consumed it first. If unpublish is used, remove or reconcile the matching
+   GitHub release and document why.
+6. If the bad version stays on npm, deprecate every affected package version:
+
+   ```bash
+   npm deprecate "@orbit-ai/api@0.1.0-alpha.N" "Bad alpha release; use 0.1.0-alpha.N+1."
+   ```
+
+   Repeat for each affected fixed-group package.
+7. Verify the `alpha` dist-tag points at the intended replacement version:
+
+   ```bash
+   npm dist-tag ls @orbit-ai/core
+   npm dist-tag add @orbit-ai/core@0.1.0-alpha.N+1 alpha
+   ```
+
+   Repeat only when a tag is wrong. Do not move `latest` during alpha.
+8. Reconcile GitHub Releases and changelogs. If the bad release remains visible,
+   edit the GitHub release notes to point users at the replacement. If it was
+   unpublished, delete or clearly mark the GitHub release as withdrawn.
+9. Open a follow-up issue or incident note with the cause, affected versions,
+   replacement version, npm dist-tag state, deprecation or unpublish actions,
+   and prevention work.
 
 ## Troubleshooting
 
