@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import type { StorageAdapter } from '@orbit-ai/core'
+import { isOrbitId } from '@orbit-ai/core'
 import {
   AesGcmEncryptionProvider,
   TableBackedCredentialStore,
@@ -39,13 +40,19 @@ export async function resolveIntegrationsRuntime(
       { code: 'MISSING_REQUIRED_CONFIG', path: 'context.orgId' },
     )
   }
+  if (!isOrbitId(orgId, 'organization')) {
+    throw new CliValidationError(
+      `orgId must be a valid org ULID (org_...). Got: '${orgId}'`,
+      { code: 'INVALID_ORG_ID', path: 'context.orgId' },
+    )
+  }
   const userId =
     nonBlank(opts.flags.userId) ??
     nonBlank(process.env['ORBIT_USER_ID']) ??
     nonBlank(config.userId) ??
     'cli-user'
 
-  const adapter = resolveAdapter(opts.flags, config, opts.cwd)
+  const adapter = resolveAdapter(opts.flags, config, opts.cwd, process.env)
 
   if (opts.applySchema === true || opts.flags.applyIntegrationsSchema === true) {
     await applyIntegrationsSchemaExtension(adapter)

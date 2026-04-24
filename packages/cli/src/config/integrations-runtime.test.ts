@@ -90,6 +90,20 @@ describe('resolveIntegrationsRuntime', () => {
     expect(loaded?.scopes).toEqual(creds.scopes)
   })
 
+  it('rejects non-Crockford org_id format with INVALID_ORG_ID (runtime strict check)', async () => {
+    process.env['ORBIT_CREDENTIAL_KEY'] = TEST_KEY
+    const orbitDir = path.join(tmpRoot, '.orbit')
+    fs.mkdirSync(orbitDir, { recursive: true })
+    fs.writeFileSync(path.join(orbitDir, 'config.json'), JSON.stringify({ userId: 'someone' }), {
+      mode: 0o600,
+    })
+    // 'I' is not a valid Crockford Base32 character
+    const flags: GlobalFlags = { orgId: 'org_01HZIIIIIIIIIIIIIIIIIIIIII', adapter: 'sqlite', databaseUrl: ':memory:' }
+    await expect(
+      resolveIntegrationsRuntime({ flags, cwd: tmpRoot }),
+    ).rejects.toMatchObject({ details: { code: 'INVALID_ORG_ID', path: 'context.orgId' } })
+  })
+
   it('rejects whitespace-only --org-id with MISSING_REQUIRED_CONFIG', async () => {
     const orbitDir = path.join(tmpRoot, '.orbit')
     fs.mkdirSync(orbitDir, { recursive: true })
@@ -171,12 +185,12 @@ describe('resolveIntegrationsRuntime', () => {
     fs.writeFileSync(
       path.join(userConfigDir, 'config.json'),
       JSON.stringify({
-        orgId: 'org_01BASE00000000000000000000',
+        orgId: 'org_00BASE00000000000000000000',
         profile: 'config-profile',
         profiles: {
-          'config-profile': { orgId: 'org_01CONFIG000000000000000000', userId: 'user-config' },
-          'env-profile': { orgId: 'org_01ENV000000000000000000000', userId: 'user-env' },
-          'flag-profile': { orgId: 'org_01FLAG00000000000000000000', userId: 'user-flag' },
+          'config-profile': { orgId: 'org_00C0NFG0000000000000000000', userId: 'user-config' },
+          'env-profile': { orgId: 'org_00ENVR00000000000000000000', userId: 'user-env' },
+          'flag-profile': { orgId: 'org_00FRAG00000000000000000000', userId: 'user-flag' },
         },
       }),
       { mode: 0o600 },
@@ -186,14 +200,14 @@ describe('resolveIntegrationsRuntime', () => {
       flags: { adapter: 'sqlite', databaseUrl: ':memory:' },
       cwd: tmpRoot,
     })
-    expect(envCtx.organizationId).toBe('org_01ENV000000000000000000000')
+    expect(envCtx.organizationId).toBe('org_00ENVR00000000000000000000')
     expect(envCtx.userId).toBe('user-env')
 
     const flagCtx = await resolveIntegrationsRuntime({
       flags: { adapter: 'sqlite', databaseUrl: ':memory:', profile: 'flag-profile' },
       cwd: tmpRoot,
     })
-    expect(flagCtx.organizationId).toBe('org_01FLAG00000000000000000000')
+    expect(flagCtx.organizationId).toBe('org_00FRAG00000000000000000000')
     expect(flagCtx.userId).toBe('user-flag')
 
     delete process.env['ORBIT_PROFILE']
@@ -201,7 +215,7 @@ describe('resolveIntegrationsRuntime', () => {
       flags: { adapter: 'sqlite', databaseUrl: ':memory:' },
       cwd: tmpRoot,
     })
-    expect(configCtx.organizationId).toBe('org_01CONFIG000000000000000000')
+    expect(configCtx.organizationId).toBe('org_00C0NFG0000000000000000000')
     expect(configCtx.userId).toBe('user-config')
   })
 
