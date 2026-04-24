@@ -98,6 +98,19 @@ Manual publish should leave the repository in the same state as the automated
 workflow: versions and changelogs committed on `main`, npm packages published,
 and GitHub releases present.
 
+## Troubleshooting
+
+- Workflow fails with `E401 Unauthorized`: `NPM_TOKEN` is missing, expired, or
+  not an automation token.
+- Workflow fails with `E404 Not Found` on a workspace dependency: check fixed
+  group membership and publish order.
+- Version Packages PR never opens: no changesets exist on `main`, or the
+  workflow was skipped.
+- Provenance fails with OIDC exchange failed: check for missing
+  `id-token: write`, or a fork/public repository issue.
+- Published but `npm view` shows the old version: registry caching; wait, then
+  retry with the registry specified.
+
 ## Exiting Alpha for GA
 
 When maintainers are ready for the first stable release:
