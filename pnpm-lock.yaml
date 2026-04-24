@@ -27,6 +27,49 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@24.12.0)(tsx@4.21.0)
 
+  e2e:
+    dependencies:
+      '@orbit-ai/api':
+        specifier: workspace:*
+        version: link:../packages/api
+      '@orbit-ai/cli':
+        specifier: workspace:*
+        version: link:../packages/cli
+      '@orbit-ai/core':
+        specifier: workspace:*
+        version: link:../packages/core
+      '@orbit-ai/demo-seed':
+        specifier: workspace:*
+        version: link:../packages/demo-seed
+      '@orbit-ai/integrations':
+        specifier: workspace:*
+        version: link:../packages/integrations
+      '@orbit-ai/mcp':
+        specifier: workspace:*
+        version: link:../packages/mcp
+      '@orbit-ai/sdk':
+        specifier: workspace:*
+        version: link:../packages/sdk
+      drizzle-orm:
+        specifier: ^0.44.5
+        version: 0.44.7(@types/pg@8.20.0)(pg@8.20.0)
+      execa:
+        specifier: ^9.5.0
+        version: 9.6.1
+    devDependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@4.3.6)
+      '@types/node':
+        specifier: ^24.6.0
+        version: 24.12.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@24.12.0)(tsx@4.21.0)
+
   examples/nodejs-quickstart:
     dependencies:
       '@orbit-ai/api':

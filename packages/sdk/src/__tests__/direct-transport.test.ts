@@ -1,4 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
+import { OrbitClient } from '../client.js'
+import { OrbitApiError } from '../errors.js'
 import { DirectTransport, resolveServiceKey } from '../transport/direct-transport.js'
 import {
   SqliteStorageAdapter,
@@ -278,5 +280,137 @@ describe('DirectTransport wrapEnvelope links.next', () => {
     expect(result.meta.has_more).toBe(true)
     expect(result.meta.next_cursor).toBeTruthy()
     expect(result.links.next).toBeUndefined()
+  })
+})
+
+describe('DirectTransport workflow sub-routes', () => {
+  async function createWorkflowClient() {
+    const adapter = await createRealAdapter()
+    const transport = new DirectTransport({
+      adapter,
+      context: { orgId: ORG_ID },
+      version: '2026-04-01',
+    })
+    const client = new OrbitClient({
+      adapter,
+      context: { orgId: ORG_ID },
+      version: '2026-04-01',
+    })
+
+    return { adapter, transport, client }
+  }
+
+  it('moves deals and reads deal workflow aggregates in direct mode', async () => {
+    const { transport, client } = await createWorkflowClient()
+    const pipeline = (await transport.request({
+      method: 'POST',
+      path: '/v1/pipelines',
+      body: { name: 'Sales' },
+    })).data as { id: string }
+    const firstStage = (await transport.request({
+      method: 'POST',
+      path: '/v1/stages',
+      body: { name: 'Qualified', pipelineId: pipeline.id, stageOrder: 1 },
+    })).data as { id: string }
+    const secondStage = (await transport.request({
+      method: 'POST',
+      path: '/v1/stages',
+      body: { name: 'Proposal', pipelineId: pipeline.id, stageOrder: 2 },
+    })).data as { id: string }
+    const deal = (await transport.request({
+      method: 'POST',
+      path: '/v1/deals',
+      body: { name: 'Expansion', stageId: firstStage.id, value: 2500 },
+    })).data as { id: string }
+
+    const moved = await client.deals.move(deal.id, { stage_id: secondStage.id }) as { stage_id?: string }
+    const pipelineView = await client.deals.pipeline() as { pipelines: unknown[] }
+    const stats = await client.deals.stats() as { count: number }
+
+    expect(moved.stage_id).toBe(secondStage.id)
+    expect(pipelineView.pipelines.length).toBeGreaterThan(0)
+    expect(stats.count).toBeGreaterThanOrEqual(1)
+  })
+
+  it('logs activities, enrolls and unenrolls sequences, and attaches/detaches tags in direct mode', async () => {
+    const { transport, client } = await createWorkflowClient()
+    const contact = (await transport.request({
+      method: 'POST',
+      path: '/v1/contacts',
+      body: { name: 'Ada Lovelace', email: 'ada@example.com' },
+    })).data as { id: string }
+    const sequence = (await transport.request({
+      method: 'POST',
+      path: '/v1/sequences',
+      body: { name: 'Welcome' },
+    })).data as { id: string }
+    const tag = (await transport.request({
+      method: 'POST',
+      path: '/v1/tags',
+      body: { name: 'Priority' },
+    })).data as { id: string }
+
+    const activity = await client.activities.log({
+      type: 'call',
+      subject: 'Intro',
+      contact_id: contact.id,
+      occurred_at: '2026-04-24T10:00:00.000Z',
+    }) as { contact_id?: string }
+    const enrollment = await client.sequences.enroll(sequence.id, { contact_id: contact.id }) as { id: string; sequence_id?: string }
+    const unenrolled = await client.sequenceEnrollments.unenroll(enrollment.id) as { status?: string }
+    const attached = await client.tags.attach(tag.id, { entity_type: 'contacts', entity_id: contact.id }) as { tag_id?: string }
+    const detached = await client.tags.detach(tag.id, { entity_type: 'contacts', entity_id: contact.id }) as { detached?: boolean }
+
+    expect(activity.contact_id).toBe(contact.id)
+    expect(enrollment.sequence_id).toBe(sequence.id)
+    expect(unenrolled.status).toBe('exited')
+    expect(attached.tag_id).toBe(tag.id)
+    expect(detached.detached).toBe(true)
+  })
+
+  it('returns typed validation errors for missing schema field bodies in direct mode', async () => {
+    const { transport } = await createWorkflowClient()
+
+    await expect(
+      transport.request({
+        method: 'POST',
+        path: '/v1/objects/contacts/fields',
+      }),
+    ).rejects.toMatchObject<Partial<OrbitApiError>>({
+      error: expect.objectContaining({ code: 'VALIDATION_FAILED' }),
+      status: 400,
+    })
+  })
+
+  it('rejects empty schema migration bodies in direct mode', async () => {
+    const { transport } = await createWorkflowClient()
+
+    await expect(
+      transport.request({
+        method: 'POST',
+        path: '/v1/schema/migrations/apply',
+      }),
+    ).rejects.toMatchObject<Partial<OrbitApiError>>({
+      error: expect.objectContaining({ code: 'VALIDATION_FAILED' }),
+      status: 400,
+    })
+  })
+
+  it('dispatches schema field update/delete routes to typed not-implemented errors', async () => {
+    const { client } = await createWorkflowClient()
+
+    await expect(
+      client.schema.updateField('contacts', 'linkedin', { label: 'LinkedIn' }),
+    ).rejects.toMatchObject<Partial<OrbitApiError>>({
+      error: expect.objectContaining({ code: 'INTERNAL_ERROR' }),
+      status: 501,
+    })
+
+    await expect(
+      client.schema.deleteField('contacts', 'linkedin'),
+    ).rejects.toMatchObject<Partial<OrbitApiError>>({
+      error: expect.objectContaining({ code: 'INTERNAL_ERROR' }),
+      status: 501,
+    })
   })
 })

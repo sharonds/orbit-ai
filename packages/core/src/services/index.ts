@@ -858,6 +858,7 @@ export function createCoreServices(
     get tags() {
       tagsService ??= createTagService({
         tags: getTagsRepository(),
+        entityTags: getEntityTagsRepository(),
         tx,
       })
 
@@ -898,7 +899,7 @@ export function createCoreServices(
 
       return searchService
     },
-    schema: new OrbitSchemaEngine(),
+    schema: new OrbitSchemaEngine(() => getCustomFieldDefinitionsRepository()),
     get contactContext() {
       const optionalActivities = getOptionalActivitiesRepository()
       const optionalTasks = getOptionalTasksRepository()

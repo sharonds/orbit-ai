@@ -7,6 +7,14 @@ function notImplemented(c: any, operation: string) {
   return c.json(toError(c, 'INTERNAL_ERROR', `${operation} not implemented`), 501)
 }
 
+function camelizeBody(body: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(body)) {
+    result[key.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase())] = value
+  }
+  return result
+}
+
 export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
   // --- Deal workflows ---
 
@@ -51,10 +59,18 @@ export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
   // POST /v1/sequences/:id/enroll — enroll a contact in a sequence
   app.post('/v1/sequences/:id/enroll', requireScope('sequences:write'), async (c) => {
     const service = services.sequences as any
-    if (typeof service.enroll !== 'function') {
-      return notImplemented(c, 'Sequence enrollment')
-    }
     const body = await c.req.json()
+    if (typeof service.enroll !== 'function') {
+      const fallback = services.sequenceEnrollments as any
+      if (typeof fallback.create !== 'function') {
+        return notImplemented(c, 'Sequence enrollment')
+      }
+      const result = await fallback.create(c.get('orbit'), {
+        ...camelizeBody(body),
+        sequenceId: c.req.param('id'),
+      })
+      return c.json(toEnvelope(c, sanitizePublicRead('sequence_enrollments', result)), 201)
+    }
     const result = await service.enroll(c.get('orbit'), c.req.param('id'), body)
     return c.json(toEnvelope(c, sanitizePublicRead('sequence_enrollments', result)), 201)
   })
@@ -63,7 +79,15 @@ export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
   app.post('/v1/sequence_enrollments/:id/unenroll', requireScope('sequence_enrollments:write'), async (c) => {
     const service = services.sequenceEnrollments as any
     if (typeof service.unenroll !== 'function') {
-      return notImplemented(c, 'Sequence unenrollment')
+      if (typeof service.update !== 'function') {
+        return notImplemented(c, 'Sequence unenrollment')
+      }
+      const result = await service.update(c.get('orbit'), c.req.param('id'), {
+        status: 'exited',
+        exitedAt: new Date(),
+        exitReason: 'unenrolled',
+      })
+      return c.json(toEnvelope(c, sanitizePublicRead('sequence_enrollments', result)))
     }
     const result = await service.unenroll(c.get('orbit'), c.req.param('id'))
     return c.json(toEnvelope(c, sanitizePublicRead('sequence_enrollments', result)))

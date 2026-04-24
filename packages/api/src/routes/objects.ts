@@ -5,15 +5,11 @@ import { requireScope } from '../scopes.js'
 import { toEnvelope, toError, sanitizeSchemaRead } from '../responses.js'
 
 // Defensive schema for migration input.
-// The schema engine is not yet fully implemented, so we validate that the
-// body is a non-empty object and let the service do deeper semantic validation.
 // The `passthrough()` call allows any additional fields the service understands.
-const MigrationInputSchema = z
-  .object({})
-  .passthrough()
-  .refine((obj) => Object.keys(obj).length > 0, {
-    message: 'Migration body must not be empty',
-  })
+const MigrationInputSchema = z.object({}).passthrough().refine(
+  (value) => Object.keys(value).length > 0,
+  { message: 'Migration input must include at least one field' },
+)
 
 function notImplemented(c: any, operation: string) {
   return c.json(toError(c, 'INTERNAL_ERROR', `${operation} not implemented`), 501)

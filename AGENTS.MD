@@ -42,7 +42,7 @@ Pass `ORBIT_API_KEY` as an environment variable when starting the server. The se
 
 ```bash
 export ORBIT_API_KEY=orb_...
-export ORBIT_API_BASE_URL=https://api.yourapp.com
+export ORBIT_BASE_URL=https://api.yourapp.com
 ```
 
 Or set `apiKey` and `baseUrl` in `~/.config/orbit/config.json`.
@@ -55,26 +55,26 @@ No API key. Pass `adapter` and `context: { orgId }` directly. Only for trusted s
 
 ## Entity Inventory
 
-All entities share the same ID prefix convention (`cnt_`, `cmp_`, etc.) and support CRUD + cursor-based list pagination.
+All entities share the same ID prefix convention (`contact_`, `company_`, etc.) and support CRUD + cursor-based list pagination.
 
 | Entity | ID prefix | What it is |
 |---|---|---|
-| `contacts` | `cnt_` | People — leads, customers, prospects |
-| `companies` | `cmp_` | Organizations that contacts belong to |
+| `contacts` | `contact_` | People — leads, customers, prospects |
+| `companies` | `company_` | Organizations that contacts belong to |
 | `deals` | `deal_` | Sales opportunities moving through a pipeline |
-| `pipelines` | `pip_` | Named pipelines containing ordered stages |
-| `stages` | `stg_` | Stages within a pipeline (ordered by `position`) |
-| `users` | `usr_` | Team members with access to the org |
-| `activities` | `act_` | Logged interactions: calls, emails, meetings, notes |
-| `tasks` | `tsk_` | To-do items assigned to users |
-| `notes` | `nte_` | Free-text notes attached to any record |
-| `products` | `prd_` | Product or service catalog items |
-| `payments` | `pay_` | Payment records (often synced from Stripe) |
-| `contracts` | `ctr_` | Contract records |
-| `sequences` | `seq_` | Automated contact engagement sequences |
+| `pipelines` | `pipeline_` | Named pipelines containing ordered stages |
+| `stages` | `stage_` | Stages within a pipeline (ordered by `position`) |
+| `users` | `user_` | Team members with access to the org |
+| `activities` | `activity_` | Logged interactions: calls, emails, meetings, notes |
+| `tasks` | `task_` | To-do items assigned to users |
+| `notes` | `note_` | Free-text notes attached to any record |
+| `products` | `product_` | Product or service catalog items |
+| `payments` | `payment_` | Payment records (often synced from Stripe) |
+| `contracts` | `contract_` | Contract records |
+| `sequences` | `sequence_` | Automated contact engagement sequences |
 | `tags` | `tag_` | Labels attached to any record |
-| `webhooks` | `whk_` | Outbound webhook subscriptions |
-| `imports` | `imp_` | Bulk import jobs |
+| `webhooks` | `webhook_` | Outbound webhook subscriptions |
+| `imports` | `import_` | Bulk import jobs |
 
 ---
 
@@ -89,7 +89,7 @@ const contact = await client.contacts.create({
 })
 
 await client.activities.create({
-  contactId: contact.id,
+  contact_id: contact.id,
   type: 'email',
   subject: 'Introduction',
   body: 'Sent intro email.',
@@ -104,23 +104,23 @@ const pipelines = await client.pipelines.list()
 const stage = pipelines.data[0].stages.find(s => s.name === 'Proposal Sent')
 
 // 2. Update the deal
-await client.deals.update(dealId, { stageId: stage.id })
+await client.deals.update(dealId, { stage_id: stage.id })
 ```
 
 ### Move a deal via MCP
 
 ```
 Tool: move_deal_stage
-Args: { "deal_id": "deal_01JXXXX", "stage_id": "stg_01JXXXX" }
+Args: { "deal_id": "deal_01JXXXX", "stage_id": "stage_01JXXXX" }
 ```
 
 ### Add a custom field to contacts (SDK)
 
 ```typescript
-await client.schema.createCustomField('contacts', {
+await client.schema.addField('contacts', {
   name: 'linkedin_url',
   label: 'LinkedIn URL',
-  fieldType: 'text',
+  type: 'text',
 })
 ```
 
@@ -162,7 +162,7 @@ SDK wraps these as `OrbitApiError`:
 import { OrbitApiError } from '@orbit-ai/sdk'
 
 try {
-  await client.contacts.get('cnt_bad')
+  await client.contacts.get('contact_bad')
 } catch (err) {
   if (err instanceof OrbitApiError) {
     console.error(err.code)       // 'RESOURCE_NOT_FOUND'
@@ -198,5 +198,7 @@ packages/sdk/README.md           — client usage, DirectTransport, pagination
 packages/cli/README.md           — command reference, global flags, config file
 packages/mcp/README.md           — tool reference, server setup, transports
 packages/integrations/README.md  — Gmail, Calendar, Stripe setup guides
+packages/demo-seed/README.md     — deterministic demo data package
+e2e/README.md                    — launch-gate journey tests
 examples/nodejs-quickstart/      — runnable end-to-end example
 ```

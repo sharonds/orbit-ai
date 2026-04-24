@@ -24,7 +24,7 @@ import { OrbitClient } from '@orbit-ai/sdk'
 
 const client = new OrbitClient({
   apiKey: process.env.ORBIT_API_KEY!,
-  baseUrl: process.env.ORBIT_API_BASE_URL!, // e.g. https://api.yourapp.com
+  baseUrl: process.env.ORBIT_BASE_URL!, // e.g. https://api.yourapp.com
 })
 ```
 
@@ -142,13 +142,13 @@ const client = new OrbitClient({
 const contact = await client.contacts.create({ name: 'Test User' })
 ```
 
-## What's NOT in this release
+## What's NOT in the SDK package
 
-- CLI (`orbit` command) — planned as `@orbit-ai/cli`
-- MCP server tools — planned as `@orbit-ai/mcp`
-- Gmail / Google Calendar / Stripe integrations — planned as `@orbit-ai/integrations`
-- Real-time subscriptions / webhooks push — post-v1
-- Batch mutations — the API types exist but the implementation is not complete
+- CLI commands live in `@orbit-ai/cli`.
+- MCP server tools live in `@orbit-ai/mcp`.
+- Gmail, Google Calendar, and Stripe connectors live in `@orbit-ai/integrations`.
+- Real-time subscriptions / webhooks push — post-v1.
+- Batch mutations — the API types exist but the implementation is not complete.
 
 The full list of known alpha gaps is in
 [`docs/review/2026-04-08-post-stack-audit.md`](../../docs/review/2026-04-08-post-stack-audit.md).
