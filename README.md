@@ -3,7 +3,7 @@
 > **CRM infrastructure for AI agents and developers.** Packages, not a product.
 > (Think: "Resend for CRM" — type-safe primitives, not a UI.)
 
-**Status**: `0.1.0-alpha`. All six packages are implemented and tested. Not yet published to npm — install from source (see [Development](#development)).
+**Status**: `0.1.0-alpha`. All alpha packages are implemented and tested. Not yet published to npm — install from source (see [Development](#development)).
 
 ## Packages
 
@@ -15,6 +15,8 @@
 | [`@orbit-ai/cli`](packages/cli) | ✅ alpha | Terminal interface — `orbit init`, CRUD commands, schema tooling, `--json` mode, direct and API mode |
 | [`@orbit-ai/mcp`](packages/mcp) | ✅ alpha | Model Context Protocol server with 23 core tools, stdio and HTTP transports |
 | [`@orbit-ai/integrations`](packages/integrations) | ✅ alpha | Gmail, Google Calendar, and Stripe connectors with OAuth lifecycle and webhook support |
+| [`@orbit-ai/demo-seed`](packages/demo-seed) | ✅ alpha | Deterministic Acme Events demo dataset for examples, tests, and scaffolds |
+| [`@orbit-ai/create-orbit-app`](packages/create-orbit-app) | ✅ alpha | Starter scaffolder — `npx @orbit-ai/create-orbit-app@alpha my-app` |
 
 ## Quick look
 

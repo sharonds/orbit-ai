@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { parseOptions, type Options } from './options.js'
 import { runInteractivePrompts } from './prompts.js'
 import { copyTemplate } from './copy.js'
-import { detectPackageManager, installCommandFor, runInstall, type PackageManager } from './install.js'
+import { detectPackageManager, inferPackageManagerFromCommand, installCommandFor, runInstall, type PackageManager } from './install.js'
 import { getOrbitVersion } from './version.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -100,7 +100,9 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
     process.exit(1)
   }
 
-  let packageManager = detectPackageManager(process.env)
+  let packageManager = resolved.installCmd
+    ? inferPackageManagerFromCommand(resolved.installCmd) ?? detectPackageManager(process.env)
+    : detectPackageManager(process.env)
   if (resolved.install) {
     console.log('\nInstalling dependencies…')
     try {

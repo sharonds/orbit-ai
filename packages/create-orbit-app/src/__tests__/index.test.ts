@@ -26,6 +26,7 @@ function stubExit(): ExitSpy {
 describe('run() error paths', () => {
   const originalCwd = process.cwd()
   const originalIsTTY = process.stdin.isTTY
+  const originalUserAgent = process.env.npm_config_user_agent
   let workDir: string
 
   beforeEach(() => {
@@ -36,6 +37,11 @@ describe('run() error paths', () => {
   afterEach(() => {
     process.chdir(originalCwd)
     process.stdin.isTTY = originalIsTTY
+    if (originalUserAgent === undefined) {
+      delete process.env.npm_config_user_agent
+    } else {
+      process.env.npm_config_user_agent = originalUserAgent
+    }
     fs.rmSync(workDir, { recursive: true, force: true })
     vi.restoreAllMocks()
   })
@@ -134,5 +140,21 @@ describe('run() error paths', () => {
     } finally {
       fs.rmSync(scriptDir, { recursive: true, force: true })
     }
+  })
+
+  it('uses a recognized custom installer for failure recovery hints', async () => {
+    process.env.npm_config_user_agent = 'pnpm/9.12.3 npm/? node/v22.0.0'
+    const exitSpy = stubExit()
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await expect(
+      run(['my-app', '--yes', '--install-cmd', 'npm definitely-not-a-real-npm-subcommand']),
+    ).rejects.toThrow(/exit:1/)
+    expect(exitSpy).toHaveBeenCalledWith(1)
+
+    const messages = errSpy.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(messages).toMatch(/cd my-app && npm install/)
+    expect(messages).not.toMatch(/pnpm install/)
   })
 })

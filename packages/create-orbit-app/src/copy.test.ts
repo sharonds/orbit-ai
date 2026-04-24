@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as os from 'node:os'
-import { copyTemplate } from './copy.js'
+import { copyTemplate, prepareTargetDirectory } from './copy.js'
 
 describe('copyTemplate', () => {
   it('copies files recursively and replaces placeholders', async () => {
@@ -83,6 +83,18 @@ describe('copyTemplate', () => {
       fs.rmSync(src, { recursive: true, force: true })
       fs.rmSync(realTarget, { recursive: true, force: true })
       fs.rmSync(linkTarget, { force: true })
+    }
+  })
+
+  it('creates then validates a missing target directory before copying', async () => {
+    const dst = fs.mkdtempSync(path.join(os.tmpdir(), 'dst-'))
+    const target = path.join(dst, 'out')
+    try {
+      await prepareTargetDirectory(target)
+      expect(fs.lstatSync(target).isDirectory()).toBe(true)
+      expect(fs.lstatSync(target).isSymbolicLink()).toBe(false)
+    } finally {
+      fs.rmSync(dst, { recursive: true, force: true })
     }
   })
 })

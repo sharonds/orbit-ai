@@ -21,7 +21,11 @@ const RENAME_MAP: Record<string, string> = {
 const BINARY_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.pdf'])
 
 export async function copyTemplate(input: CopyTemplateInput): Promise<void> {
-  const target = input.targetDir
+  await prepareTargetDirectory(input.targetDir)
+  await walkAndCopy(input.sourceDir, input.targetDir, input.replacements)
+}
+
+export async function prepareTargetDirectory(target: string): Promise<void> {
   try {
     const stats = await fs.lstat(target)
     if (stats.isSymbolicLink()) {
@@ -38,6 +42,7 @@ export async function copyTemplate(input: CopyTemplateInput): Promise<void> {
     const e = err as NodeJS.ErrnoException
     if (e.code === 'ENOENT') {
       await fs.mkdir(target, { recursive: true })
+      await assertSafeDirectory(target)
     } else if (
       err instanceof Error &&
       (err.message.includes('is not empty') ||
@@ -53,8 +58,16 @@ export async function copyTemplate(input: CopyTemplateInput): Promise<void> {
       )
     }
   }
+}
 
-  await walkAndCopy(input.sourceDir, target, input.replacements)
+async function assertSafeDirectory(target: string): Promise<void> {
+  const stats = await fs.lstat(target)
+  if (stats.isSymbolicLink()) {
+    throw new Error(`Target path ${target} is a symbolic link — refusing to scaffold outside the requested directory.`)
+  }
+  if (!stats.isDirectory()) {
+    throw new Error(`Target path ${target} exists and is not a directory.`)
+  }
 }
 
 async function walkAndCopy(
