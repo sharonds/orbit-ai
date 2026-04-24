@@ -111,9 +111,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: validate
     timeout-minutes: 20
-    if: "${{ contains(github.event.head_commit.message, 'chore(release): version packages') && github.event.head_commit.author.username == 'github-actions[bot]' }}"
+    if: "${{ contains(github.event.head_commit.message, 'chore(release): version packages') }}"
     permissions:
       contents: write
+      pull-requests: read
       id-token: write
 
     steps:
@@ -123,6 +124,21 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Verify generated release pull request provenance
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          count="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+              --jq "map(select(.head.ref == \"changeset-release/main\" and .head.repo.full_name == \"${GITHUB_REPOSITORY}\" and .user.login == \"github-actions[bot]\" and .merged_at != null)) | length"
+          )"
+          if [ "$count" != "1" ]; then
+            echo "ERROR: refusing to publish because this commit is not from the generated Changesets release PR."
+            exit 1
+          fi
 
       - name: Setup pnpm
         # Pinned from pnpm/action-setup v4.4.0.

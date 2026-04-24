@@ -42,10 +42,10 @@ Releases are driven from `main`.
 3. Review that PR carefully. It should remove consumed changesets, update
    package versions, update changelogs, and refresh the lockfile.
 4. Merge the version PR.
-5. The release workflow runs again on `main`. Only a same-repo
-   `github-actions[bot]` push whose head commit message contains
-   `chore(release): version packages` is allowed to publish packages to npm with
-   provenance enabled and create GitHub releases.
+5. The release workflow runs again on `main`. Only a commit associated with the
+   merged same-repo `changeset-release/main` PR opened by `github-actions[bot]`
+   is allowed to publish packages to npm with provenance enabled and create
+   GitHub releases.
 
 Do not publish from feature branches. The supported path is changeset PRs into
 `main`, then the generated version PR, then publish after that PR is merged.
