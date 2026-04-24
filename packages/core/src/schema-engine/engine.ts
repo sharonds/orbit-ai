@@ -106,7 +106,18 @@ export class OrbitSchemaEngine {
     return this.repository.create(ctx, record)
   }
 
-  async preview(): Promise<never> {
-    throw new Error('Schema engine migration preview is not implemented yet')
+  async preview(
+    _ctx: OrbitAuthContext,
+    _data: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    // In alpha, addField applies immediately — no pending migrations to preview.
+    return { operations: [], destructive: false, status: 'ok' }
+  }
+
+  async apply(
+    _ctx: OrbitAuthContext,
+    _data: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    return { applied: [], status: 'ok' }
   }
 }

@@ -144,6 +144,31 @@ export class DirectTransport implements OrbitTransport {
       throw new Error(`Unhandled schema dispatch: ${method} ${path}`)
     }
 
+    // Schema migration routes: /v1/schema/migrations/preview|apply|:id/rollback
+    if (entity === 'schema' && action === 'migrations') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const schema = (this.services as any).schema as {
+        preview?: (ctx: OrbitAuthContext, data: Record<string, unknown>) => Promise<unknown>
+        apply?: (ctx: OrbitAuthContext, data: Record<string, unknown>) => Promise<unknown>
+        rollback?: (ctx: OrbitAuthContext, id: string) => Promise<unknown>
+      }
+      const operation = segments[startIdx + 2] // 'preview', 'apply', or migration id
+      const subOp = segments[startIdx + 3] // 'rollback' when id is present
+      if (method === 'POST' && operation === 'preview') {
+        if (typeof schema.preview !== 'function') throw new Error('Schema engine: preview not implemented')
+        return schema.preview(this.ctx, (body ?? {}) as Record<string, unknown>)
+      }
+      if (method === 'POST' && operation === 'apply') {
+        if (typeof schema.apply !== 'function') throw new Error('Schema engine: apply not implemented')
+        return schema.apply(this.ctx, (body ?? {}) as Record<string, unknown>)
+      }
+      if (method === 'POST' && subOp === 'rollback' && operation) {
+        if (typeof schema.rollback !== 'function') throw new Error('Schema engine: rollback not implemented')
+        return schema.rollback(this.ctx, operation)
+      }
+      throw new Error(`Unhandled schema migration dispatch: ${method} ${path}`)
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const serviceKey = resolvePublicEntityServiceKey(entity)
     const service = (this.services as any)[serviceKey] as
