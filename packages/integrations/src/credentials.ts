@@ -1,3 +1,8 @@
+import { randomUUID } from 'node:crypto'
+
+import { sql } from 'drizzle-orm'
+import type { StorageAdapter } from '@orbit-ai/core'
+
 import type { EncryptionProvider } from './encryption.js'
 
 export interface StoredCredentials {
@@ -37,30 +42,123 @@ export class InMemoryCredentialStore implements CredentialStore {
   }
 }
 
+interface IntegrationConnectionRow extends Record<string, unknown> {
+  credentials_encrypted: string | null
+  refresh_token_encrypted: string | null
+  access_token_expires_at: string | null
+  scopes: string | null
+  provider_account_id: string | null
+}
+
+interface DecryptedCredentialsPayload {
+  accessToken: string
+  providerAccountId?: string
+}
+
 /**
  * Production credential store backed by the integration_connections table.
- * Encrypts refreshToken and credentials before writing; decrypts on read.
- * Full implementation wired in Slice 7+ when the db adapter interface is available.
+ *
+ * Encrypts access-token payload (JSON) and refresh token via the supplied
+ * EncryptionProvider. The refresh token lives in its own column so rotations
+ * can be audited independently of the rest of the credential blob.
  */
 export class TableBackedCredentialStore implements CredentialStore {
   constructor(
-    private readonly db: unknown,   // core storage adapter — typed as unknown to avoid circular deps
+    private readonly db: StorageAdapter,
     private readonly encryption: EncryptionProvider,
   ) {}
 
-  async getCredentials(_orgId: string, _provider: string, _userId?: string): Promise<StoredCredentials | null> {
-    // Implementation: query integration_connections for org+provider+userId
-    // Return null if not found; decrypt on read
-    // Note: full implementation requires db query interface — this is a stub
-    // that will be wired up when the adapter is integrated in Slice 7+
-    throw new Error('TableBackedCredentialStore requires database integration — use InMemoryCredentialStore in tests')
+  async getCredentials(orgId: string, provider: string, userId?: string): Promise<StoredCredentials | null> {
+    return this.db.withTenantContext({ orgId, ...(userId === undefined ? {} : { userId }) }, async (db) => {
+      const rows = userId === undefined
+        ? await db.query<IntegrationConnectionRow>(sql`
+            SELECT credentials_encrypted, refresh_token_encrypted, access_token_expires_at, scopes, provider_account_id
+            FROM integration_connections
+            WHERE organization_id = ${orgId} AND provider = ${provider} AND user_id IS NULL
+            LIMIT 1
+          `)
+        : await db.query<IntegrationConnectionRow>(sql`
+            SELECT credentials_encrypted, refresh_token_encrypted, access_token_expires_at, scopes, provider_account_id
+            FROM integration_connections
+            WHERE organization_id = ${orgId} AND provider = ${provider} AND user_id = ${userId}
+            LIMIT 1
+          `)
+
+      const row = rows[0]
+      if (!row) return null
+      if (!row.credentials_encrypted || !row.refresh_token_encrypted) return null
+
+      const credsJson = await this.encryption.decrypt(row.credentials_encrypted)
+      const refreshToken = await this.encryption.decrypt(row.refresh_token_encrypted)
+      const payload = JSON.parse(credsJson) as DecryptedCredentialsPayload
+
+      const result: StoredCredentials = {
+        accessToken: payload.accessToken,
+        refreshToken,
+      }
+      if (payload.providerAccountId) result.providerAccountId = payload.providerAccountId
+      if (row.provider_account_id && !result.providerAccountId) {
+        result.providerAccountId = row.provider_account_id
+      }
+      if (row.scopes) {
+        result.scopes = row.scopes.split(',').map((s) => s.trim()).filter((s) => s.length > 0)
+      }
+      if (row.access_token_expires_at) {
+        const ms = Date.parse(row.access_token_expires_at)
+        if (!Number.isNaN(ms)) result.expiresAt = ms
+      }
+      return result
+    })
   }
 
-  async saveCredentials(_orgId: string, _provider: string, _userId: string, _credentials: StoredCredentials): Promise<void> {
-    throw new Error('TableBackedCredentialStore requires database integration — use InMemoryCredentialStore in tests')
+  async saveCredentials(orgId: string, provider: string, userId: string, credentials: StoredCredentials): Promise<void> {
+    await this.db.withTenantContext({ orgId, userId }, async (db) => {
+      const payload: DecryptedCredentialsPayload = { accessToken: credentials.accessToken }
+      if (credentials.providerAccountId) payload.providerAccountId = credentials.providerAccountId
+
+      const credentialsEncrypted = await this.encryption.encrypt(JSON.stringify(payload))
+      const refreshEncrypted = await this.encryption.encrypt(credentials.refreshToken)
+      const expiresAt = credentials.expiresAt ? new Date(credentials.expiresAt).toISOString() : null
+      const scopesCsv = credentials.scopes && credentials.scopes.length > 0 ? credentials.scopes.join(',') : null
+      const providerAccountId = credentials.providerAccountId ?? null
+      const id = randomUUID()
+      const now = new Date().toISOString()
+
+      await db.execute(sql`
+        INSERT INTO integration_connections (
+          id, organization_id, provider, connection_type, user_id, status,
+          credentials_encrypted, refresh_token_encrypted, access_token_expires_at,
+          provider_account_id, scopes, failure_count, created_at, updated_at
+        ) VALUES (
+          ${id}, ${orgId}, ${provider}, 'oauth2', ${userId}, 'active',
+          ${credentialsEncrypted}, ${refreshEncrypted}, ${expiresAt},
+          ${providerAccountId}, ${scopesCsv}, 0, ${now}, ${now}
+        )
+        ON CONFLICT(organization_id, provider, user_id) DO UPDATE SET
+          credentials_encrypted = excluded.credentials_encrypted,
+          refresh_token_encrypted = excluded.refresh_token_encrypted,
+          access_token_expires_at = excluded.access_token_expires_at,
+          provider_account_id = excluded.provider_account_id,
+          scopes = excluded.scopes,
+          status = 'active',
+          updated_at = excluded.updated_at
+      `)
+    })
   }
 
-  async deleteCredentials(_orgId: string, _provider: string, _userId?: string): Promise<void> {
-    throw new Error('TableBackedCredentialStore requires database integration — use InMemoryCredentialStore in tests')
+  async deleteCredentials(orgId: string, provider: string, userId?: string): Promise<void> {
+    await this.db.withTenantContext({ orgId, ...(userId === undefined ? {} : { userId }) }, async (db) => {
+      if (userId === undefined) {
+        await db.execute(sql`
+          DELETE FROM integration_connections
+          WHERE organization_id = ${orgId} AND provider = ${provider} AND user_id IS NULL
+        `)
+      } else {
+        await db.execute(sql`
+          DELETE FROM integration_connections
+          WHERE organization_id = ${orgId} AND provider = ${provider} AND user_id = ${userId}
+        `)
+      }
+    })
   }
 }

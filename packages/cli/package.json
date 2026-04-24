@@ -19,9 +19,11 @@
   },
   "dependencies": {
     "@orbit-ai/core": "workspace:*",
+    "@orbit-ai/integrations": "workspace:*",
     "@orbit-ai/sdk": "workspace:*",
     "cli-table3": "^0.6.0",
     "commander": "^12.0.0",
+    "drizzle-orm": "^0.44.5",
     "ink": "^5.0.0",
     "pg": "^8.11.0",
     "react": "^18.0.0"

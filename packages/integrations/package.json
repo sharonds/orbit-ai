@@ -9,6 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./gmail": {
+      "types": "./dist/gmail/index.d.ts",
+      "import": "./dist/gmail/index.js"
+    },
+    "./google-calendar": {
+      "types": "./dist/google-calendar/index.d.ts",
+      "import": "./dist/google-calendar/index.js"
     }
   },
   "scripts": {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { AesGcmEncryptionProvider, NoopEncryptionProvider } from './encryption.js'
+import { AesGcmEncryptionProvider, NoopEncryptionProvider, OrbitEncryptionConfigError } from './encryption.js'
 
 const VALID_KEY = 'a'.repeat(64) // 64 hex chars = 32 bytes
 
@@ -32,16 +32,36 @@ describe('AesGcmEncryptionProvider', () => {
     expect(parts[2]).toHaveLength(32)
   })
 
-  it('throws on missing key (no arg, no env var)', () => {
+  it('throws OrbitEncryptionConfigError with MISSING_CREDENTIAL_KEY on missing key', () => {
     const originalEnv = process.env['ORBIT_CREDENTIAL_KEY']
     delete process.env['ORBIT_CREDENTIAL_KEY']
     try {
-      expect(() => new AesGcmEncryptionProvider()).toThrow('ORBIT_CREDENTIAL_KEY')
+      let thrown: unknown
+      try {
+        new AesGcmEncryptionProvider()
+      } catch (err) {
+        thrown = err
+      }
+      expect(thrown).toBeDefined()
+      expect((thrown as { name?: unknown }).name).toBe('OrbitEncryptionConfigError')
+      expect((thrown as OrbitEncryptionConfigError).code).toBe('MISSING_CREDENTIAL_KEY')
     } finally {
       if (originalEnv !== undefined) {
         process.env['ORBIT_CREDENTIAL_KEY'] = originalEnv
       }
     }
+  })
+
+  it('throws OrbitEncryptionConfigError with INVALID_CREDENTIAL_KEY on malformed key', () => {
+    let thrown: unknown
+    try {
+      new AesGcmEncryptionProvider('abc123')
+    } catch (err) {
+      thrown = err
+    }
+    expect(thrown).toBeDefined()
+    expect((thrown as { name?: unknown }).name).toBe('OrbitEncryptionConfigError')
+    expect((thrown as OrbitEncryptionConfigError).code).toBe('INVALID_CREDENTIAL_KEY')
   })
 
   it('throws on key that is too short', () => {

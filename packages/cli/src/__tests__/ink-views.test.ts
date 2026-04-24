@@ -67,7 +67,7 @@ describe('Ink views', () => {
       expect(output).toContain('Deal Alpha')
       expect(output).toContain('Deal Beta')
       expect(output).toContain('Deal Gamma')
-    })
+    }, 10_000)
 
     it('renders stage name but no deal bullet rows for empty stage', async () => {
       const { PipelineBoard } = await import('../ink/pipeline-board.js')

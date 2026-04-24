@@ -60,6 +60,9 @@ importers:
       '@orbit-ai/core':
         specifier: workspace:*
         version: link:../core
+      '@orbit-ai/integrations':
+        specifier: workspace:*
+        version: link:../integrations
       '@orbit-ai/sdk':
         specifier: workspace:*
         version: link:../sdk
@@ -69,6 +72,9 @@ importers:
       commander:
         specifier: ^12.0.0
         version: 12.1.0
+      drizzle-orm:
+        specifier: ^0.44.5
+        version: 0.44.7(@types/pg@8.20.0)(pg@8.20.0)
       ink:
         specifier: ^5.0.0
         version: 5.2.1(@types/react@18.3.28)(react@18.3.1)

@@ -32,9 +32,28 @@ export interface ResolveContextOptions {
   overrideHome?: string
 }
 
-function resolveAdapter(flags: GlobalFlags, config: OrbitConfig, cwd: string): StorageAdapter {
-  const adapterName = flags.adapter ?? config.adapter ?? 'sqlite'
-  const dbUrl = flags.databaseUrl ?? config.databaseUrl ?? ''
+const VALID_ADAPTER_NAMES = ['sqlite', 'postgres', 'supabase', 'neon'] as const
+type ValidAdapterName = (typeof VALID_ADAPTER_NAMES)[number]
+
+function isValidAdapterName(value: string): value is ValidAdapterName {
+  return (VALID_ADAPTER_NAMES as readonly string[]).includes(value)
+}
+
+export function resolveAdapter(
+  flags: GlobalFlags,
+  config: OrbitConfig,
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): StorageAdapter {
+  const envAdapter = env['ORBIT_ADAPTER']
+  if (envAdapter !== undefined && !isValidAdapterName(envAdapter)) {
+    throw new CliValidationError(
+      `ORBIT_ADAPTER must be one of: ${VALID_ADAPTER_NAMES.join(', ')}. Got: '${envAdapter}'`,
+      { code: 'INVALID_ADAPTER_NAME', value: envAdapter },
+    )
+  }
+  const adapterName = flags.adapter ?? envAdapter ?? config.adapter ?? 'sqlite'
+  const dbUrl = flags.databaseUrl ?? env['DATABASE_URL'] ?? config.databaseUrl ?? ''
 
   if (adapterName === 'sqlite') {
     // Validate URL scheme — block any scheme except file:

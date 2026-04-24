@@ -1,4 +1,5 @@
 import type { ZodTypeAny } from 'zod'
+import type { CredentialStore } from './credentials.js'
 
 // ─── Plugin contract ───────────────────────────────────────────────────────────
 
@@ -67,4 +68,19 @@ export interface IntegrationResult<T> {
   data: T
   provider: string
   rawResponse?: unknown
+}
+
+// ─── CLI runtime ──────────────────────────────────────────────────────────────
+
+/**
+ * Runtime context passed to integration CLI command factories
+ * (buildGmailCommands, buildCalendarCommands).
+ */
+export interface CliRuntimeContext {
+  readonly organizationId: string
+  readonly userId: string
+  readonly credentialStore: CredentialStore
+  readonly isJsonMode: boolean
+  /** Print a response object. JSON mode emits JSON; otherwise human-readable with secrets masked. */
+  print(value: unknown): void
 }

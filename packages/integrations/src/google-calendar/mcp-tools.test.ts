@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildCalendarTools, buildCalendarCommands, type CalendarToolContext } from './mcp-tools.js'
+import { buildCalendarTools, buildCalendarMcpTools, type CalendarToolContext } from './mcp-tools.js'
 import type { CalendarConnectorConfig } from './types.js'
 import type { CredentialStore } from '../credentials.js'
 
@@ -123,20 +123,20 @@ describe('buildCalendarTools', () => {
   })
 })
 
-describe('buildCalendarCommands', () => {
+describe('buildCalendarMcpTools', () => {
   it('returns 3 commands', () => {
-    const commands = buildCalendarCommands(makeContext())
+    const commands = buildCalendarMcpTools(makeContext())
     expect(commands).toHaveLength(3)
   })
 
   it('command names are list, create, sync', () => {
-    const commands = buildCalendarCommands(makeContext())
+    const commands = buildCalendarMcpTools(makeContext())
     const names = commands.map((c) => c.name)
     expect(names).toEqual(['list', 'create', 'sync'])
   })
 
   it('list command has correct options', () => {
-    const commands = buildCalendarCommands(makeContext())
+    const commands = buildCalendarMcpTools(makeContext())
     const listCmd = commands.find((c) => c.name === 'list')!
     expect(listCmd.options).toBeDefined()
     expect(listCmd.options!.length).toBe(3)
@@ -148,14 +148,14 @@ describe('buildCalendarCommands', () => {
   })
 
   it('create command has correct options', () => {
-    const commands = buildCalendarCommands(makeContext())
+    const commands = buildCalendarMcpTools(makeContext())
     const createCmd = commands.find((c) => c.name === 'create')!
     expect(createCmd.options).toBeDefined()
     expect(createCmd.options!.length).toBe(3)
   })
 
   it('sync command has correct options', () => {
-    const commands = buildCalendarCommands(makeContext())
+    const commands = buildCalendarMcpTools(makeContext())
     const syncCmd = commands.find((c) => c.name === 'sync')!
     expect(syncCmd.options).toBeDefined()
     expect(syncCmd.options!.length).toBe(1)

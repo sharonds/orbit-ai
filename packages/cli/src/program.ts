@@ -30,8 +30,12 @@ import { registerFieldsCommand } from './commands/fields.js'
 import { registerReportCommand } from './commands/report.js'
 import { registerDashboardCommand } from './commands/dashboard.js'
 import { registerMcpCommand } from './commands/mcp.js'
-import { registerIntegrationsCommand } from './commands/integrations.js'
+import { registerIntegrationsCommand, registerIntegrationSubcommands } from './commands/integrations.js'
 import { registerCalendarAliasCommand } from './commands/calendar-alias.js'
+import { buildGmailCommands } from '@orbit-ai/integrations/gmail'
+import { buildCalendarCommands } from '@orbit-ai/integrations/google-calendar'
+import { resolveIntegrationsRuntime } from './config/integrations-runtime.js'
+import type { IntegrationCommand, CliRuntimeContext } from '@orbit-ai/integrations'
 
 let _jsonMode = false
 let _sigintHandler: (() => void) | null = null
@@ -43,6 +47,11 @@ export function isJsonMode(): boolean {
 // test-only
 export function _resetJsonMode(): void {
   _jsonMode = false
+}
+
+// test-only
+export function _setJsonMode(value: boolean): void {
+  _jsonMode = value
 }
 
 // test-only export
@@ -86,6 +95,23 @@ function classifyError(error: unknown): { code: number; payload: Record<string, 
       payload: {
         code: error.code ?? 'COMMANDER_ERROR',
         message: error.message,
+      },
+    }
+  }
+  // OrbitEncryptionConfigError → exit code 2 (configuration problem, not runtime error)
+  if (
+    error !== null &&
+    typeof error === 'object' &&
+    (error as { name?: unknown }).name === 'OrbitEncryptionConfigError' &&
+    typeof (error as { code?: unknown }).code === 'string'
+  ) {
+    const e = error as { code: string; message: string }
+    return {
+      code: 2,
+      payload: {
+        code: 'CONFIGURATION_ERROR',
+        detail: e.code,
+        message: e.message,
       },
     }
   }
@@ -134,6 +160,7 @@ export function createProgram(): Command {
     .option('--adapter <type>', 'Storage adapter: sqlite|postgres (direct mode)')
     .option('--mode <mode>', 'Client mode: api|direct', 'api')
     .option('--profile <name>', 'Config profile name')
+    .option('--apply-integrations-schema', 'Apply integration schema extension before running integration commands')
     .option('--quiet', 'Suppress warnings')
     .option('--yes', 'Skip interactive confirmations (bypass for --yes flag)')
     .hook('preAction', (thisCommand) => {
@@ -173,6 +200,39 @@ export function createProgram(): Command {
   registerMcpCommand(program)
   registerIntegrationsCommand(program)
   registerCalendarAliasCommand(program)
+
+  const placeholderRuntime: CliRuntimeContext = {
+    organizationId: '',
+    userId: '',
+    isJsonMode: false,
+    credentialStore: null as never,
+    print: () => {},
+  }
+
+  function wrapForDeferredRuntime(
+    factory: (runtime: CliRuntimeContext) => IntegrationCommand[],
+  ): IntegrationCommand[] {
+    const placeholders = factory(placeholderRuntime)
+    return placeholders.map((cmd) => ({
+      ...cmd,
+      async action(...args: unknown[]) {
+        const invokedCommand = args[args.length - 1] as Command
+        let root: Command = invokedCommand
+        while (root.parent) root = root.parent
+        const flags = root.opts() as GlobalFlags
+        const runtime = await resolveIntegrationsRuntime({ flags, cwd: process.cwd() })
+        const real = factory(runtime)
+        const match = real.find((c) => c.name === cmd.name)
+        if (!match) throw new Error(`Command ${cmd.name} not found in factory rebuild`)
+        await match.action(...args)
+      },
+    }))
+  }
+
+  registerIntegrationSubcommands(program, [
+    ...wrapForDeferredRuntime(buildGmailCommands),
+    ...wrapForDeferredRuntime(buildCalendarCommands),
+  ])
 
   return program
 }

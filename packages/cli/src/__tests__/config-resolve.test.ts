@@ -48,7 +48,7 @@ vi.mock('node:sqlite', () => ({
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
-import { resolveClient } from '../config/resolve-context.js'
+import { resolveClient, resolveAdapter } from '../config/resolve-context.js'
 import { readConfigFile, canonicalizePath, loadConfig } from '../config/files.js'
 import { createSqliteStorageAdapter, createPostgresStorageAdapter } from '@orbit-ai/core'
 import { OrbitClient } from '@orbit-ai/sdk'
@@ -552,6 +552,39 @@ describe('loadConfig sanitization', () => {
       expect.objectContaining({
         name: 'CliConfigError',
         details: expect.objectContaining({ code: 'CONFIG_PARSE_ERROR', path: 'profiles' }),
+      }),
+    )
+  })
+})
+
+describe('resolveAdapter — env var precedence (Finding #3)', () => {
+  it('ORBIT_ADAPTER env var is used when no flag or config adapter is set', () => {
+    const cwd = makeTmpDir()
+    resolveAdapter({}, {}, cwd, { ORBIT_ADAPTER: 'sqlite' })
+    expect(createSqliteStorageAdapter).toHaveBeenCalled()
+  })
+
+  it('flag adapter takes precedence over ORBIT_ADAPTER env var', () => {
+    const cwd = makeTmpDir()
+    resolveAdapter({ adapter: 'sqlite' }, {}, cwd, { ORBIT_ADAPTER: 'postgres' })
+    expect(createSqliteStorageAdapter).toHaveBeenCalled()
+    expect(createPostgresStorageAdapter).not.toHaveBeenCalled()
+  })
+
+  it('DATABASE_URL env var is used for dbUrl when no flag or config databaseUrl is set', () => {
+    const cwd = makeTmpDir()
+    resolveAdapter({}, {}, cwd, { ORBIT_ADAPTER: 'sqlite', DATABASE_URL: ':memory:' })
+    expect(createSqliteStorageAdapter).toHaveBeenCalled()
+  })
+
+  it('throws CliValidationError with INVALID_ADAPTER_NAME for unknown ORBIT_ADAPTER value', () => {
+    const cwd = makeTmpDir()
+    expect(() =>
+      resolveAdapter({}, {}, cwd, { ORBIT_ADAPTER: 'badvalue' }),
+    ).toThrowError(
+      expect.objectContaining({
+        name: 'CliValidationError',
+        details: expect.objectContaining({ code: 'INVALID_ADAPTER_NAME' }),
       }),
     )
   })

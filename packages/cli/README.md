@@ -130,16 +130,17 @@ orbit log                        # Show recent activity log
 
 ```bash
 orbit integrations                             # List configured integrations
-orbit integrations gmail configure             # Configure Gmail connector (OAuth flow)
-orbit integrations calendar configure          # Configure Google Calendar connector
-orbit integrations calendar list               # List upcoming calendar events
-orbit integrations calendar create             # Create a calendar event
-orbit integrations calendar sync               # Sync events to activities
+orbit integrations gmail configure             # Configure Gmail connector
+orbit integrations gmail status                # Show Gmail connector status
+orbit integrations google-calendar configure   # Configure Google Calendar connector
+orbit integrations google-calendar status      # Show Google Calendar connector status
 orbit integrations stripe configure            # Configure Stripe connector
 orbit integrations stripe link-create          # Create a Stripe payment link
 orbit integrations stripe sync                 # Sync payments
-orbit calendar                                 # Alias for orbit integrations calendar
+orbit calendar                                 # Alias placeholder for calendar integration
 ```
+
+For Gmail and Google Calendar, prefer OAuth token input from environment variables, token files, or `--tokens-stdin`. Avoid passing refresh tokens directly with `--access-token` / `--refresh-token` because argv can be visible in process listings and shell history. Normal integration commands do not apply schema DDL; use `--apply-integrations-schema` only as an explicit setup/migration action.
 
 ### Imports
 

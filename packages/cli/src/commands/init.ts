@@ -1,6 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { Command } from 'commander'
+import { isOrbitId } from '@orbit-ai/core'
 import { CliValidationError } from '../errors.js'
 import { isJsonMode } from '../program.js'
 
@@ -9,6 +10,7 @@ export function registerInitCommand(program: Command): void {
     .command('init')
     .description('Scaffold .orbit/config.json and .env.example')
     .option('--db <type>', 'Database type: sqlite|postgres', 'sqlite')
+    .option('--org-id <id>', 'Organization id (required for direct-mode commands like integrations)')
     .option('--org-name <name>', 'Organization name')
     .option('--yes', 'Skip confirmation prompts (non-interactive)')
     .option('--overwrite', 'Overwrite existing files')
@@ -20,6 +22,7 @@ export function registerInitCommand(program: Command): void {
 
 interface InitOptions {
   db?: string
+  orgId?: string
   orgName?: string
   yes?: boolean
   overwrite?: boolean
@@ -40,7 +43,7 @@ function assertNotSymlink(targetPath: string, label: string): void {
 }
 
 export async function runInit(opts: InitOptions): Promise<void> {
-  const { db = 'sqlite', orgName, yes, overwrite, envFile, cwd } = opts
+  const { db = 'sqlite', orgId, orgName, yes, overwrite, envFile, cwd } = opts
 
   // Security: never write to .env
   if (envFile) {
@@ -59,6 +62,15 @@ export async function runInit(opts: InitOptions): Promise<void> {
       'orbit init requires --yes in non-interactive mode.',
       { code: 'REQUIRES_CONFIRMATION' },
     )
+  }
+
+  if (orgId !== undefined) {
+    if (!isOrbitId(orgId, 'organization')) {
+      throw new CliValidationError(
+        '--org-id must be a valid org ULID (org_...).',
+        { code: 'INVALID_ORG_ID' },
+      )
+    }
   }
 
   // Validate org name
@@ -101,6 +113,7 @@ export async function runInit(opts: InitOptions): Promise<void> {
       mode: db === 'sqlite' ? 'direct' : 'api',
       adapter: db,
       apiKeyEnv: 'ORBIT_API_KEY', // never the literal key
+      ...(orgId ? { orgId } : {}),
       ...(orgName ? { orgName } : {}),
     }
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 })
