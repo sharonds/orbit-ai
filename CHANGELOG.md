@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### @orbit-ai/api + @orbit-ai/sdk — camelCase↔snake_case serialization layer
+
+- **Fixed**: All API responses now correctly return `snake_case` field names (e.g. `stage_id`, `organization_id`, `created_at`). Previously, core's camelCase Drizzle records were returned to clients unchanged. Zod's silent `strip()` mode meant incoming `snake_case` request fields like `stage_id` were silently dropped rather than mapped to `stageId` — this fix prevents silent data loss on create/update/move operations.
+- **Added**: `packages/api/src/serialization.ts` — `serializeEntityRecord` (camelCase core record → snake_case response) and `deserializeEntityInput` (snake_case request body → camelCase core input), with semantic renames for deal (`name`↔`title`), stage (`position`↔`stage_order`), and note (`body`↔`content`, `user_id`↔`created_by_user_id`).
+- **Added**: `packages/sdk/src/transport/serialization.ts` — mirrors the API serialization so `DirectTransport` produces identical snake_case responses to the HTTP transport.
+- **Fixed**: `DirectTransport` now dispatches 4-segment workflow paths (`POST /v1/deals/:id/move`, `/sequences/:id/enroll`, `/sequence_enrollments/:id/unenroll`, `/tags/:id/attach`, `/tags/:id/detach`, `/activities/log`) to the correct core service methods. Previously these routes threw "Unhandled dispatch".
+- **Security fix**: Webhook `secretEncrypted` field is now stripped from `DirectTransport` responses. Previously it was included (as `secret_encrypted`) when serializing webhook records in-process, diverging from the HTTP transport which always excluded it via `toWebhookRead`. The `signing_secret_last_four` and `signing_secret_created_at` field names are now consistent across both transports.
+
 ### @orbit-ai/demo-seed — Initial release
 
 - **New package**: deterministic, multi-tenant demo dataset built on `@orbit-ai/core` services

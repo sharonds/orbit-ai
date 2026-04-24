@@ -452,3 +452,148 @@ describe('Transport parity — no migration authority in DirectTransport', () =>
     expect(spy).not.toHaveBeenCalled()
   })
 })
+
+// ---------------------------------------------------------------------------
+// 5. Direct transport — workflow dispatch
+// ---------------------------------------------------------------------------
+
+describe('DirectTransport — workflow dispatch', () => {
+  function makeServices(overrides: Record<string, unknown> = {}) {
+    const move = vi.fn(async () => ({
+      id: 'deal_1',
+      title: 'Deal',
+      stageId: 'stg_new',
+      organizationId: 'org_1',
+    }))
+    const enroll = vi.fn(async () => ({
+      id: 'enr_1',
+      sequenceId: 'seq_1',
+      contactId: 'cnt_1',
+      status: 'active',
+      organizationId: 'org_1',
+    }))
+    const unenroll = vi.fn(async () => ({
+      id: 'enr_1',
+      status: 'completed',
+      organizationId: 'org_1',
+    }))
+    const attach = vi.fn(async () => ({
+      id: 'et_1',
+      tagId: 'tag_1',
+      entityId: 'cnt_1',
+      organizationId: 'org_1',
+    }))
+    return { move, enroll, unenroll, attach, ...overrides }
+  }
+
+  function makeTransportWithServices(serviceOverrides: Record<string, unknown> = {}) {
+    const adapter = createTestAdapter()
+    const transport = new DirectTransport({
+      adapter,
+      context: { orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY' },
+    })
+    const svc = makeServices(serviceOverrides)
+    // Inject mock services directly
+    ;(transport as any).services = {
+      deals: { move: svc.move },
+      sequences: { enroll: svc.enroll },
+      sequenceEnrollments: { unenroll: svc.unenroll },
+      tags: { attach: svc.attach },
+    }
+    return { transport, svc }
+  }
+
+  it('POST /v1/deals/:id/move dispatches to service.move with deserialized input', async () => {
+    const { transport, svc } = makeTransportWithServices()
+    const result = await transport.request({
+      method: 'POST',
+      path: '/v1/deals/deal_1/move',
+      body: { stage_id: 'stg_new' },
+    })
+    expect(svc.move).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: expect.any(String) }),
+      'deal_1',
+      { stageId: 'stg_new' },
+    )
+    expect((result.data as any).name).toBe('Deal')
+    expect((result.data as any).stage_id).toBe('stg_new')
+  })
+
+  it('POST /v1/sequences/:id/enroll dispatches to service.enroll', async () => {
+    const { transport, svc } = makeTransportWithServices()
+    await transport.request({
+      method: 'POST',
+      path: '/v1/sequences/seq_1/enroll',
+      body: { contact_id: 'cnt_1' },
+    })
+    expect(svc.enroll).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: expect.any(String) }),
+      'seq_1',
+      { contact_id: 'cnt_1' },
+    )
+  })
+
+  it('POST /v1/sequence_enrollments/:id/unenroll dispatches to service.unenroll', async () => {
+    const { transport, svc } = makeTransportWithServices()
+    await transport.request({
+      method: 'POST',
+      path: '/v1/sequence_enrollments/enr_1/unenroll',
+      body: {},
+    })
+    expect(svc.unenroll).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: expect.any(String) }),
+      'enr_1',
+    )
+  })
+
+  it('POST /v1/tags/:id/attach dispatches to service.attach', async () => {
+    const { transport, svc } = makeTransportWithServices()
+    await transport.request({
+      method: 'POST',
+      path: '/v1/tags/tag_1/attach',
+      body: { entity_type: 'contacts', entity_id: 'cnt_1' },
+    })
+    expect(svc.attach).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: expect.any(String) }),
+      'tag_1',
+      { entity_type: 'contacts', entity_id: 'cnt_1' },
+    )
+  })
+
+  it('response data is snake_case serialized for workflow result', async () => {
+    const { transport } = makeTransportWithServices()
+    const result = await transport.request({
+      method: 'POST',
+      path: '/v1/deals/deal_1/move',
+      body: { stage_id: 'stg_new' },
+    })
+    const data = result.data as Record<string, unknown>
+    expect(data).toHaveProperty('organization_id')
+    expect(data).not.toHaveProperty('organizationId')
+    expect(data).toHaveProperty('stage_id')
+    expect(data).not.toHaveProperty('stageId')
+  })
+
+  it('POST /v1/activities/log dispatches to service.log', async () => {
+    const log = vi.fn(async () => ({
+      id: 'act_1',
+      activityType: 'email',
+      organizationId: 'org_1',
+    }))
+    const adapter = createTestAdapter()
+    const transport = new DirectTransport({
+      adapter,
+      context: { orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY' },
+    })
+    ;(transport as any).services = { activities: { log } }
+    await transport.request({
+      method: 'POST',
+      path: '/v1/activities/log',
+      body: { activity_type: 'email', contact_id: 'cnt_1' },
+    })
+    expect(log).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: expect.any(String) }),
+      { activity_type: 'email', contact_id: 'cnt_1' },
+    )
+  })
+})

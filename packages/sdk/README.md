@@ -137,7 +137,8 @@ const client = new OrbitClient({
   context: { orgId: 'org_test' },
 })
 
-// All operations go directly to the adapter — no HTTP, no auth
+// All operations go directly to the adapter — no HTTP, no auth.
+// Response fields are identical to HTTP mode: snake_case, same envelope shape.
 const contact = await client.contacts.create({ name: 'Test User' })
 ```
 

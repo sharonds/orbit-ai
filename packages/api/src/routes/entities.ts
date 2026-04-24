@@ -1,7 +1,7 @@
 import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
 import { resolvePublicEntityServiceKey } from '@orbit-ai/core'
-import { toEnvelope, toError, sanitizePublicRead, sanitizePublicPage } from '../responses.js'
+import { toEnvelope, toError, sanitizePublicRead, sanitizePublicPage, deserializeEntityInput } from '../responses.js'
 import { requireScope } from '../scopes.js'
 import { paginationParams } from '../utils/pagination.js'
 import { PUBLIC_ENTITY_CAPABILITIES, type PublicEntityName } from './entity-capabilities.js'
@@ -29,7 +29,7 @@ export function registerPublicEntityRoutes(app: Hono, services: CoreServices) {
       app.post(`/v1/${entity}`, requireScope(`${entity}:write`), async (c) => {
         const service = resolveService(services, typedEntity)
         const body = await c.req.json()
-        const created = await service.create(c.get('orbit'), body)
+        const created = await service.create(c.get('orbit'), deserializeEntityInput(entity, body))
         return c.json(toEnvelope(c, sanitizePublicRead(entity, created)), 201)
       })
     }
@@ -46,7 +46,8 @@ export function registerPublicEntityRoutes(app: Hono, services: CoreServices) {
     if (capabilities.write) {
       app.patch(`/v1/${entity}/:id`, requireScope(`${entity}:write`), async (c) => {
         const service = resolveService(services, typedEntity)
-        const record = await service.update(c.get('orbit'), c.req.param('id'), await c.req.json())
+        const body = await c.req.json()
+        const record = await service.update(c.get('orbit'), c.req.param('id'), deserializeEntityInput(entity, body))
         return c.json(toEnvelope(c, sanitizePublicRead(entity, record)))
       })
     }

@@ -1,6 +1,6 @@
 import type { Hono } from 'hono'
 import type { CoreServices } from '@orbit-ai/core'
-import { toEnvelope, toError, sanitizePublicRead } from '../responses.js'
+import { toEnvelope, toError, sanitizePublicRead, deserializeEntityInput } from '../responses.js'
 import { requireScope } from '../scopes.js'
 
 function notImplemented(c: any, operation: string) {
@@ -17,7 +17,7 @@ export function registerWorkflowRoutes(app: Hono, services: CoreServices) {
       return notImplemented(c, 'Deal move')
     }
     const body = await c.req.json()
-    const result = await service.move(c.get('orbit'), c.req.param('id'), body)
+    const result = await service.move(c.get('orbit'), c.req.param('id'), deserializeEntityInput('deals', body))
     return c.json(toEnvelope(c, sanitizePublicRead('deals', result)))
   })
 

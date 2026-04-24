@@ -843,8 +843,8 @@ describe('Workflow route sanitization', () => {
     ;(services.deals as any).move = vi.fn(async () => ({
       id: 'deal_01',
       title: 'Big Deal',
-      _internal_flag: true, // internal field — must be stripped by sanitizePublicRead
-      stage_id: 'stg_02',
+      _internalFlag: true, // internal field — must be stripped by sanitizePublicRead
+      stageId: 'stg_02',
     }))
 
     const app = createRouteTestApp()
@@ -857,12 +857,12 @@ describe('Workflow route sanitization', () => {
     })
     expect(res.status).toBe(200)
     const body = (await res.json()) as { data: Record<string, unknown> }
-    // Public fields must be present
+    // Public fields must be present (core title → public name, camelCase → snake_case)
     expect(body.data.id).toBe('deal_01')
-    expect(body.data.title).toBe('Big Deal')
+    expect(body.data.name).toBe('Big Deal')
     expect(body.data.stage_id).toBe('stg_02')
     // Internal underscore-prefixed field must be stripped
-    expect(body.data).not.toHaveProperty('_internal_flag')
+    expect(body.data).not.toHaveProperty('_internalFlag')
   })
 
   it('POST /v1/sequences/:id/enroll strips underscore-prefixed fields from response', async () => {
