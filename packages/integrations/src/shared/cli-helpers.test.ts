@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { runConfigureAction, runStatusAction, sanitizeErrorMessage } from './cli-helpers.js'
+import {
+  resolveOAuthCredentials,
+  runConfigureAction,
+  runStatusAction,
+  sanitizeErrorMessage,
+} from './cli-helpers.js'
 import { InMemoryCredentialStore } from '../credentials.js'
 
 describe('runConfigureAction', () => {
@@ -69,5 +74,80 @@ describe('sanitizeErrorMessage', () => {
   })
   it('preserves non-secret error structure', () => {
     expect(sanitizeErrorMessage('Network error: ECONNREFUSED')).toBe('Network error: ECONNREFUSED')
+  })
+
+  it('masks JSON, camelCase, and snake_case secret fields in error text', () => {
+    const msg = [
+      'request failed',
+      '{"accessToken":"ya29.camel","refresh_token":"1//snake","clientSecret":"topsecret"}',
+      'apiKey: sk_live_abcdefghijkl',
+      'refreshToken = 1//camelrefresh',
+    ].join(' ')
+    const sanitized = sanitizeErrorMessage(msg)
+    expect(sanitized).not.toContain('ya29.camel')
+    expect(sanitized).not.toContain('1//snake')
+    expect(sanitized).not.toContain('topsecret')
+    expect(sanitized).not.toContain('sk_live_abcdefghijkl')
+    expect(sanitized).not.toContain('1//camelrefresh')
+    expect(sanitized).toContain('"accessToken":"***"')
+    expect(sanitized).toContain('"refresh_token":"***"')
+  })
+})
+
+describe('resolveOAuthCredentials', () => {
+  it('resolves OAuth tokens from environment variables without argv values', async () => {
+    const credentials = await resolveOAuthCredentials(
+      {
+        accessTokenEnv: 'TEST_ACCESS_TOKEN',
+        refreshTokenEnv: 'TEST_REFRESH_TOKEN',
+      },
+      {
+        env: {
+          TEST_ACCESS_TOKEN: 'env-access',
+          TEST_REFRESH_TOKEN: 'env-refresh',
+        },
+      },
+    )
+    expect(credentials).toEqual({ accessToken: 'env-access', refreshToken: 'env-refresh' })
+  })
+
+  it('warns and redacts process argv when OAuth tokens are supplied as argv flags', async () => {
+    const stderr: string[] = []
+    const argv = [
+      'node',
+      'orbit',
+      '--access-token',
+      'argv-access',
+      '--refresh-token=argv-refresh',
+    ]
+    const credentials = await resolveOAuthCredentials(
+      { accessToken: 'argv-access', refreshToken: 'argv-refresh' },
+      {
+        argv,
+        warn: (msg) => stderr.push(msg),
+      },
+    )
+    expect(credentials).toEqual({ accessToken: 'argv-access', refreshToken: 'argv-refresh' })
+    expect(stderr.join('\n')).toMatch(/visible in process listings/i)
+    expect(argv).not.toContain('argv-access')
+    expect(argv).not.toContain('--refresh-token=argv-refresh')
+    expect(argv).toContain('[REDACTED]')
+    expect(argv).toContain('--refresh-token=[REDACTED]')
+  })
+
+  it('lets explicit argv token values override ambient default provider env vars', async () => {
+    const credentials = await resolveOAuthCredentials(
+      { accessToken: 'argv-access', refreshToken: 'argv-refresh' },
+      {
+        defaultAccessTokenEnv: 'ORBIT_GMAIL_ACCESS_TOKEN',
+        defaultRefreshTokenEnv: 'ORBIT_GMAIL_REFRESH_TOKEN',
+        env: {
+          ORBIT_GMAIL_ACCESS_TOKEN: 'stale-env-access',
+          ORBIT_GMAIL_REFRESH_TOKEN: 'stale-env-refresh',
+        },
+        argv: ['node', 'orbit'],
+      },
+    )
+    expect(credentials).toEqual({ accessToken: 'argv-access', refreshToken: 'argv-refresh' })
   })
 })

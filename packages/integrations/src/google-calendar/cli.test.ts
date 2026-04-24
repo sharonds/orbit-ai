@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import * as fs from 'node:fs'
+import * as os from 'node:os'
+import * as path from 'node:path'
 import { buildCalendarCommands, type CalendarConfigureArgs } from './cli.js'
 import { InMemoryCredentialStore } from '../credentials.js'
 import type { CliRuntimeContext } from '../types.js'
@@ -58,5 +61,30 @@ describe('google-calendar CLI commands', () => {
     const out = JSON.stringify(printed)
     expect(out).not.toContain('SECRET_ACCESS_VALUE')
     expect(out).not.toContain('SECRET_REFRESH_VALUE')
+  })
+
+  it('configure accepts OAuth2 tokens from files instead of argv token values', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-calendar-token-files-'))
+    try {
+      const accessTokenFile = path.join(tmpDir, 'access-token')
+      const refreshTokenFile = path.join(tmpDir, 'refresh-token')
+      fs.writeFileSync(accessTokenFile, 'file-access\n', { mode: 0o600 })
+      fs.writeFileSync(refreshTokenFile, 'file-refresh\n', { mode: 0o600 })
+      const cmds = buildCalendarCommands(runtime)
+      const configure = cmds.find((c) => c.name === 'google-calendar/configure')!
+      await configure.action({
+        accessTokenFile,
+        refreshTokenFile,
+        skipValidation: true,
+      } satisfies CalendarConfigureArgs)
+
+      const saved = await store.getCredentials('org_01TEST', 'google-calendar', 'user_01TEST')
+      expect(saved?.accessToken).toBe('file-access')
+      expect(saved?.refreshToken).toBe('file-refresh')
+      expect(JSON.stringify(printed)).not.toContain('file-access')
+      expect(JSON.stringify(printed)).not.toContain('file-refresh')
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
   })
 })
