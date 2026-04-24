@@ -184,8 +184,17 @@ Create a Hono app with `@orbit-ai/api` and serve it from your runtime of choice:
 
 ```typescript
 import { createApi } from '@orbit-ai/api/node'
-import { createCoreServices } from '@orbit-ai/core'
+import {
+  createCoreServices,
+  createSqliteOrbitDatabase,
+  createSqliteStorageAdapter,
+  initializeAllSqliteSchemas,
+} from '@orbit-ai/core'
 
+const database = createSqliteOrbitDatabase()
+await initializeAllSqliteSchemas(database)
+
+const adapter = createSqliteStorageAdapter({ database })
 const services = createCoreServices(adapter)
 
 export const app = createApi({
@@ -205,6 +214,7 @@ Start the MCP server programmatically with `@orbit-ai/mcp`:
 import { OrbitClient } from '@orbit-ai/sdk'
 import { startMcpServer } from '@orbit-ai/mcp'
 
+// Reuse the application adapter from your API or DirectTransport setup.
 await startMcpServer({
   client: new OrbitClient({ adapter, context: { orgId: 'org_demo' } }),
   transport: 'stdio',
@@ -291,7 +301,7 @@ orbit-ai/
 |-- docs/
 |   `-- security/          # Security architecture and hardening notes
 |-- scripts/               # Release and package artifact verification
-|-- AGENTS.md              # Agent/developer operating guide
+|-- AGENTS.MD              # Agent/developer operating guide
 |-- llms.txt               # Compact machine-readable project index
 |-- SECURITY.md            # Vulnerability reporting and security model
 `-- CONTRIBUTING.md        # Contributor workflow and code style
@@ -301,7 +311,7 @@ orbit-ai/
 
 Orbit AI is built for agent workflows:
 
-- [`AGENTS.md`](AGENTS.md) gives coding agents the project model, auth contract,
+- [`AGENTS.MD`](AGENTS.MD) gives coding agents the project model, auth contract,
   common workflows, error codes, and alpha limitations.
 - [`llms.txt`](llms.txt) provides a compact machine-readable index.
 - [`@orbit-ai/mcp`](packages/mcp) exposes 23 tools for contacts, companies, deals,

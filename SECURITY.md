@@ -84,7 +84,7 @@ vulnerabilities:
   is incomplete. Do not rely on them for production data.
 
 The full list of known alpha limitations is in
-[`AGENTS.md`](AGENTS.md#known-alpha-limitations).
+[`AGENTS.MD`](AGENTS.MD#known-alpha-limitations).
 
 ## Credit
 
