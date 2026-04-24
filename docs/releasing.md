@@ -62,10 +62,18 @@ The dry run builds every package and runs `changeset publish --dry-run`. Use it
 to confirm the packages, versions, files, registry auth, and publish plan before
 merging the generated release PR.
 
-## Manual Emergency Publish
+## Emergency Publish
 
-Use this only if the GitHub release workflow is unavailable and maintainers have
-agreed to publish manually.
+Prefer fixing or rerunning the GitHub release workflow. npm provenance requires
+OIDC from a supported CI provider, so a local publish from a maintainer laptop
+cannot produce the same provenance metadata as the workflow.
+
+If the workflow is broken but GitHub Actions still runs, use a temporary manual
+workflow with `id-token: write` and the same `pnpm release` command, then remove
+the temporary workflow after the release.
+
+Use a local publish only if maintainers explicitly accept a no-provenance
+emergency release.
 
 1. Start from a clean, fresh clone of `main`.
 2. Install dependencies with `pnpm install --frozen-lockfile`.
@@ -74,10 +82,10 @@ agreed to publish manually.
 4. Authenticate to npm with an automation token that can publish the
    `@orbit-ai` scope.
 5. Run `pnpm release:dry-run` and inspect the output.
-6. Publish with provenance:
+6. Publish without provenance:
 
    ```bash
-   NPM_CONFIG_PROVENANCE=true pnpm release
+   pnpm release
    ```
 
 7. Push any committed version changes and create the corresponding GitHub
