@@ -126,11 +126,11 @@ export class DirectTransport implements OrbitTransport {
       }
       const subEntity = segments[startIdx + 2] // e.g. 'fields'
       if (method === 'GET' && !action) {
-        if (typeof schema.listObjects !== 'function') throw new Error('Schema engine: listObjects not implemented')
+        if (typeof schema.listObjects !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: listObjects not implemented' }, 501)
         return schema.listObjects(this.ctx)
       }
       if (method === 'GET' && action && !subEntity) {
-        if (typeof schema.getObject !== 'function') throw new Error('Schema engine: getObject not implemented')
+        if (typeof schema.getObject !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: getObject not implemented' }, 501)
         const result = await schema.getObject(this.ctx, action)
         if (result === null || result === undefined) {
           throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Object type '${action}' not found` }, 404)
@@ -138,7 +138,7 @@ export class DirectTransport implements OrbitTransport {
         return result
       }
       if (method === 'POST' && action && subEntity === 'fields') {
-        if (typeof schema.addField !== 'function') throw new Error('Schema engine: addField not implemented')
+        if (typeof schema.addField !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: addField not implemented' }, 501)
         return schema.addField(this.ctx, action, body as Record<string, unknown>)
       }
       throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unhandled schema route: ${method} ${path}` }, 404)
@@ -155,15 +155,15 @@ export class DirectTransport implements OrbitTransport {
       const operation = segments[startIdx + 2] // 'preview', 'apply', or migration id
       const subOp = segments[startIdx + 3] // 'rollback' when id is present
       if (method === 'POST' && operation === 'preview') {
-        if (typeof schema.preview !== 'function') throw new Error('Schema engine: preview not implemented')
+        if (typeof schema.preview !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: preview not implemented' }, 501)
         return schema.preview(this.ctx, (body ?? {}) as Record<string, unknown>)
       }
       if (method === 'POST' && operation === 'apply') {
-        if (typeof schema.apply !== 'function') throw new Error('Schema engine: apply not implemented')
+        if (typeof schema.apply !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: apply not implemented' }, 501)
         return schema.apply(this.ctx, (body ?? {}) as Record<string, unknown>)
       }
       if (method === 'POST' && subOp === 'rollback' && operation) {
-        if (typeof schema.rollback !== 'function') throw new Error('Schema engine: rollback not implemented')
+        if (typeof schema.rollback !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: rollback not implemented' }, 501)
         return schema.rollback(this.ctx, operation)
       }
       throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unhandled schema migration route: ${method} ${path}` }, 404)
