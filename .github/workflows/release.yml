@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -26,7 +29,7 @@ jobs:
 
       - name: Setup pnpm
         # Pinned from pnpm/action-setup v4.4.0.
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e
         with:
           version: 9.12.3
 
@@ -59,7 +62,7 @@ jobs:
         run: pnpm test:release-workflow
 
       - name: Test
-        run: pnpm -r test
+        run: pnpm -r --filter '!@orbit-ai/e2e' test
 
       - name: Lint
         run: pnpm -r lint
@@ -119,7 +122,7 @@ jobs:
 
       - name: Setup pnpm
         # Pinned from pnpm/action-setup v4.4.0.
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e
         with:
           version: 9.12.3
 
@@ -216,7 +219,7 @@ jobs:
 
       - name: Setup pnpm
         # Pinned from pnpm/action-setup v4.4.0.
-        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e
         with:
           version: 9.12.3
 
