@@ -98,6 +98,23 @@ function classifyError(error: unknown): { code: number; payload: Record<string, 
       },
     }
   }
+  // OrbitEncryptionConfigError → exit code 2 (configuration problem, not runtime error)
+  if (
+    error !== null &&
+    typeof error === 'object' &&
+    (error as { name?: unknown }).name === 'OrbitEncryptionConfigError' &&
+    typeof (error as { code?: unknown }).code === 'string'
+  ) {
+    const e = error as { code: string; message: string }
+    return {
+      code: 2,
+      payload: {
+        code: 'CONFIGURATION_ERROR',
+        detail: e.code,
+        message: e.message,
+      },
+    }
+  }
   // OrbitApiError and HTTP errors → exit code 1
   if (
     error instanceof Error &&

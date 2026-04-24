@@ -1,6 +1,7 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { Command } from 'commander'
+import { isOrbitId } from '@orbit-ai/core'
 import { CliValidationError } from '../errors.js'
 import { isJsonMode } from '../program.js'
 
@@ -64,7 +65,7 @@ export async function runInit(opts: InitOptions): Promise<void> {
   }
 
   if (orgId !== undefined) {
-    if (!/^org_[0-9A-Z]{26}$/i.test(orgId)) {
+    if (!isOrbitId(orgId, 'organization')) {
       throw new CliValidationError(
         '--org-id must be a valid org ULID (org_...).',
         { code: 'INVALID_ORG_ID' },

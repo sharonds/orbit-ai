@@ -22,7 +22,7 @@ describe('runConfigureAction', () => {
     expect(await store.getCredentials('org_01TEST', 'gmail', 'user_01TEST')).toBeTruthy()
   })
 
-  it('rejects live validation requests during alpha (skipValidation=false throws NOT_SUPPORTED)', async () => {
+  it('returns configured=false with NOT_SUPPORTED error when skipValidation=false', async () => {
     const store = new InMemoryCredentialStore()
     const result = await runConfigureAction({
       provider: 'gmail',

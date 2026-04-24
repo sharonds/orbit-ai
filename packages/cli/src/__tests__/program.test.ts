@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createProgram, isJsonMode, run, _resetJsonMode } from '../program.js'
+import { createProgram, isJsonMode, run, _resetJsonMode, _classifyError } from '../program.js'
 
 describe('program', () => {
   const expectedCommands = [
@@ -164,6 +164,30 @@ describe('program', () => {
       // exitOverride throws on --help
     }
     expect(helpText).toContain('orbit')
+  })
+})
+
+describe('classifyError — OrbitEncryptionConfigError (Finding #4)', () => {
+  it('maps OrbitEncryptionConfigError to exit code 2 with CONFIGURATION_ERROR', () => {
+    const err = Object.assign(new Error('ORBIT_CREDENTIAL_KEY is not set'), {
+      name: 'OrbitEncryptionConfigError',
+      code: 'MISSING_CREDENTIAL_KEY',
+    })
+    const result = _classifyError(err)
+    expect(result.code).toBe(2)
+    expect(result.payload.code).toBe('CONFIGURATION_ERROR')
+    expect(result.payload.detail).toBe('MISSING_CREDENTIAL_KEY')
+  })
+
+  it('maps OrbitEncryptionConfigError with INVALID_CREDENTIAL_KEY to exit code 2', () => {
+    const err = Object.assign(new Error('ORBIT_CREDENTIAL_KEY must be 64 hex chars'), {
+      name: 'OrbitEncryptionConfigError',
+      code: 'INVALID_CREDENTIAL_KEY',
+    })
+    const result = _classifyError(err)
+    expect(result.code).toBe(2)
+    expect(result.payload.code).toBe('CONFIGURATION_ERROR')
+    expect(result.payload.detail).toBe('INVALID_CREDENTIAL_KEY')
   })
 })
 

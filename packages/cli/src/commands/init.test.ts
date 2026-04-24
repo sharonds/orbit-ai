@@ -66,4 +66,32 @@ describe('runInit --org-id', () => {
     const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as { orgId?: string }
     expect(parsed.orgId).toBeUndefined()
   })
+
+  it('rejects org_id with non-Crockford chars (e.g. I) — strict isOrbitId validation', async () => {
+    await expect(
+      runInit({
+        db: 'sqlite',
+        orgId: 'org_01HZIIIIIIIIIIIIIIIIIIIIII',
+        yes: true,
+        cwd: tmpDir,
+      }),
+    ).rejects.toMatchObject({
+      name: 'CliValidationError',
+      details: { code: 'INVALID_ORG_ID' },
+    })
+  })
+
+  it('rejects case-insensitive match — org_ with lowercase ulid is invalid', async () => {
+    await expect(
+      runInit({
+        db: 'sqlite',
+        orgId: 'org_01hz000000000000000000abcd',
+        yes: true,
+        cwd: tmpDir,
+      }),
+    ).rejects.toMatchObject({
+      name: 'CliValidationError',
+      details: { code: 'INVALID_ORG_ID' },
+    })
+  })
 })

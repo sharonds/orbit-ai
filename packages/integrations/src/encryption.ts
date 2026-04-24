@@ -5,6 +5,16 @@ export interface EncryptionProvider {
   decrypt(ciphertext: string): Promise<string>
 }
 
+export class OrbitEncryptionConfigError extends Error {
+  readonly code: 'MISSING_CREDENTIAL_KEY' | 'INVALID_CREDENTIAL_KEY'
+
+  constructor(code: 'MISSING_CREDENTIAL_KEY' | 'INVALID_CREDENTIAL_KEY', message: string) {
+    super(message)
+    this.name = 'OrbitEncryptionConfigError'
+    this.code = code
+  }
+}
+
 /**
  * AES-256-GCM encryption provider.
  * Key must be a 64-character hex string (32 bytes = 256 bits).
@@ -15,8 +25,16 @@ export class AesGcmEncryptionProvider implements EncryptionProvider {
 
   constructor(keyHex?: string) {
     const k = keyHex ?? process.env['ORBIT_CREDENTIAL_KEY']
-    if (!k || !/^[0-9a-fA-F]{64}$/.test(k)) {
-      throw new Error(
+    if (!k) {
+      throw new OrbitEncryptionConfigError(
+        'MISSING_CREDENTIAL_KEY',
+        'ORBIT_CREDENTIAL_KEY is not set. ' +
+        'Generate with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+      )
+    }
+    if (!/^[0-9a-fA-F]{64}$/.test(k)) {
+      throw new OrbitEncryptionConfigError(
+        'INVALID_CREDENTIAL_KEY',
         'ORBIT_CREDENTIAL_KEY must be a 64-character hex string (32 bytes). ' +
         'Generate with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
       )
