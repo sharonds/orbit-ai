@@ -2,7 +2,6 @@
   "mode": "pre",
   "tag": "alpha",
   "initialVersions": {
-    "orbit-ai-nodejs-quickstart": "0.0.0",
     "@orbit-ai/api": "0.1.0-alpha.0",
     "@orbit-ai/cli": "0.1.0-alpha.0",
     "@orbit-ai/core": "0.1.0-alpha.0",

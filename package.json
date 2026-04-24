@@ -10,7 +10,7 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "release": "pnpm -r build && changeset publish",
-    "release:dry-run": "pnpm -r build && changeset publish --dry-run",
+    "release:dry-run": "pnpm -r build && node scripts/release-dry-run.mjs",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean"
