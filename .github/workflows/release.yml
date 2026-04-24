@@ -22,6 +22,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup pnpm
         # Pinned from pnpm/action-setup v4.4.0.
@@ -52,15 +53,15 @@ jobs:
       - name: Lint
         run: pnpm -r lint
 
-  release:
-    name: Version + publish
+  version:
+    name: Version packages
     runs-on: ubuntu-latest
     needs: validate
     timeout-minutes: 20
+    if: "${{ contains(github.event.head_commit.message, 'chore(release): version packages') == false }}"
     permissions:
       contents: write
       pull-requests: write
-      id-token: write
 
     steps:
       - name: Checkout
@@ -68,6 +69,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup pnpm
         # Pinned from pnpm/action-setup v4.4.0.
@@ -86,19 +88,66 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Version or publish
+      - name: Create or update release pull request
         # Pinned from changesets/action v1.7.0.
         uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf
         with:
           version: pnpm changeset:version
-          publish: pnpm release
           commit: "chore(release): version packages"
           title: "chore(release): version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    name: Publish packages
+    runs-on: ubuntu-latest
+    needs: validate
+    timeout-minutes: 20
+    if: "${{ contains(github.event.head_commit.message, 'chore(release): version packages') }}"
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        # Pinned from actions/checkout v4.3.1.
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm
+        # Pinned from pnpm/action-setup v4.4.0.
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320
+        with:
+          version: 9.12.3
+
+      - name: Setup Node.js
+        # Pinned from actions/setup-node v4.4.0.
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Publish packages
+        # Pinned from changesets/action v1.7.0.
+        uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf
+        with:
+          publish: pnpm release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # changesets/action uses NPM_TOKEN for npm authentication when publishing.
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           # npm reads NODE_AUTH_TOKEN for the configured registry-url.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Build happens before credentials are exposed; publish should not run lifecycle scripts.
+          NPM_CONFIG_IGNORE_SCRIPTS: "true"
           # OIDC id-token permission above enables npm provenance attestations.
           NPM_CONFIG_PROVENANCE: "true"
