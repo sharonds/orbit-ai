@@ -11,6 +11,9 @@
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "rm -rf dist && tsc && chmod +x dist/index.js",
     "typecheck": "tsc --noEmit",
