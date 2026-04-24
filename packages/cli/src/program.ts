@@ -34,6 +34,7 @@ import { registerIntegrationsCommand, registerIntegrationSubcommands } from './c
 import { registerCalendarAliasCommand } from './commands/calendar-alias.js'
 import { buildGmailCommands } from '@orbit-ai/integrations/gmail'
 import { buildCalendarCommands } from '@orbit-ai/integrations/google-calendar'
+import { buildStripeCommands } from '@orbit-ai/integrations/stripe'
 import { resolveIntegrationsRuntime } from './config/integrations-runtime.js'
 import type { IntegrationCommand, CliRuntimeContext } from '@orbit-ai/integrations'
 
@@ -232,6 +233,7 @@ export function createProgram(): Command {
   registerIntegrationSubcommands(program, [
     ...wrapForDeferredRuntime(buildGmailCommands),
     ...wrapForDeferredRuntime(buildCalendarCommands),
+    ...wrapForDeferredRuntime(buildStripeCommands),
   ])
 
   return program

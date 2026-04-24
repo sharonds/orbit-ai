@@ -26,6 +26,10 @@
     "./google-calendar": {
       "types": "./dist/google-calendar/index.d.ts",
       "import": "./dist/google-calendar/index.js"
+    },
+    "./stripe": {
+      "types": "./dist/stripe/index.d.ts",
+      "import": "./dist/stripe/index.js"
     }
   },
   "scripts": {
