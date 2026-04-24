@@ -51,7 +51,8 @@ Do not publish from feature branches. The supported path is changeset PRs into
 
 ## Dry Runs
 
-Before a sensitive release, verify from a fresh clone:
+Before a sensitive release, verify from a fresh clone checked out to the
+generated `chore(release): version packages` PR branch:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -60,7 +61,8 @@ pnpm release:dry-run
 
 The dry run builds every package and runs `changeset publish --dry-run`. Use it
 to confirm the packages, versions, files, registry auth, and publish plan before
-merging the generated release PR.
+merging the generated release PR. Running the dry run on `main` before the
+version PR merges checks the pre-versioned state, not the release candidate.
 
 ## Emergency Publish
 
@@ -105,8 +107,9 @@ pnpm changeset pre exit
 
 Commit the updated `.changeset/pre.json` file. After that commit reaches
 `main`, the normal release workflow opens one more `chore(release): version
-packages` PR. Review and merge it to produce the GA release, expected to be
-`1.0.0` for the fixed `@orbit-ai/*` group.
+packages` PR. Review the generated versions before merging. Exiting pre-release
+mode does not automatically mean `1.0.0`; maintainers must choose the intended
+stable version through changesets and version review.
 
 ## Setup Checklist
 
@@ -120,4 +123,6 @@ Before the first publish, verify:
   organization.
 - `NPM_TOKEN` is an npm automation token with publish access to the
   `@orbit-ai` scope.
+- npm account and organization policy allow automation-token publishing, or the
+  workflow has been migrated to trusted publishing before GA.
 - The repository is public at publish time so npm provenance can be generated.
