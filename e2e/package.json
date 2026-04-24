@@ -1,0 +1,27 @@
+{
+  "name": "@orbit-ai/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "End-to-end journey tests — publish gate for alpha.1.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@orbit-ai/core": "workspace:*",
+    "@orbit-ai/api": "workspace:*",
+    "@orbit-ai/sdk": "workspace:*",
+    "@orbit-ai/cli": "workspace:*",
+    "@orbit-ai/mcp": "workspace:*",
+    "@orbit-ai/integrations": "workspace:*",
+    "@orbit-ai/demo-seed": "workspace:*",
+    "execa": "^9.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
