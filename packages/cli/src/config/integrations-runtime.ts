@@ -15,6 +15,8 @@ import { isJsonMode } from '../program.js'
 export interface ResolveIntegrationsRuntimeOptions {
   flags: GlobalFlags
   cwd: string
+  /** Test/operator escape hatch. Runtime commands default to no schema mutation. */
+  applySchema?: boolean
 }
 
 export async function resolveIntegrationsRuntime(
@@ -27,7 +29,8 @@ export async function resolveIntegrationsRuntime(
       { code: 'MISSING_REQUIRED_CONFIG', path: 'config' },
     )
   }
-  const config = opts.flags.profile ? applyProfile(rawConfig, opts.flags.profile) : rawConfig
+  const profileName = opts.flags.profile ?? process.env['ORBIT_PROFILE'] ?? rawConfig.profile
+  const config = profileName ? applyProfile(rawConfig, profileName) : rawConfig
 
   const orgId = nonBlank(opts.flags.orgId) ?? nonBlank(process.env['ORBIT_ORG_ID']) ?? nonBlank(config.orgId)
   if (!orgId) {
@@ -44,7 +47,9 @@ export async function resolveIntegrationsRuntime(
 
   const adapter = resolveAdapter(opts.flags, config, opts.cwd)
 
-  await applyIntegrationsSchemaExtension(adapter)
+  if (opts.applySchema === true || opts.flags.applyIntegrationsSchema === true) {
+    await applyIntegrationsSchemaExtension(adapter)
+  }
 
   const encryption = new AesGcmEncryptionProvider()
   const credentialStore = new TableBackedCredentialStore(adapter, encryption)

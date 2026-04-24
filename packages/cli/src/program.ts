@@ -143,6 +143,7 @@ export function createProgram(): Command {
     .option('--adapter <type>', 'Storage adapter: sqlite|postgres (direct mode)')
     .option('--mode <mode>', 'Client mode: api|direct', 'api')
     .option('--profile <name>', 'Config profile name')
+    .option('--apply-integrations-schema', 'Apply integration schema extension before running integration commands')
     .option('--quiet', 'Suppress warnings')
     .option('--yes', 'Skip interactive confirmations (bypass for --yes flag)')
     .hook('preAction', (thisCommand) => {

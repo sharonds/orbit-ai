@@ -7,20 +7,26 @@ import type { GlobalFlags } from '../types.js'
 import { _resetJsonMode, _setJsonMode } from '../program.js'
 
 const TEST_KEY = 'a'.repeat(64)
+const ORG_TEST = 'org_01ABCDEF0123456789ABCDEF01'
 
 describe('resolveIntegrationsRuntime', () => {
   let tmpRoot: string
   let originalKey: string | undefined
   let originalOrgId: string | undefined
   let originalUserId: string | undefined
+  let originalProfile: string | undefined
+  let originalHome: string | undefined
 
   beforeEach(() => {
     tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-int-runtime-'))
     originalKey = process.env['ORBIT_CREDENTIAL_KEY']
     originalOrgId = process.env['ORBIT_ORG_ID']
     originalUserId = process.env['ORBIT_USER_ID']
+    originalProfile = process.env['ORBIT_PROFILE']
+    originalHome = process.env['HOME']
     delete process.env['ORBIT_ORG_ID']
     delete process.env['ORBIT_USER_ID']
+    delete process.env['ORBIT_PROFILE']
   })
 
   afterEach(() => {
@@ -31,6 +37,10 @@ describe('resolveIntegrationsRuntime', () => {
     else process.env['ORBIT_ORG_ID'] = originalOrgId
     if (originalUserId === undefined) delete process.env['ORBIT_USER_ID']
     else process.env['ORBIT_USER_ID'] = originalUserId
+    if (originalProfile === undefined) delete process.env['ORBIT_PROFILE']
+    else process.env['ORBIT_PROFILE'] = originalProfile
+    if (originalHome === undefined) delete process.env['HOME']
+    else process.env['HOME'] = originalHome
   })
 
   it('throws CliValidationError when no .orbit/config.json exists', async () => {
@@ -50,18 +60,18 @@ describe('resolveIntegrationsRuntime', () => {
     fs.mkdirSync(orbitDir, { recursive: true })
     fs.writeFileSync(
       path.join(orbitDir, 'config.json'),
-      JSON.stringify({ orgId: 'org-test' }),
+      JSON.stringify({ orgId: ORG_TEST }),
       { mode: 0o600 },
     )
 
     const flags: GlobalFlags = {
-      orgId: 'org-test',
+      orgId: ORG_TEST,
       adapter: 'sqlite',
       databaseUrl: ':memory:',
     }
-    const ctx = await resolveIntegrationsRuntime({ flags, cwd: tmpRoot })
+    const ctx = await resolveIntegrationsRuntime({ flags, cwd: tmpRoot, applySchema: true })
 
-    expect(ctx.organizationId).toBe('org-test')
+    expect(ctx.organizationId).toBe(ORG_TEST)
     expect(ctx.userId).toBe('cli-user')
 
     const creds = {
@@ -71,8 +81,8 @@ describe('resolveIntegrationsRuntime', () => {
       scopes: ['scope1', 'scope2'],
       providerAccountId: 'acct@example.com',
     }
-    await ctx.credentialStore.saveCredentials('org-test', 'gmail', 'cli-user', creds)
-    const loaded = await ctx.credentialStore.getCredentials('org-test', 'gmail', 'cli-user')
+    await ctx.credentialStore.saveCredentials(ORG_TEST, 'gmail', 'cli-user', creds)
+    const loaded = await ctx.credentialStore.getCredentials(ORG_TEST, 'gmail', 'cli-user')
     expect(loaded).not.toBeNull()
     expect(loaded?.accessToken).toBe(creds.accessToken)
     expect(loaded?.refreshToken).toBe(creds.refreshToken)
@@ -110,17 +120,17 @@ describe('resolveIntegrationsRuntime', () => {
     fs.mkdirSync(orbitDir, { recursive: true })
     fs.writeFileSync(
       path.join(orbitDir, 'config.json'),
-      JSON.stringify({ orgId: 'org-test' }),
+      JSON.stringify({ orgId: ORG_TEST }),
       { mode: 0o600 },
     )
     _setJsonMode(true)
     try {
       const flags: GlobalFlags = {
-        orgId: 'org-test',
+        orgId: ORG_TEST,
         adapter: 'sqlite',
         databaseUrl: ':memory:',
       }
-      const ctx = await resolveIntegrationsRuntime({ flags, cwd: tmpRoot })
+      const ctx = await resolveIntegrationsRuntime({ flags, cwd: tmpRoot, applySchema: true })
       const logs: string[] = []
       const original = console.log
       console.log = (msg?: unknown) => {
@@ -150,5 +160,69 @@ describe('resolveIntegrationsRuntime', () => {
     } finally {
       _resetJsonMode()
     }
+  })
+
+  it('resolves profile precedence as --profile over ORBIT_PROFILE over config.profile', async () => {
+    process.env['ORBIT_CREDENTIAL_KEY'] = TEST_KEY
+    process.env['HOME'] = tmpRoot
+    process.env['ORBIT_PROFILE'] = 'env-profile'
+    const userConfigDir = path.join(tmpRoot, '.config', 'orbit')
+    fs.mkdirSync(userConfigDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(userConfigDir, 'config.json'),
+      JSON.stringify({
+        orgId: 'org_01BASE00000000000000000000',
+        profile: 'config-profile',
+        profiles: {
+          'config-profile': { orgId: 'org_01CONFIG000000000000000000', userId: 'user-config' },
+          'env-profile': { orgId: 'org_01ENV000000000000000000000', userId: 'user-env' },
+          'flag-profile': { orgId: 'org_01FLAG00000000000000000000', userId: 'user-flag' },
+        },
+      }),
+      { mode: 0o600 },
+    )
+
+    const envCtx = await resolveIntegrationsRuntime({
+      flags: { adapter: 'sqlite', databaseUrl: ':memory:' },
+      cwd: tmpRoot,
+    })
+    expect(envCtx.organizationId).toBe('org_01ENV000000000000000000000')
+    expect(envCtx.userId).toBe('user-env')
+
+    const flagCtx = await resolveIntegrationsRuntime({
+      flags: { adapter: 'sqlite', databaseUrl: ':memory:', profile: 'flag-profile' },
+      cwd: tmpRoot,
+    })
+    expect(flagCtx.organizationId).toBe('org_01FLAG00000000000000000000')
+    expect(flagCtx.userId).toBe('user-flag')
+
+    delete process.env['ORBIT_PROFILE']
+    const configCtx = await resolveIntegrationsRuntime({
+      flags: { adapter: 'sqlite', databaseUrl: ':memory:' },
+      cwd: tmpRoot,
+    })
+    expect(configCtx.organizationId).toBe('org_01CONFIG000000000000000000')
+    expect(configCtx.userId).toBe('user-config')
+  })
+
+  it('does not request migration authority unless schema application is explicitly enabled', async () => {
+    process.env['ORBIT_CREDENTIAL_KEY'] = TEST_KEY
+    const orbitDir = path.join(tmpRoot, '.orbit')
+    fs.mkdirSync(orbitDir, { recursive: true })
+    fs.writeFileSync(path.join(orbitDir, 'config.json'), JSON.stringify({ orgId: ORG_TEST }), {
+      mode: 0o600,
+    })
+
+    const ctx = await resolveIntegrationsRuntime({
+      flags: { orgId: ORG_TEST, adapter: 'sqlite', databaseUrl: ':memory:' },
+      cwd: tmpRoot,
+    })
+
+    await expect(
+      ctx.credentialStore.saveCredentials(ORG_TEST, 'gmail', 'cli-user', {
+        accessToken: 'a',
+        refreshToken: 'r',
+      }),
+    ).rejects.toThrow(/integration_connections|no such table/i)
   })
 })

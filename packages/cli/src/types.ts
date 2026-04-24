@@ -13,6 +13,7 @@ export interface GlobalFlags {
   adapter?: string
   mode?: 'api' | 'direct'
   profile?: string
+  applyIntegrationsSchema?: boolean
   quiet?: boolean
   yes?: boolean
 }
