@@ -172,10 +172,17 @@ export class DirectTransport implements OrbitTransport {
       console.error(`[orbit/sdk] serializeResult: could not extract entity from path "${path}", returning raw data`)
       return data
     }
+    // Search results are already camelCase from core — no serialization needed
+    if (entity === 'search') return data
     if (typeof data !== 'object' || data === null || Array.isArray(data)) {
       return data
     }
-    return serializeEntityRecord(entity, data as Record<string, unknown>)
+    // Pass through stub responses (delete confirmations etc.) without entity serialization
+    const rec = data as Record<string, unknown>
+    if ('deleted' in rec && rec.deleted === true) {
+      return data
+    }
+    return serializeEntityRecord(entity, rec)
   }
 
   private serializePage(path: string, rows: unknown[]): unknown[] {
@@ -186,6 +193,8 @@ export class DirectTransport implements OrbitTransport {
       console.error(`[orbit/sdk] serializePage: could not extract entity from path "${path}", returning raw rows`)
       return rows
     }
+    // Search results are already camelCase from core — no serialization needed
+    if (entity === 'search') return rows
     return rows.map((row) =>
       row && typeof row === 'object' && !Array.isArray(row)
         ? serializeEntityRecord(entity, row as Record<string, unknown>)

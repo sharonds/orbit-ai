@@ -29,6 +29,9 @@ export function registerPublicEntityRoutes(app: Hono, services: CoreServices) {
       app.post(`/v1/${entity}`, requireScope(`${entity}:write`), async (c) => {
         const service = resolveService(services, typedEntity)
         const body = await c.req.json()
+        if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+          return c.json(toError(c, 'VALIDATION_FAILED', 'Request body must be a JSON object'), 400)
+        }
         const created = await service.create(c.get('orbit'), deserializeEntityInput(entity, body))
         return c.json(toEnvelope(c, sanitizePublicRead(entity, created)), 201)
       })
@@ -47,6 +50,9 @@ export function registerPublicEntityRoutes(app: Hono, services: CoreServices) {
       app.patch(`/v1/${entity}/:id`, requireScope(`${entity}:write`), async (c) => {
         const service = resolveService(services, typedEntity)
         const body = await c.req.json()
+        if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+          return c.json(toError(c, 'VALIDATION_FAILED', 'Request body must be a JSON object'), 400)
+        }
         const record = await service.update(c.get('orbit'), c.req.param('id'), deserializeEntityInput(entity, body))
         return c.json(toEnvelope(c, sanitizePublicRead(entity, record)))
       })
