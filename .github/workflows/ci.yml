@@ -56,6 +56,9 @@ jobs:
       - name: Lint
         run: pnpm -r lint
 
+      - name: Test release workflow
+        run: pnpm test:release-workflow
+
       - name: Test
         run: pnpm -r test
 
