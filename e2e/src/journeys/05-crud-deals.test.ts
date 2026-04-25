@@ -9,7 +9,10 @@ describe('Journey 5 — CRUD deals (5 surfaces)', () => {
       await runCrudMatrix(stack, {
         entity: 'deals',
         create: { name: 'Journey5 Deal', value: 1000 },
-        update: { name: 'Journey5 Renamed' },
+        update: { name: 'Updated Deal' },
+        updateField: 'name',
+        updateValue: 'Updated Deal',
+        assertField: 'name',
         expectedIdPrefix: 'deal_',
       })
     } finally {
