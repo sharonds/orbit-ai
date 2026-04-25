@@ -24,11 +24,7 @@ describe('Journey 8 - migration preview/apply alpha stub passthrough', () => {
         env: workspace.env,
       })
       expect(preview.exitCode, `migrate --preview exitCode (stderr: ${preview.stderr})`).toBe(0)
-      const plan = preview.json as { destructive?: boolean; operations?: unknown[]; status?: string } | null
-      expect(plan).toBeTruthy()
-      expect(plan?.operations).toEqual([])
-      expect(plan?.destructive).toBe(false)
-      expect(plan?.status).toBe('ok')
+      expect(preview.json).toEqual({ operations: [], destructive: false, status: 'ok' })
 
       const apply = await runCli({
         args: ['--mode', 'direct', '--json', 'migrate', '--apply', '--yes'],
@@ -36,10 +32,7 @@ describe('Journey 8 - migration preview/apply alpha stub passthrough', () => {
         env: workspace.env,
       })
       expect(apply.exitCode, `migrate --apply exitCode (stderr: ${apply.stderr})`).toBe(0)
-      const applyResult = apply.json as { applied?: unknown[]; status?: string } | null
-      expect(applyResult).toBeTruthy()
-      expect(applyResult?.applied).toEqual([])
-      expect(applyResult?.status).toBe('ok')
+      expect(apply.json).toEqual({ applied: [], status: 'ok' })
     } finally {
       await workspace.cleanup()
     }
