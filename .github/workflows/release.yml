@@ -273,6 +273,11 @@ jobs:
       - name: Verify package artifacts
         run: node scripts/verify-package-artifacts.mjs
 
+      - name: Socket security scan (pre-publish gate)
+        run: npx --yes @socketsecurity/cli@latest scan --strict
+        env:
+          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+
       - name: Publish packages
         # Pinned from changesets/action v1.7.0.
         uses: changesets/action@6a0a831ff30acef54f2c6aa1cbbc1096b066edaf

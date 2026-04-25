@@ -82,6 +82,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Socket security scan
+        run: npx --yes @socketsecurity/cli@latest scan --strict
+        env:
+          SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+
       - name: Build
         run: pnpm -r build
 
