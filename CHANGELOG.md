@@ -28,21 +28,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### @orbit-ai/e2e — New package (alpha.1 publish gate)
 
-- **New package** `@orbit-ai/e2e` (private, not published): 14 end-to-end journey tests covering all published surfaces
+- **New package** `@orbit-ai/e2e` (private, not published): 15 end-to-end journey tests covering all published surfaces
 - Shared test harness: `buildStack()` (SQLite + Postgres), `prepareCliWorkspace()`, `runCli()` (execa subprocess), `spawnMcp()` (in-process InMemoryTransport)
 - Journey 1: `orbit init` config scaffolding
 - Journey 2: file-backed SQLite adapter + direct-mode org context
-- Journeys 3–5: CRUD contacts/companies/deals across 5 surfaces (SDK HTTP, SDK direct, raw API, CLI, MCP)
+- Journeys 3–5: CRUD contacts/companies/deals across 5 surfaces (SDK HTTP, SDK direct, raw API, CLI, MCP), including read-after-update persistence checks
 - Journey 6: deal pipeline stage transitions
 - Journey 7: schema inspection + safe custom field creation
 - Journey 8: migration preview/apply alpha stub passthrough; destructive migration safety remains deferred to Plan C.5
 - Journey 9: SDK HTTP mode — pagination and typed error semantics
 - Journey 10: SDK direct-core mode — in-process read/write
-- Journey 11: MCP server tool registration and JSON-RPC calls
-- Journeys 12–14: Gmail, Google Calendar, Stripe connector configure/status (requires `--skip-validation`)
-- CI: `journeys` job (SQLite, all 14 journeys) + `journeys-postgres` job (Postgres matrix, journeys 2–11)
-- **Hardening**: `engine.ts` `preview`/`apply` stubs now call `assertOrgContext`; `addField` validates `fieldType` against 12-type allowlist; `direct-transport.ts` throws `OrbitApiError` (not plain `Error`) for unhandled routes; `build-stack.ts` Postgres `ON CONFLICT DO UPDATE` prevents stale key hash across CI runs
-- **Review fixes**: DirectTransport now dispatches workflow sub-routes (`deals.move/pipeline/stats`, `activities.log`, `sequences.enroll`, `sequenceEnrollments.unenroll`, `tags.attach/detach`); schema reads paginate custom fields instead of truncating at 500; migration preview/apply rejects empty bodies; e2e Postgres setup is limited to local test databases with per-run API keys; CLI e2e subprocesses use an allowlisted env; Stripe configure rejects API keys passed via argv
+- Journey 11: MCP server tool registration and JSON-RPC calls for every listed core tool; stdio wire coverage remains deferred
+- Journeys 12–14: Gmail, Google Calendar, Stripe connector configure/status (requires `--skip-validation`); these prove credential persistence/redaction, not live provider dispatch
+- Journey 15: tenant isolation for seeded contacts and deals across SDK HTTP, SDK direct, raw API, CLI API mode, and MCP; broader entity isolation and restricted-role Postgres RLS proof remain deferred
+- CI: `journeys` job (SQLite, all 15 journeys) + `journeys-postgres` job (Postgres matrix, journeys 2–12 and 15)
+- **Hardening**: `engine.ts` `preview`/`apply` stubs now call `assertOrgContext`; `addField` validates `fieldType` against 12-type allowlist; schema reads require org context; deal values must fit `numeric(18,2)`; `direct-transport.ts` throws API-shaped `OrbitApiError` responses for direct-mode validation failures; `build-stack.ts` Postgres API-key setup uses `ON CONFLICT (key_hash) DO NOTHING` and rejects cross-org hash collisions
+- **Review fixes**: DirectTransport now dispatches workflow sub-routes (`deals.move/pipeline/stats`, `activities.log`, `sequences.enroll`, `sequenceEnrollments.unenroll`, `tags.attach/detach`); schema reads paginate custom fields instead of truncating at 500; migration preview/apply rejects empty bodies; e2e Postgres setup is limited to local test databases with per-run API keys; CLI e2e subprocesses use an allowlisted env; Stripe configure uses a namespaced API-key sentinel and rejects API keys passed via argv; DirectTransport custom-field `PATCH`/`DELETE` remains deferred to Plan C.5
 
 ### @orbit-ai/demo-seed — Initial release
 
