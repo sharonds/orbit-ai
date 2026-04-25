@@ -92,7 +92,7 @@ function validatePackageReadiness(dir, manifest, failures) {
 }
 
 function collectBinFiles(manifest, requiredFiles, failures) {
-  if (!manifest.bin) {
+  if (!Object.hasOwn(manifest, 'bin')) {
     return
   }
 
@@ -105,7 +105,7 @@ function collectBinFiles(manifest, requiredFiles, failures) {
     return
   }
 
-  if (typeof manifest.bin === 'object' && !Array.isArray(manifest.bin)) {
+  if (typeof manifest.bin === 'object' && manifest.bin !== null && !Array.isArray(manifest.bin)) {
     const entries = Object.entries(manifest.bin)
     if (entries.length === 0) {
       failures.push(`${manifest.name}: "bin" object must not be empty`)
@@ -159,16 +159,97 @@ function isIncludedByFilesAllowlist(file, files) {
   }
 
   const normalizedFile = normalizePackagePath(file)
+  let included = false
+
   for (const entry of files) {
-    if (typeof entry !== 'string' || entry.startsWith('!')) {
+    if (typeof entry !== 'string' || entry.trim() === '') {
       continue
     }
 
-    const normalizedEntry = normalizePackagePath(entry)
-    if (normalizedEntry === normalizedFile || normalizedFile.startsWith(`${normalizedEntry}/`)) {
-      return true
+    const trimmedEntry = entry.trim()
+    const negated = trimmedEntry.startsWith('!')
+    const normalizedEntry = normalizePackagePath(negated ? trimmedEntry.slice(1) : trimmedEntry)
+    if (normalizedEntry === '') {
+      continue
+    }
+
+    if (allowlistEntryMatches(normalizedEntry, normalizedFile)) {
+      included = !negated
     }
   }
 
-  return false
+  return included
+}
+
+function allowlistEntryMatches(entry, file) {
+  if (isGlobPattern(entry)) {
+    return globToRegExp(entry).test(file)
+  }
+
+  return entry === file || file.startsWith(`${entry}/`)
+}
+
+function isGlobPattern(value) {
+  return /[*?[{]/.test(value)
+}
+
+function globToRegExp(glob) {
+  let source = '^'
+  for (let index = 0; index < glob.length; ) {
+    const char = glob[index]
+
+    if (char === '*') {
+      if (glob[index + 1] === '*') {
+        if (glob[index + 2] === '/') {
+          source += '(?:.*/)?'
+          index += 3
+        } else {
+          source += '.*'
+          index += 2
+        }
+      } else {
+        source += '[^/]*'
+        index += 1
+      }
+      continue
+    }
+
+    if (char === '?') {
+      source += '[^/]'
+      index += 1
+      continue
+    }
+
+    if (char === '[') {
+      const end = glob.indexOf(']', index + 1)
+      if (end > index + 1) {
+        source += glob.slice(index, end + 1)
+        index = end + 1
+        continue
+      }
+    }
+
+    if (char === '{') {
+      const end = glob.indexOf('}', index + 1)
+      if (end > index + 1) {
+        const alternatives = glob
+          .slice(index + 1, end)
+          .split(',')
+          .map((part) => escapeRegExp(part))
+          .join('|')
+        source += `(?:${alternatives})`
+        index = end + 1
+        continue
+      }
+    }
+
+    source += escapeRegExp(char)
+    index += 1
+  }
+
+  return new RegExp(`${source}$`)
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&')
 }

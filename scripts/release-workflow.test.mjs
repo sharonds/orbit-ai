@@ -56,6 +56,7 @@ test('release validate runs launch-gate e2e before package test sweep', () => {
   assert.ok(e2eIndex < packageTestIndex, 'E2E gate must run before package test sweep')
   assert.ok(packageTestIndex < versionJobIndex, 'all validation tests must run before versioning')
   assert.ok(versionJobIndex < publishJobIndex, 'publish must remain after versioning')
+  assert.match(workflow, /ORBIT_E2E_ADAPTER: sqlite/)
   assert.match(workflow, /run: pnpm --filter @orbit-ai\/e2e test/)
 })
 
@@ -72,8 +73,25 @@ test('publish job checks repository visibility before npm provenance publish', (
   assert.ok(downloadIndex < publicRepoIndex, 'public repo check should run after artifacts are restored')
   assert.ok(publicRepoIndex < verifyIndex, 'public repo check should run before artifact verification')
   assert.ok(verifyIndex < publishIndex, 'artifact verification should still run before publish')
-  assert.match(workflow, /gh api "\/repos\/\$\{GITHUB_REPOSITORY\}" --jq '\.private'/)
+  assert.match(workflow, /shell: bash/)
+  assert.match(workflow, /gh api -H "Accept: application\/vnd\.github\+json" "\/repos\/\$\{GITHUB_REPOSITORY\}" --jq '\.private'/)
+  assert.match(workflow, /set -euo pipefail[\s\S]*could not verify repository visibility/)
+  assert.match(workflow, /case "\$is_private" in[\s\S]*unexpected repository visibility response/)
   assert.match(workflow, /NPM_CONFIG_PROVENANCE: "true"/)
+})
+
+test('workflow action pin comments match pinned action SHAs', () => {
+  const workflows = `${workflow}\n${ciWorkflow}`
+  assert.doesNotMatch(workflows, /Pinned from pnpm\/action-setup v4\.4\.0/)
+  assert.doesNotMatch(workflows, /Pinned from actions\/setup-node v4\.4\.0/)
+  assert.match(
+    workflows,
+    /# Pinned from pnpm\/action-setup v6\.0\.3\.\n\s+uses: pnpm\/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e/,
+  )
+  assert.match(
+    workflows,
+    /# Pinned from actions\/setup-node v6\.4\.0\.\n\s+uses: actions\/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e/,
+  )
 })
 
 test('changesets ignores private e2e package', () => {
@@ -269,6 +287,68 @@ test('verifier fails when package files allowlist omits declared artifacts', () 
   }
 })
 
+test('verifier accepts npm glob patterns in package files allowlist', () => {
+  const fixture = makePackageFixture({
+    manifest: publishableManifest({
+      files: ['dist/**/*.{js,d.ts}', 'bin/*.js', 'README.md', 'LICENSE'],
+      main: 'dist/browser/index.js',
+      types: 'dist/browser/index.d.ts',
+      bin: { fixture: './bin/fixture.js' },
+    }),
+    files: {
+      'dist/browser/index.js': '',
+      'dist/browser/index.d.ts': '',
+      'bin/fixture.js': '',
+    },
+  })
+  try {
+    const result = runNodeScript(VERIFY_PACKAGE_ARTIFACTS, fixture.root)
+    assert.equal(result.status, 0, output(result))
+  } finally {
+    fixture.cleanup()
+  }
+})
+
+test('verifier fails when package files allowlist negates a declared artifact', () => {
+  const fixture = makePackageFixture({
+    manifest: publishableManifest({
+      files: ['dist', '!dist/vercel.js', 'README.md', 'LICENSE'],
+      exports: {
+        '.': './dist/index.js',
+        './vercel': './dist/vercel.js',
+      },
+    }),
+    files: {
+      'dist/index.js': '',
+      'dist/index.d.ts': '',
+      'dist/vercel.js': '',
+    },
+  })
+  try {
+    const result = runNodeScript(VERIFY_PACKAGE_ARTIFACTS, fixture.root)
+    assert.notEqual(result.status, 0)
+    assert.match(output(result), /dist\/vercel\.js is not covered/)
+  } finally {
+    fixture.cleanup()
+  }
+})
+
+test('verifier fails empty and invalid bin forms', () => {
+  for (const bin of ['', {}, []]) {
+    const fixture = makePackageFixture({
+      manifest: publishableManifest({ bin }),
+      files: { 'dist/index.js': '', 'dist/index.d.ts': '' },
+    })
+    try {
+      const result = runNodeScript(VERIFY_PACKAGE_ARTIFACTS, fixture.root)
+      assert.notEqual(result.status, 0)
+      assert.match(output(result), /"bin"/)
+    } finally {
+      fixture.cleanup()
+    }
+  }
+})
+
 test('verifier skips private and non-orbit packages', () => {
   const root = mkdtempSync(join(tmpdir(), 'orbit-verify-skip-'))
   try {
@@ -394,6 +474,42 @@ test('release dry-run reports malformed manifest path', () => {
     const result = runNodeScript(RELEASE_DRY_RUN, root)
     assert.notEqual(result.status, 0)
     assert.match(output(result), /packages\/bad-json\/package\.json/)
+    assert.match(output(result), /Release dry-run failed:/)
+    assert.doesNotMatch(output(result), /\n\s+at /)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('release dry-run reports missing packages directory without stack trace', () => {
+  const root = mkdtempSync(join(tmpdir(), 'orbit-dry-run-no-packages-'))
+  try {
+    const result = runNodeScript(RELEASE_DRY_RUN, root)
+    assert.notEqual(result.status, 0)
+    assert.match(output(result), /Release dry-run failed:/)
+    assert.match(output(result), /packages/)
+    assert.doesNotMatch(output(result), /\n\s+at /)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('release dry-run reports no publishable packages without stack trace', () => {
+  const root = mkdtempSync(join(tmpdir(), 'orbit-dry-run-no-publishable-'))
+  try {
+    writePackage(root, 'private-fixture', {
+      name: '@orbit-ai/private-fixture',
+      private: true,
+      version: '0.0.0',
+    })
+    writePackage(root, 'external-fixture', {
+      name: 'external-fixture',
+      version: '0.0.0',
+    })
+    const result = runNodeScript(RELEASE_DRY_RUN, root)
+    assert.notEqual(result.status, 0)
+    assert.match(output(result), /No publishable @orbit-ai packages/)
+    assert.doesNotMatch(output(result), /\n\s+at /)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

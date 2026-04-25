@@ -68,12 +68,12 @@ jobs:
       - name: Setup pnpm
         # Version is derived from the `packageManager` field in package.json
         # (single source of truth for Corepack + CI). Do NOT add `with: version`
-        # here — pnpm/action-setup@v4 refuses when both are specified.
-        # Pinned from pnpm/action-setup v4.4.0.
+        # here — pnpm/action-setup errors when both are specified.
+        # Pinned from pnpm/action-setup v6.0.3.
         uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e
 
       - name: Setup Node.js
-        # Pinned from actions/setup-node v4.4.0.
+        # Pinned from actions/setup-node v6.4.0.
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 22
@@ -120,11 +120,11 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup pnpm
-        # Pinned from pnpm/action-setup v4.4.0.
+        # Pinned from pnpm/action-setup v6.0.3.
         uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e
 
       - name: Setup Node.js
-        # Pinned from actions/setup-node v4.4.0.
+        # Pinned from actions/setup-node v6.4.0.
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 22
@@ -166,10 +166,10 @@ jobs:
         # Pinned from actions/checkout v4.3.1.
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Setup pnpm
-        # Pinned from pnpm/action-setup v4.4.0.
+        # Pinned from pnpm/action-setup v6.0.3.
         uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e
       - name: Setup Node.js
-        # Pinned from actions/setup-node v4.4.0.
+        # Pinned from actions/setup-node v6.4.0.
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 22
