@@ -17,7 +17,7 @@
     "@orbit-ai/mcp": "workspace:*",
     "@orbit-ai/integrations": "workspace:*",
     "@orbit-ai/demo-seed": "workspace:*",
-    "drizzle-orm": "^0.44.5",
+    "drizzle-orm": "^0.45.2",
     "execa": "^9.5.0"
   },
   "devDependencies": {
