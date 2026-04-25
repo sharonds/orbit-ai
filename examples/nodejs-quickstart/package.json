@@ -12,7 +12,7 @@
     "@orbit-ai/core": "workspace:*",
     "@orbit-ai/api": "workspace:*",
     "@orbit-ai/sdk": "workspace:*",
-    "drizzle-orm": "^0.44.7"
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "tsx": "^4.19.2",
