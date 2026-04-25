@@ -28,7 +28,12 @@ describe('stripe CLI commands', () => {
       const configure = cmds.find((c) => c.name === 'stripe/configure')!
       await configure.action({ skipValidation: true } satisfies StripeConfigureArgs)
       expect(printed[0]).toMatchObject({ configured: true, provider: 'stripe' })
-      expect(await store.getCredentials('org_01TEST', 'stripe', 'user_01TEST')).toBeTruthy()
+      const saved = await store.getCredentials('org_01TEST', 'stripe', 'user_01TEST')
+      expect(saved).toMatchObject({
+        accessToken: 'sk_test_from_env',
+        refreshToken: '__orbit_sentinel__:stripe:api_key',
+      })
+      expect(saved?.refreshToken).not.toBe('__stripe_api_key__')
     } finally {
       if (prev === undefined) {
         delete process.env.ORBIT_STRIPE_API_KEY
@@ -112,6 +117,17 @@ describe('stripe CLI commands', () => {
     const status = cmds.find((c) => c.name === 'stripe/status')!
     await status.action({})
     expect(printed[0]).toMatchObject({ configured: false, status: 'not_configured', provider: 'stripe' })
+  })
+
+  it('status reports configured for Stripe API-key sentinel credentials', async () => {
+    await store.saveCredentials('org_01TEST', 'stripe', 'user_01TEST', {
+      accessToken: 'sk_test_saved',
+      refreshToken: '__orbit_sentinel__:stripe:api_key',
+    })
+    const cmds = buildStripeCommands(runtime)
+    const status = cmds.find((c) => c.name === 'stripe/status')!
+    await status.action({})
+    expect(printed[0]).toMatchObject({ configured: true, status: 'configured', provider: 'stripe' })
   })
 
   it('status when getCredentials throws prints configured=false with error logged', async () => {
