@@ -75,6 +75,7 @@ export class OrbitSchemaEngine {
   }
 
   async listObjects(ctx: OrbitAuthContext): Promise<SchemaObjectSummary[]> {
+    assertOrgContext(ctx)
     const allFields = await this.listAllCustomFields(ctx)
 
     return PUBLIC_CRM_ENTITY_TYPES.map((type) => ({
@@ -84,6 +85,7 @@ export class OrbitSchemaEngine {
   }
 
   async getObject(ctx: OrbitAuthContext, type: string): Promise<SchemaObjectSummary | null> {
+    assertOrgContext(ctx)
     if (!PUBLIC_CRM_ENTITY_TYPES.includes(type as PublicCrmEntityType)) {
       return null
     }

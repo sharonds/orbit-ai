@@ -13,6 +13,14 @@ export interface McpHandle {
     method: 'tools/call',
     params: { name: string; arguments?: Record<string, unknown> },
   ): Promise<{ content?: Array<{ type: string; text: string }>; isError?: boolean }>
+  request(
+    method: 'resources/list',
+    params: Record<string, unknown>,
+  ): Promise<{ resources: Array<{ uri: string; name: string }> }>
+  request(
+    method: 'resources/read',
+    params: { uri: string },
+  ): Promise<{ contents: Array<{ uri: string; text?: string; blob?: string; mimeType?: string }> }>
   request(method: string, params: Record<string, unknown>): Promise<unknown>
   close(): Promise<void>
 }
@@ -63,6 +71,12 @@ export async function spawnMcp(opts: SpawnMcpOptions): Promise<McpHandle> {
     if (method === 'tools/call') {
       const p = params as { name: string; arguments?: Record<string, unknown> }
       return mcpClient.callTool({ name: p.name, arguments: p.arguments })
+    }
+    if (method === 'resources/list') {
+      return mcpClient.listResources(params)
+    }
+    if (method === 'resources/read') {
+      return mcpClient.readResource(params as { uri: string })
     }
     return (mcpClient as unknown as { request(method: string, params: unknown): Promise<unknown> }).request(method, params)
   }
