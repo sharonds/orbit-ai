@@ -2,6 +2,25 @@
   "name": "@orbit-ai/create-orbit-app",
   "version": "0.1.0-alpha.0",
   "description": "Scaffold a new Orbit AI starter in under 60 seconds. Alpha usage: npx @orbit-ai/create-orbit-app@alpha my-app",
+  "keywords": [
+    "crm",
+    "ai-agents",
+    "orbit-ai",
+    "typescript",
+    "scaffolder",
+    "starter"
+  ],
+  "author": "Orbit AI Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sharonds/orbit-ai.git",
+    "directory": "packages/create-orbit-app"
+  },
+  "homepage": "https://github.com/sharonds/orbit-ai#readme",
+  "bugs": {
+    "url": "https://github.com/sharonds/orbit-ai/issues"
+  },
   "type": "module",
   "bin": {
     "create-orbit-app": "./bin/create-orbit-app.js"
@@ -20,6 +39,7 @@
   ],
   "scripts": {
     "build": "rm -rf dist && tsc",
+    "prepack": "pnpm run build",
     "prepublishOnly": "pnpm run build && node dist/publishGuard.js",
     "test": "vitest run",
     "test:watch": "vitest",

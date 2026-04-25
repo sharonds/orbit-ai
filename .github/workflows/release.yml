@@ -15,7 +15,7 @@ jobs:
   validate:
     name: Validate release candidate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     permissions:
       contents: read
 
@@ -60,6 +60,9 @@ jobs:
 
       - name: Test release workflow
         run: pnpm test:release-workflow
+
+      - name: Test launch-gate E2E journeys
+        run: pnpm --filter @orbit-ai/e2e test
 
       - name: Test
         run: pnpm -r --filter '!@orbit-ai/e2e' test
@@ -240,6 +243,16 @@ jobs:
         with:
           name: package-dist
           path: packages
+
+      - name: Verify repository is public for npm provenance
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          is_private="$(gh api "/repos/${GITHUB_REPOSITORY}" --jq '.private')"
+          if [ "$is_private" != "false" ]; then
+            echo "ERROR: npm provenance requires a public GitHub repository."
+            exit 1
+          fi
 
       - name: Verify package artifacts
         run: node scripts/verify-package-artifacts.mjs

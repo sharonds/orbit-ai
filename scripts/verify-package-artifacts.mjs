@@ -11,11 +11,20 @@ const failures = []
 
 for (const dir of packageDirs) {
   const manifestPath = join(dir, 'package.json')
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  let manifest
+  try {
+    manifest = readManifest(manifestPath)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    failures.push(message)
+    continue
+  }
 
   if (manifest.private || !manifest.name?.startsWith('@orbit-ai/')) {
     continue
   }
+
+  validatePackageReadiness(dir, manifest, failures)
 
   const requiredFiles = new Set()
 
@@ -27,16 +36,18 @@ for (const dir of packageDirs) {
     requiredFiles.add(manifest.types)
   }
 
-  for (const binPath of Object.values(manifest.bin ?? {})) {
-    requiredFiles.add(binPath)
-  }
-
+  collectBinFiles(manifest, requiredFiles, failures)
   collectExportFiles(manifest.exports, requiredFiles)
 
   for (const file of requiredFiles) {
-    const normalized = file.replace(/^\.\//, '')
+    const normalized = normalizePackagePath(file)
     if (!existsSync(join(dir, normalized))) {
       failures.push(`${manifest.name}: missing ${normalized}`)
+      continue
+    }
+
+    if (!isIncludedByFilesAllowlist(normalized, manifest.files)) {
+      failures.push(`${manifest.name}: ${normalized} is not covered by package.json "files"`)
     }
   }
 }
@@ -50,6 +61,69 @@ if (failures.length > 0) {
 }
 
 console.log('Package artifact verification passed.')
+
+function readManifest(manifestPath) {
+  try {
+    return JSON.parse(readFileSync(manifestPath, 'utf8'))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`Failed to parse ${manifestPath}: ${message}`)
+  }
+}
+
+function validatePackageReadiness(dir, manifest, failures) {
+  for (const field of ['name', 'version', 'description', 'license']) {
+    if (typeof manifest[field] !== 'string' || manifest[field].trim() === '') {
+      failures.push(`${manifest.name ?? dir}: missing "${field}" field in package.json`)
+    }
+  }
+
+  if (!Array.isArray(manifest.files) || manifest.files.length === 0) {
+    failures.push(`${manifest.name ?? dir}: missing non-empty "files" array in package.json`)
+  }
+
+  for (const file of ['README.md', 'LICENSE']) {
+    if (!existsSync(join(dir, file))) {
+      failures.push(`${manifest.name ?? dir}: missing ${file}`)
+    } else if (!isIncludedByFilesAllowlist(file, manifest.files)) {
+      failures.push(`${manifest.name ?? dir}: ${file} is not covered by package.json "files"`)
+    }
+  }
+}
+
+function collectBinFiles(manifest, requiredFiles, failures) {
+  if (!manifest.bin) {
+    return
+  }
+
+  if (typeof manifest.bin === 'string') {
+    if (manifest.bin.trim() === '') {
+      failures.push(`${manifest.name}: "bin" must be a non-empty string`)
+      return
+    }
+    requiredFiles.add(manifest.bin)
+    return
+  }
+
+  if (typeof manifest.bin === 'object' && !Array.isArray(manifest.bin)) {
+    const entries = Object.entries(manifest.bin)
+    if (entries.length === 0) {
+      failures.push(`${manifest.name}: "bin" object must not be empty`)
+      return
+    }
+
+    for (const [binName, binPath] of entries) {
+      if (typeof binPath === 'string' && binPath.trim() !== '') {
+        requiredFiles.add(binPath)
+      } else {
+        failures.push(`${manifest.name}: "bin.${binName}" must be a non-empty string`)
+      }
+    }
+    return
+  }
+
+  failures.push(`${manifest.name}: "bin" must be a string or object`)
+}
 
 function collectExportFiles(value, requiredFiles) {
   if (!value) {
@@ -73,4 +147,28 @@ function collectExportFiles(value, requiredFiles) {
       collectExportFiles(item, requiredFiles)
     }
   }
+}
+
+function normalizePackagePath(file) {
+  return file.replace(/^\.\//, '').replace(/\/+$/, '')
+}
+
+function isIncludedByFilesAllowlist(file, files) {
+  if (!Array.isArray(files)) {
+    return false
+  }
+
+  const normalizedFile = normalizePackagePath(file)
+  for (const entry of files) {
+    if (typeof entry !== 'string' || entry.startsWith('!')) {
+      continue
+    }
+
+    const normalizedEntry = normalizePackagePath(entry)
+    if (normalizedEntry === normalizedFile || normalizedFile.startsWith(`${normalizedEntry}/`)) {
+      return true
+    }
+  }
+
+  return false
 }

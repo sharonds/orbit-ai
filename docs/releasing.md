@@ -5,8 +5,8 @@ This playbook is for Orbit AI maintainers cutting npm releases.
 Orbit uses [Changesets](https://github.com/changesets/changesets) for package
 versioning and npm publishing. All public `@orbit-ai/*` packages are configured
 as one fixed release group, so `@orbit-ai/api`, `@orbit-ai/cli`,
-`@orbit-ai/core`, `@orbit-ai/demo-seed`, `@orbit-ai/integrations`,
-`@orbit-ai/mcp`, and `@orbit-ai/sdk` bump together.
+`@orbit-ai/core`, `@orbit-ai/create-orbit-app`, `@orbit-ai/demo-seed`,
+`@orbit-ai/integrations`, `@orbit-ai/mcp`, and `@orbit-ai/sdk` bump together.
 
 The repo is currently in alpha pre-release mode. Published versions use the
 alpha tag, for example `0.1.0-alpha.1`.
@@ -65,8 +65,9 @@ public `@orbit-ai/*` package with lifecycle scripts disabled, matching the
 credential-bearing publish step. CI builds in the read-only validation job and
 the publish job downloads those built artifacts before exposing npm credentials.
 The publish job also runs `pnpm release:verify-artifacts` before publishing to
-confirm each publishable package has its declared `main`, `types`, `exports`,
-and CLI `bin` files in `packages/*/dist`.
+confirm each publishable package has required metadata, README/LICENSE files,
+package `files` coverage, and its declared `main`, `types`, `exports`, and CLI
+`bin` files.
 Use the dry run to confirm the packages, versions, files, registry auth, and
 publish plan before merging the generated release PR. Running the dry run on
 `main` before the version PR merges checks the pre-versioned state, not the
@@ -120,7 +121,7 @@ whenever users may already have installed the version.
 2. Check the npm state for every fixed-group package:
 
    ```bash
-   for package in api cli core demo-seed integrations mcp sdk; do
+   for package in api cli core create-orbit-app demo-seed integrations mcp sdk; do
      npm view "@orbit-ai/${package}" dist-tags versions --json
    done
    ```
@@ -141,7 +142,7 @@ whenever users may already have installed the version.
 6. If the bad version stays on npm, deprecate every affected package version:
 
    ```bash
-   npm deprecate "@orbit-ai/api@0.1.0-alpha.N" "Bad alpha release; use 0.1.0-alpha.N+1."
+   npm deprecate "@orbit-ai/api@0.1.0-alpha.7" "Bad alpha release; use 0.1.0-alpha.8."
    ```
 
    Repeat for each affected fixed-group package.
@@ -149,7 +150,7 @@ whenever users may already have installed the version.
 
    ```bash
    npm dist-tag ls @orbit-ai/core
-   npm dist-tag add @orbit-ai/core@0.1.0-alpha.N+1 alpha
+   npm dist-tag add @orbit-ai/core@0.1.0-alpha.8 alpha
    ```
 
    Repeat only when a tag is wrong. Do not move `latest` during alpha.
