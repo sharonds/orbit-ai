@@ -19,9 +19,18 @@ describe('Journey 11 — MCP server + core tool flows', () => {
         'get_pipelines',
         'move_deal_stage',
       ])
-      const registeredCoreToolNames = new Set(
-        toolsResp.tools.filter((tool) => expectedCoreToolNames.has(tool.name)).map((tool) => tool.name),
-      )
+      const declaredCoreToolNames = new Set([
+        'search_records',
+        'get_record',
+        'create_record',
+        'update_record',
+        'delete_record',
+        'get_schema',
+        'get_pipelines',
+        'move_deal_stage',
+      ])
+      expect([...declaredCoreToolNames].sort()).toEqual([...expectedCoreToolNames].sort())
+      const registeredCoreToolNames = new Set([...declaredCoreToolNames].filter((name) => toolsResp.tools.some((tool) => tool.name === name)))
       expect([...registeredCoreToolNames].sort()).toEqual([...expectedCoreToolNames].sort())
 
       const invokedToolNames = new Set<string>()
@@ -82,10 +91,11 @@ describe('Journey 11 — MCP server + core tool flows', () => {
       const pipelinesEnvelope = unwrapData(pipelinesPayload) as { data?: Array<{ id: string }> }
       const pipeline = pipelinesEnvelope.data?.[0]
       expect(pipeline?.id).toMatch(/^pipeline_/)
-      const stagesPage = await stack.sdkDirect.stages.list({ filter: { pipeline_id: pipeline!.id }, limit: 10 })
-      expect(stagesPage.data.length, 'pipeline has at least two stages').toBeGreaterThanOrEqual(2)
-      const fromStage = stagesPage.data[0]!
-      const toStage = stagesPage.data[1]!
+      const pipelineStages = (await stack.sdkDirect.stages.search({ filter: { pipeline_id: pipeline!.id }, limit: 10 }))
+        .filter((stage) => stage.pipeline_id === pipeline!.id)
+      expect(pipelineStages.length, 'pipeline has at least two stages').toBeGreaterThanOrEqual(2)
+      const fromStage = pipelineStages[0]!
+      const toStage = pipelineStages[1]!
 
       const dealPayload = expectMcpSuccess(
         await callTool('create_record', {

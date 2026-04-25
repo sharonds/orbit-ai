@@ -12,14 +12,16 @@ export function parseMcpTextPayload(response: McpToolResponse, label: string): R
 export function expectMcpSuccess(response: McpToolResponse, label: string): Record<string, unknown> {
   expect(response.isError, `${label}: isError`).toBeFalsy()
   const payload = parseMcpTextPayload(response, label)
-  expect(payload.ok ?? true, `${label}: ok flag`).not.toBe(false)
+  expect(payload.ok, `${label}: ok flag`).toBe(true)
   return payload
 }
 
 export function expectMcpError(response: McpToolResponse, code: string, label: string): Record<string, unknown> {
   expect(response.isError, `${label}: isError`).toBe(true)
   const payload = parseMcpTextPayload(response, label)
-  const error = (payload.error ?? payload) as { code?: unknown; message?: unknown; hint?: unknown; recovery?: unknown }
+  expect(payload.ok, `${label}: ok flag`).toBe(false)
+  expect(payload.error, `${label}: error envelope`).toBeTruthy()
+  const error = payload.error as { code?: unknown; message?: unknown; hint?: unknown; recovery?: unknown }
   expect(error.code, `${label}: error.code`).toBe(code)
   expect(typeof error.message, `${label}: error.message`).toBe('string')
   if ('hint' in error) expect(typeof error.hint, `${label}: error.hint`).toBe('string')
