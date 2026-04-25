@@ -37,7 +37,24 @@ export async function spawnMcp(opts: SpawnMcpOptions): Promise<McpHandle> {
   )
 
   await server.connect(serverTransport)
-  await mcpClient.connect(clientTransport)
+  try {
+    await mcpClient.connect(clientTransport)
+  } catch (err) {
+    try {
+      if (typeof (server as { close?: () => Promise<void> }).close === 'function') {
+        await (server as { close: () => Promise<void> }).close()
+      }
+    } catch (closeErr) {
+      console.error(
+        'Failed to close MCP server after client connect failure:',
+        closeErr instanceof Error ? closeErr.message : String(closeErr),
+      )
+      if (err instanceof Error && (err as Error & { cause?: unknown }).cause === undefined) {
+        ;(err as Error & { cause?: unknown }).cause = closeErr
+      }
+    }
+    throw err
+  }
 
   async function dispatchRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
     if (method === 'tools/list') {

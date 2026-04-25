@@ -216,6 +216,17 @@ test('Postgres buildStack API key insert cannot reassign existing keys', () => {
   assert.match(testSrc, /key_prefix/)
 })
 
+test('MCP harness closes server when client connect fails', () => {
+  const src = readFileSync(new URL('../e2e/src/harness/run-mcp.ts', import.meta.url), 'utf8')
+  const serverConnectIndex = src.indexOf('await server.connect(serverTransport)')
+  const clientConnectIndex = src.indexOf('await mcpClient.connect(clientTransport)')
+  const failureMessageIndex = src.indexOf('Failed to close MCP server after client connect failure:')
+  assert.ok(serverConnectIndex > -1, 'missing MCP server connect')
+  assert.ok(clientConnectIndex > serverConnectIndex, 'client should connect after server')
+  assert.ok(failureMessageIndex > clientConnectIndex, 'client connect failure path should close server')
+  assert.match(src, /catch \(err\)[\s\S]*server as \{ close\?: \(\) => Promise<void> \}[\s\S]*throw err/)
+})
+
 test('E2E config keeps shared Postgres journeys serial', () => {
   const src = readFileSync(new URL('../e2e/vitest.config.ts', import.meta.url), 'utf8')
   assert.match(src, /fileParallelism:\s*false/, 'shared Postgres e2e database requires serial journey files')
