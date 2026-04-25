@@ -68,3 +68,8 @@ docs/*
 docs/security/*
 !docs/security/security-architecture.md
 !docs/security/database-hardening-checklist.md
+# Implementation plans and reviews are tracked so cloud agents can execute them
+!docs/superpowers
+docs/superpowers/*
+!docs/superpowers/plans
+!docs/superpowers/reviews
