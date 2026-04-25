@@ -64,7 +64,7 @@ export function registerDealsCommand(program: Command): void {
       const client = resolveClient({ flags })
 
       const input: CreateDealInput = { name: opts.name }
-      if (opts.value !== undefined) input.value = Number(opts.value)
+      if (opts.value !== undefined) input.value = opts.value
       if (opts.currency) input.currency = opts.currency
       if (opts.stageId) input.stage_id = opts.stageId
       if (opts.pipelineId) input.pipeline_id = opts.pipelineId
@@ -102,7 +102,7 @@ export function registerDealsCommand(program: Command): void {
 
       const input: UpdateDealInput = {}
       if (opts.name) input.name = opts.name
-      if (opts.value !== undefined) input.value = Number(opts.value)
+      if (opts.value !== undefined) input.value = opts.value
       if (opts.currency) input.currency = opts.currency
       if (opts.stageId) input.stage_id = opts.stageId
       if (opts.pipelineId) input.pipeline_id = opts.pipelineId

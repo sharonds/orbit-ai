@@ -2,6 +2,39 @@ import { z } from 'zod'
 
 import { dealInsertBaseSchema, dealSelectSchema, dealUpdateBaseSchema } from '../../schema/zod.js'
 
+const DECIMAL_18_2 = /^-?\d{1,16}(\.\d{1,2})?$/
+
+function normalizeNumberValue(value: number, ctx: z.RefinementCtx): string | typeof z.NEVER {
+  if (!Number.isFinite(value)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'value must be finite' })
+    return z.NEVER
+  }
+  if (!Number.isSafeInteger(Math.trunc(value))) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'value magnitude exceeds safe integer range; pass a decimal string',
+    })
+    return z.NEVER
+  }
+  return value.toFixed(2)
+}
+
+const dealValueSchema = z.union([
+  z.number(),
+  z.string(),
+]).transform((value, ctx) => {
+  const normalized = typeof value === 'number' ? normalizeNumberValue(value, ctx) : value
+  if (normalized === z.NEVER) return z.NEVER
+  if (!DECIMAL_18_2.test(normalized)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'value must fit numeric(18,2): at most 16 integer digits and 2 fractional digits',
+    })
+    return z.NEVER
+  }
+  return normalized
+}).optional().nullable()
+
 export const dealRecordSchema = dealSelectSchema
 export type DealRecord = typeof dealRecordSchema._output
 
@@ -17,8 +50,7 @@ export const dealCreateInputSchema = dealInsertBaseSchema.omit({
   // Public API accepts either `name` or `title` — both map to the `title` column.
   name: z.string().optional(),
   title: z.string().optional(),
-  // Accept number or string for value — coerce to string for the numeric DB column.
-  value: z.union([z.number(), z.string()]).transform((v) => String(v)).optional().nullable(),
+  value: dealValueSchema,
 }).superRefine((val, ctx) => {
   if (val.name === undefined && val.title === undefined) {
     ctx.addIssue({
@@ -46,8 +78,7 @@ export const dealUpdateInputSchema = dealUpdateBaseSchema.omit({
   // Public API accepts either `name` or `title` — both map to the `title` column.
   name: z.string().optional(),
   title: z.string().optional(),
-  // Accept number or string for value — coerce to string for the numeric DB column.
-  value: z.union([z.number(), z.string()]).transform((v) => String(v)).optional().nullable(),
+  value: dealValueSchema,
 }).transform((val) => {
   const { name, ...rest } = val
   if (name !== undefined && rest.title === undefined) {

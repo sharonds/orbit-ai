@@ -65,6 +65,32 @@ describe('classifyError end-to-end', () => {
     expect(result.payload.message).toBe('Not found')
   })
 
+  it('OrbitApiError-shaped object preserves nested error envelope fields', () => {
+    const e = Object.assign(new Error('Request body failed validation'), {
+      name: 'OrbitApiError',
+      status: 400,
+      code: 'VALIDATION_FAILED',
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'Request body failed validation',
+        request_id: 'req_cli_123',
+        doc_url: 'https://orbit-ai.dev/docs/errors#validation_failed',
+        hint: 'value: value must fit numeric(18,2)',
+        retryable: false,
+      },
+    })
+    const result = _classifyError(e)
+    expect(result.code).toBe(1)
+    expect(result.payload).toEqual({
+      code: 'VALIDATION_FAILED',
+      message: 'Request body failed validation',
+      request_id: 'req_cli_123',
+      doc_url: 'https://orbit-ai.dev/docs/errors#validation_failed',
+      hint: 'value: value must fit numeric(18,2)',
+      retryable: false,
+    })
+  })
+
   it('Generic Error → code 1, payload code UNKNOWN_ERROR', () => {
     const e = new Error('unexpected')
     const result = _classifyError(e)

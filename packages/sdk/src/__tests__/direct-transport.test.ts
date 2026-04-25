@@ -382,6 +382,47 @@ describe('DirectTransport workflow sub-routes', () => {
     })
   })
 
+  it('maps Zod validation errors to API-shaped errors in direct mode', async () => {
+    const { transport } = await createWorkflowClient()
+    const err = await transport.request({
+      method: 'POST',
+      path: '/v1/deals',
+      body: { name: 'Bad Deal', value: '1e21' },
+    }).catch((caught: unknown) => caught)
+
+    expect(err).toBeInstanceOf(OrbitApiError)
+    expect(err).toMatchObject<Partial<OrbitApiError>>({
+      error: expect.objectContaining({
+        code: 'VALIDATION_FAILED',
+        doc_url: 'https://orbit-ai.dev/docs/errors#validation_failed',
+        hint: expect.stringContaining('value'),
+        retryable: false,
+      }),
+      status: 400,
+    })
+    expect((err as OrbitApiError).error.request_id).toMatch(/^req_/)
+  })
+
+  it('adds API-shaped metadata defaults to direct-mode OrbitApiError failures', async () => {
+    const { transport } = await createWorkflowClient()
+    const err = await transport.request({
+      method: 'POST',
+      path: '/v1/deals/deal_missing/move',
+      body: {},
+    }).catch((caught: unknown) => caught)
+
+    expect(err).toBeInstanceOf(OrbitApiError)
+    expect(err).toMatchObject<Partial<OrbitApiError>>({
+      error: expect.objectContaining({
+        code: 'VALIDATION_FAILED',
+        doc_url: 'https://orbit-ai.dev/docs/errors#validation_failed',
+        retryable: false,
+      }),
+      status: 400,
+    })
+    expect((err as OrbitApiError).error.request_id).toMatch(/^req_/)
+  })
+
   it('rejects empty schema migration bodies in direct mode', async () => {
     const { transport } = await createWorkflowClient()
 

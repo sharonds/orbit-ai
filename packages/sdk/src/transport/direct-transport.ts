@@ -1,4 +1,4 @@
-import { createCoreServices, resolvePublicEntityServiceKey, type OrbitEnvelope, type OrbitAuthContext } from '@orbit-ai/core'
+import { createCoreServices, resolvePublicEntityServiceKey, type OrbitEnvelope, type OrbitAuthContext, type OrbitErrorCode } from '@orbit-ai/core'
 import type { OrbitClientOptions } from '../config.js'
 import type { OrbitTransport, TransportRequest } from './index.js'
 import { OrbitApiError } from '../errors.js'
@@ -79,17 +79,34 @@ export class DirectTransport implements OrbitTransport {
       })
       return this.wrapEnvelope(input.method, input.path, input.query, result) as OrbitEnvelope<T>
     } catch (err: unknown) {
-      if (err instanceof OrbitApiError) throw err
-      const orbitErr = err as { code?: string; message?: string; field?: string; retryable?: boolean }
-      if (orbitErr.code) {
+      if (err instanceof OrbitApiError) {
+        throw new OrbitApiError(enrichDirectErrorShape(err.error), err.status)
+      }
+      if (isZodValidationError(err)) {
         throw new OrbitApiError(
-          {
-            code: orbitErr.code as OrbitApiError['error']['code'],
+          enrichDirectErrorShape({
+            code: 'VALIDATION_FAILED',
+            message: 'Request body failed validation',
+            hint: err.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join('; '),
+          }),
+          400,
+        )
+      }
+      const orbitErr = err as { code?: string; message?: string; field?: string; retryable?: boolean; request_id?: string; doc_url?: string; hint?: string; recovery?: string }
+      if (orbitErr.code) {
+        const code = orbitErr.code as OrbitErrorCode
+        throw new OrbitApiError(
+          enrichDirectErrorShape({
+            code,
             message: orbitErr.message ?? 'Unknown error',
             field: orbitErr.field,
+            request_id: orbitErr.request_id ?? createDirectRequestId(),
+            doc_url: orbitErr.doc_url ?? directErrorDocUrl(code),
+            hint: orbitErr.hint,
+            recovery: orbitErr.recovery,
             retryable: orbitErr.retryable,
-          },
-          this.errorCodeToStatus(orbitErr.code),
+          }),
+          this.errorCodeToStatus(code),
         )
       }
       throw err
@@ -461,7 +478,7 @@ export class DirectTransport implements OrbitTransport {
       return {
         data: this.serializePage(path, (paginated.data as unknown[]) ?? []),
         meta: {
-          request_id: `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 26)}`,
+          request_id: createDirectRequestId(),
           cursor: null,
           next_cursor: nextCursor,
           has_more: paginated.hasMore ?? false,
@@ -473,7 +490,7 @@ export class DirectTransport implements OrbitTransport {
     return {
       data: this.serializeResult(path, data),
       meta: {
-        request_id: `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 26)}`,
+        request_id: createDirectRequestId(),
         cursor: null,
         next_cursor: null,
         has_more: false,
@@ -518,5 +535,42 @@ export class DirectTransport implements OrbitTransport {
       INTERNAL_ERROR: 500,
     }
     return map[code] ?? 500
+  }
+}
+
+interface ZodIssueLike {
+  readonly path: Array<string | number>
+  readonly message: string
+}
+
+interface ZodValidationErrorLike extends Error {
+  readonly issues: ZodIssueLike[]
+}
+
+function isZodValidationError(err: unknown): err is ZodValidationErrorLike {
+  if (!(err instanceof Error) || err.name !== 'ZodError') return false
+  const issues = (err as Error & { issues?: unknown }).issues
+  return Array.isArray(issues) &&
+    issues.every((issue) => {
+      if (!issue || typeof issue !== 'object') return false
+      const record = issue as Record<string, unknown>
+      return Array.isArray(record.path) && typeof record.message === 'string'
+    })
+}
+
+function createDirectRequestId(): string {
+  return `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 26)}`
+}
+
+function directErrorDocUrl(code: OrbitErrorCode): string {
+  return `https://orbit-ai.dev/docs/errors#${code.toLowerCase()}`
+}
+
+function enrichDirectErrorShape(error: OrbitApiError['error']): OrbitApiError['error'] {
+  return {
+    ...error,
+    request_id: error.request_id ?? createDirectRequestId(),
+    doc_url: error.doc_url ?? directErrorDocUrl(error.code),
+    retryable: error.retryable ?? false,
   }
 }

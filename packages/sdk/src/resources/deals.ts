@@ -1,12 +1,14 @@
 import { BaseResource } from './base-resource.js'
 import type { OrbitTransport } from '../transport/index.js'
 
+export type DealValueInput = number | string | null
+
 export interface DealRecord {
   id: string
   object: 'deal'
   organization_id: string
   name: string
-  value: number | null
+  value: string | null
   currency: string | null
   stage_id: string | null
   pipeline_id: string | null
@@ -22,7 +24,7 @@ export interface DealRecord {
 
 export interface CreateDealInput {
   name: string
-  value?: number
+  value?: DealValueInput
   currency?: string
   stage_id?: string
   pipeline_id?: string

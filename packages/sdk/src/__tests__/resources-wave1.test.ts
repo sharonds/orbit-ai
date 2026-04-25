@@ -70,7 +70,7 @@ const SAMPLE_DEAL = {
   object: 'deal' as const,
   organization_id: 'org_1',
   name: 'Big Deal',
-  value: 50000,
+  value: '50000.00',
   currency: 'EUR',
   stage_id: 'stg_1',
   pipeline_id: 'pip_1',
