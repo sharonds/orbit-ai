@@ -31,9 +31,6 @@ interface ToolEnvelope {
   readonly ok?: boolean
   readonly data?: RecordRef[] | Record<string, unknown>
   readonly error?: { readonly code?: string }
-  readonly meta?: {
-    readonly next_cursor?: string | null
-  }
 }
 
 const API_VERSION = '2026-04-01'
@@ -277,32 +274,27 @@ async function assertMcpIsolation(stack: Stack, betaIds: Record<EntityName, stri
         )
       }
 
-      const ids = await listAllMcpIds(mcp, entityCase.entity)
-      expect(ids, `mcp: ${entityCase.entity} search excludes beta id`).not.toContain(betaId)
+      const ids = await searchMcpIdsById(mcp, entityCase.entity, betaId)
+      expect(ids, `mcp: ${entityCase.entity} exact-id search excludes beta id`).not.toContain(betaId)
     }
   } finally {
     await mcp.close()
   }
 }
 
-async function listAllMcpIds(
+async function searchMcpIdsById(
   mcp: Awaited<ReturnType<typeof spawnMcp>>,
   entity: EntityName,
+  betaId: string,
 ): Promise<string[]> {
-  const ids: string[] = []
-  let cursor: string | undefined
-  do {
-    const response = await mcp.request('tools/call', {
-      name: 'search_records',
-      arguments: { object_type: entity, limit: 100, ...(cursor ? { cursor } : {}) },
-    })
-    expect(response.isError, `mcp: search_records ${entity} should succeed`).toBeFalsy()
-    const body = parseToolEnvelope(response)
-    const rows = Array.isArray(body.data) ? body.data : []
-    ids.push(...rows.map((row) => row.id))
-    cursor = body.meta?.next_cursor ?? undefined
-  } while (cursor)
-  return ids
+  const response = await mcp.request('tools/call', {
+    name: 'search_records',
+    arguments: { object_type: entity, filter: { id: betaId }, limit: 100 },
+  })
+  expect(response.isError, `mcp: search_records ${entity} by beta id should succeed`).toBeFalsy()
+  const body = parseToolEnvelope(response)
+  const rows = Array.isArray(body.data) ? body.data : []
+  return rows.map((row) => row.id)
 }
 
 function toolErrorCode(response: { content?: Array<{ text: string }> }): string | undefined {
