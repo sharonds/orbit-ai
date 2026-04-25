@@ -156,6 +156,24 @@ test('E2E API listener exists for CLI API-mode journeys', () => {
   assert.match(testSrc, /server\.close\(\)/, 'api-server runtime test must close the listener')
 })
 
+test('CLI workspace helper is adapter-aware with shared Postgres safety', () => {
+  const src = readFileSync(new URL('../e2e/src/harness/prepare-cli-workspace.ts', import.meta.url), 'utf8')
+  const safetySrc = readFileSync(new URL('../e2e/src/harness/postgres-safety.ts', import.meta.url), 'utf8')
+  const buildStackSrc = readFileSync(new URL('../e2e/src/harness/build-stack.ts', import.meta.url), 'utf8')
+  assert.match(src, /ORBIT_E2E_ADAPTER/, 'prepare-cli-workspace must read ORBIT_E2E_ADAPTER')
+  assert.match(src, /adapterType === 'postgres'/, 'prepare-cli-workspace must have a Postgres branch')
+  assert.match(src, /adapter: 'postgres'/, 'prepare-cli-workspace must return adapter metadata')
+  assert.match(src, /verifiedBy: 'metadata'/, 'prepare-cli-workspace must return proof metadata')
+  assert.match(src, /assertSafePostgresE2eUrl\(databaseUrl\)/, 'prepare-cli-workspace must call shared safety helper')
+  assert.match(buildStackSrc, /assertSafePostgresE2eUrl\(databaseUrl\)/, 'buildStack must call shared safety helper')
+  assert.match(safetySrc, /orbit_e2e/, 'shared safety helper must allow only local e2e databases')
+})
+
+test('E2E config keeps shared Postgres journeys serial', () => {
+  const src = readFileSync(new URL('../e2e/vitest.config.ts', import.meta.url), 'utf8')
+  assert.match(src, /fileParallelism:\s*false/, 'shared Postgres e2e database requires serial journey files')
+})
+
 test('create-orbit-app package declares publish metadata and prepack build hook', () => {
   assert.equal(createOrbitAppManifest.name, '@orbit-ai/create-orbit-app')
   assert.equal(createOrbitAppManifest.license, 'MIT')

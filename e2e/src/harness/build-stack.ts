@@ -10,6 +10,7 @@ import { createApi } from '@orbit-ai/api/node'
 import { OrbitClient } from '@orbit-ai/sdk'
 import { seed, TENANT_PROFILES } from '@orbit-ai/demo-seed'
 import { sql } from 'drizzle-orm'
+import { assertSafePostgresE2eUrl } from './postgres-safety.js'
 
 export interface StackOptions {
   readonly tenant: 'acme' | 'beta' | 'both'
@@ -27,23 +28,8 @@ export interface Stack {
   readonly teardown: () => Promise<void>
 }
 
-const POSTGRES_TEST_DATABASE_NAMES = new Set(['orbit_e2e', 'orbit_e2e_test', 'orbit_ai_test'])
-
 function createRawApiKey(): string {
   return `sk_test_e2e_${crypto.randomUUID().replace(/-/g, '')}`
-}
-
-function assertSafePostgresE2eUrl(databaseUrl: string): void {
-  const url = new URL(databaseUrl)
-  const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1'
-  const databaseName = url.pathname.replace(/^\//, '')
-
-  if (!isLocalhost || !POSTGRES_TEST_DATABASE_NAMES.has(databaseName)) {
-    throw new Error(
-      `Refusing to run Postgres e2e tests against ${url.hostname}/${databaseName}. ` +
-      `Use localhost with one of: ${[...POSTGRES_TEST_DATABASE_NAMES].join(', ')}.`,
-    )
-  }
 }
 
 async function sha256hex(input: string): Promise<string> {

@@ -10,12 +10,17 @@ describe('Journey 8 - migration preview/apply alpha stub passthrough', () => {
   it('CLI returns the current stub response without claiming migration safety', async () => {
     const workspace = await prepareCliWorkspace({ tenant: 'acme' })
     try {
+      if (process.env.ORBIT_E2E_ADAPTER === 'postgres') {
+        expect(workspace.adapter).toBe('postgres')
+        expect(workspace.databaseUrl).toMatch(/^postgres/)
+      }
+
       const preview = await runCli({
         args: ['--mode', 'direct', '--json', 'migrate', '--preview'],
         cwd: workspace.cwd,
         env: workspace.env,
       })
-      expect(preview.exitCode, `migrate --preview exitCode (stderr: ${preview.stderr})`).toBe(0)
+      expect(preview.exitCode, `migrate --preview exitCode (stdout: ${preview.stdout}; stderr: ${preview.stderr})`).toBe(0)
       expect(preview.json).toEqual({ operations: [], destructive: false, status: 'ok' })
 
       const apply = await runCli({
@@ -23,7 +28,7 @@ describe('Journey 8 - migration preview/apply alpha stub passthrough', () => {
         cwd: workspace.cwd,
         env: workspace.env,
       })
-      expect(apply.exitCode, `migrate --apply exitCode (stderr: ${apply.stderr})`).toBe(0)
+      expect(apply.exitCode, `migrate --apply exitCode (stdout: ${apply.stdout}; stderr: ${apply.stderr})`).toBe(0)
       expect(apply.json).toEqual({ applied: [], status: 'ok' })
     } finally {
       await workspace.cleanup()
