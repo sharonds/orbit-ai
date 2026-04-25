@@ -206,6 +206,16 @@ test('CLI workspace helper is adapter-aware with shared Postgres safety', () => 
   assert.match(safetySrc, /orbit_e2e/, 'shared safety helper must allow only local e2e databases')
 })
 
+test('Postgres buildStack API key insert cannot reassign existing keys', () => {
+  const src = readFileSync(new URL('../e2e/src/harness/build-stack.ts', import.meta.url), 'utf8')
+  const testSrc = readFileSync(new URL('../e2e/src/harness/build-stack.test.ts', import.meta.url), 'utf8')
+  assert.match(src, /ON CONFLICT \(key_hash\) DO NOTHING/)
+  assert.doesNotMatch(src, /ON CONFLICT \(key_hash\) DO UPDATE SET organization_id/)
+  assert.doesNotMatch(src, /ON CONFLICT \(key_prefix\)/)
+  assert.match(testSrc, /hash collision belongs to a different organization/)
+  assert.match(testSrc, /key_prefix/)
+})
+
 test('E2E config keeps shared Postgres journeys serial', () => {
   const src = readFileSync(new URL('../e2e/vitest.config.ts', import.meta.url), 'utf8')
   assert.match(src, /fileParallelism:\s*false/, 'shared Postgres e2e database requires serial journey files')
