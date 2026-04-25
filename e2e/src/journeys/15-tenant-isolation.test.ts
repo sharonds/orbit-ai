@@ -17,6 +17,8 @@ interface RecordRef {
   readonly id: string
 }
 
+type EntitySnapshots = Record<EntityName, Record<string, unknown>>
+
 interface ListEnvelope {
   readonly data?: RecordRef[]
   readonly meta?: {
@@ -29,6 +31,9 @@ interface ToolEnvelope {
   readonly ok?: boolean
   readonly data?: RecordRef[] | Record<string, unknown>
   readonly error?: { readonly code?: string }
+  readonly meta?: {
+    readonly next_cursor?: string | null
+  }
 }
 
 const API_VERSION = '2026-04-01'
@@ -72,18 +77,22 @@ describe('Journey 15 — tenant isolation across shared-datastore surfaces', () 
         context: { orgId: stack.betaOrgId! },
       })
       const betaIds = await discoverBetaIds(betaClient)
+      const betaSnapshots = await snapshotBetaRecords(betaClient, betaIds)
 
       for (const entityCase of ENTITY_CASES) {
         await assertSdkIsolation(stack, entityCase, betaIds[entityCase.entity])
         await assertRawApiIsolation(stack, entityCase, betaIds[entityCase.entity])
       }
+      await assertBetaRecordsUnchanged(betaClient, betaIds, betaSnapshots, 'sdk/raw-api')
 
       server = await startApiServer(stack.api)
       for (const entityCase of ENTITY_CASES) {
         await assertCliIsolation(server, stack, entityCase, betaIds[entityCase.entity])
       }
+      await assertBetaRecordsUnchanged(betaClient, betaIds, betaSnapshots, 'cli')
 
       await assertMcpIsolation(stack, betaIds)
+      await assertBetaRecordsUnchanged(betaClient, betaIds, betaSnapshots, 'mcp')
     } finally {
       if (server) await server.close()
       await stack.teardown()
@@ -104,6 +113,23 @@ async function discoverBetaIds(client: OrbitClient): Promise<Record<EntityName, 
     contacts: contactId!,
     deals: dealId!,
   }
+}
+
+async function snapshotBetaRecords(client: OrbitClient, betaIds: Record<EntityName, string>): Promise<EntitySnapshots> {
+  return {
+    contacts: await client.contacts.get(betaIds.contacts) as unknown as Record<string, unknown>,
+    deals: await client.deals.get(betaIds.deals) as unknown as Record<string, unknown>,
+  }
+}
+
+async function assertBetaRecordsUnchanged(
+  client: OrbitClient,
+  betaIds: Record<EntityName, string>,
+  snapshots: EntitySnapshots,
+  label: string,
+): Promise<void> {
+  expect(await client.contacts.get(betaIds.contacts), `${label}: beta contact unchanged`).toEqual(snapshots.contacts)
+  expect(await client.deals.get(betaIds.deals), `${label}: beta deal unchanged`).toEqual(snapshots.deals)
 }
 
 async function assertSdkIsolation(stack: Stack, entityCase: EntityCase, betaId: string): Promise<void> {
@@ -251,18 +277,32 @@ async function assertMcpIsolation(stack: Stack, betaIds: Record<EntityName, stri
         )
       }
 
-      const searchResponse = await mcp.request('tools/call', {
-        name: 'search_records',
-        arguments: { object_type: entityCase.entity, limit: 100 },
-      })
-      expect(searchResponse.isError, `mcp: search_records ${entityCase.entity} should succeed`).toBeFalsy()
-      const searchData = parseToolEnvelope(searchResponse)
-      const rows = Array.isArray(searchData.data) ? searchData.data : []
-      expect(rows.map((row) => row.id), `mcp: ${entityCase.entity} search excludes beta id`).not.toContain(betaId)
+      const ids = await listAllMcpIds(mcp, entityCase.entity)
+      expect(ids, `mcp: ${entityCase.entity} search excludes beta id`).not.toContain(betaId)
     }
   } finally {
     await mcp.close()
   }
+}
+
+async function listAllMcpIds(
+  mcp: Awaited<ReturnType<typeof spawnMcp>>,
+  entity: EntityName,
+): Promise<string[]> {
+  const ids: string[] = []
+  let cursor: string | undefined
+  do {
+    const response = await mcp.request('tools/call', {
+      name: 'search_records',
+      arguments: { object_type: entity, limit: 100, ...(cursor ? { cursor } : {}) },
+    })
+    expect(response.isError, `mcp: search_records ${entity} should succeed`).toBeFalsy()
+    const body = parseToolEnvelope(response)
+    const rows = Array.isArray(body.data) ? body.data : []
+    ids.push(...rows.map((row) => row.id))
+    cursor = body.meta?.next_cursor ?? undefined
+  } while (cursor)
+  return ids
 }
 
 function toolErrorCode(response: { content?: Array<{ text: string }> }): string | undefined {
