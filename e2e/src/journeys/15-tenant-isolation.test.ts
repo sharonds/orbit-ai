@@ -4,6 +4,7 @@ import { buildStack, type Stack } from '../harness/build-stack.js'
 import { startApiServer, type StartedApiServer } from '../harness/api-server.js'
 import { runCli, type CliResult } from '../harness/run-cli.js'
 import { spawnMcp } from '../harness/run-mcp.js'
+import { expectMcpError } from '../harness/mcp-envelope.js'
 
 type AdapterName = 'sqlite' | 'postgres'
 type EntityName = 'contacts' | 'deals'
@@ -268,10 +269,7 @@ async function assertMcpIsolation(stack: Stack, betaIds: Record<EntityName, stri
         ['delete_record', { object_type: entityCase.entity, record_id: betaId, confirm: true }],
       ] as const) {
         const response = await mcp.request('tools/call', { name: tool, arguments: args })
-        expect(response.isError, `mcp: ${tool} ${entityCase.entity} beta id isError`).toBe(true)
-        expect(toolErrorCode(response), `mcp: ${tool} ${entityCase.entity} beta id code`).toBe(
-          'RESOURCE_NOT_FOUND',
-        )
+        expectMcpError(response, 'RESOURCE_NOT_FOUND', `mcp: ${tool} ${entityCase.entity} beta id`)
       }
 
       const ids = await searchMcpIdsById(mcp, entityCase.entity, betaId)
@@ -295,10 +293,6 @@ async function searchMcpIdsById(
   const body = parseToolEnvelope(response)
   const rows = Array.isArray(body.data) ? body.data : []
   return rows.map((row) => row.id)
-}
-
-function toolErrorCode(response: { content?: Array<{ text: string }> }): string | undefined {
-  return parseToolEnvelope(response).error?.code
 }
 
 function parseToolEnvelope(response: { content?: Array<{ text: string }> }): ToolEnvelope {
