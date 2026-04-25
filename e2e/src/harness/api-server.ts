@@ -23,7 +23,15 @@ export async function startApiServer(api: { fetch(request: Request): Promise<Res
       }
       const response = await api.fetch(new Request(url, { method: req.method, headers, body }))
       res.statusCode = response.status
-      response.headers.forEach((value, key) => res.setHeader(key, value))
+      const setCookieValues =
+        typeof (response.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie === 'function'
+          ? (response.headers as Headers & { getSetCookie: () => string[] }).getSetCookie()
+          : []
+      response.headers.forEach((value, key) => {
+        if (key.toLowerCase() === 'set-cookie' && setCookieValues.length > 0) return
+        res.setHeader(key, value)
+      })
+      if (setCookieValues.length > 0) res.setHeader('set-cookie', setCookieValues)
       const arrayBuffer = await response.arrayBuffer()
       res.end(Buffer.from(arrayBuffer))
     } catch (err) {
@@ -33,10 +41,16 @@ export async function startApiServer(api: { fetch(request: Request): Promise<Res
     }
   })
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', () => resolve())
-  })
+  try {
+    await listen(server)
+  } catch (err) {
+    try {
+      await closeServer(server)
+    } catch {
+      // The server may already be closed after a bind failure.
+    }
+    throw err
+  }
 
   const address = server.address()
   if (!address || typeof address === 'string') {
@@ -48,6 +62,22 @@ export async function startApiServer(api: { fetch(request: Request): Promise<Res
     baseUrl: `http://127.0.0.1:${address.port}`,
     close: () => closeServer(server),
   }
+}
+
+function listen(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onError = (err: Error) => {
+      server.off('listening', onListening)
+      reject(err)
+    }
+    const onListening = () => {
+      server.off('error', onError)
+      resolve()
+    }
+    server.once('error', onError)
+    server.once('listening', onListening)
+    server.listen(0, '127.0.0.1')
+  })
 }
 
 function closeServer(server: Server): Promise<void> {

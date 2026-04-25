@@ -147,9 +147,13 @@ test('ci e2e-scope regexes cover release-sensitive paths', () => {
 
 test('E2E API listener exists for CLI API-mode journeys', () => {
   const src = readFileSync(new URL('../e2e/src/harness/api-server.ts', import.meta.url), 'utf8')
+  const testSrc = readFileSync(new URL('../e2e/src/harness/api-server.test.ts', import.meta.url), 'utf8')
   assert.match(src, /createServer/, 'api-server must use a real Node HTTP listener')
   assert.match(src, /api\.fetch\(new Request/, 'api-server must route requests through the Hono API fetch handler')
   assert.match(src, /127\.0\.0\.1/, 'api-server must bind locally for CLI child processes')
+  assert.match(testSrc, /startApiServer/, 'api-server must have runtime coverage')
+  assert.match(testSrc, /server\.baseUrl/, 'api-server runtime test must assert the bound URL')
+  assert.match(testSrc, /server\.close\(\)/, 'api-server runtime test must close the listener')
 })
 
 test('create-orbit-app package declares publish metadata and prepack build hook', () => {
