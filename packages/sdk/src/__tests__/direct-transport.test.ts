@@ -368,6 +368,24 @@ describe('DirectTransport workflow sub-routes', () => {
     expect(detached.detached).toBe(true)
   })
 
+  it('preserves HTTP schema metadata shape in direct mode', async () => {
+    const { client } = await createWorkflowClient()
+    await client.schema.addField('contacts', {
+      name: 'linkedin_url',
+      label: 'LinkedIn URL',
+      type: 'url',
+    })
+
+    const object = await client.schema.describeObject('contacts')
+    expect(object.customFields.some((field) => field.fieldName === 'linkedin_url')).toBe(true)
+    expect(object).not.toHaveProperty('custom_fields')
+
+    const objects = await client.schema.listObjects()
+    const contacts = objects.find((item) => item.type === 'contacts')
+    expect(contacts?.customFields.some((field) => field.fieldName === 'linkedin_url')).toBe(true)
+    expect(contacts).not.toHaveProperty('custom_fields')
+  })
+
   it('returns typed validation errors for missing schema field bodies in direct mode', async () => {
     const { transport } = await createWorkflowClient()
 

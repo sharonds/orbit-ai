@@ -75,8 +75,20 @@ async function insertPostgresE2eApiKey(
     ON CONFLICT (key_hash) DO NOTHING
   `)
 
-  const rows = await database.query<{ id: string; organization_id: string }>(
-    sql`SELECT id, organization_id FROM api_keys WHERE key_hash = ${keyHash} LIMIT 1`,
+  const rows = await database.query<{
+    id: string
+    organization_id: string
+    name: string
+    scopes: string
+    revoked_at: string | null
+    expires_at: string | null
+  }>(
+    sql`
+      SELECT id, organization_id, name, scopes::text AS scopes, revoked_at::text AS revoked_at, expires_at::text AS expires_at
+      FROM api_keys
+      WHERE key_hash = ${keyHash}
+      LIMIT 1
+    `,
   )
   const row = rows[0]
   if (!row) {
@@ -84,6 +96,16 @@ async function insertPostgresE2eApiKey(
   }
   if (row.organization_id !== input.organizationId) {
     throw new Error('Postgres e2e API key hash collision belongs to a different organization')
+  }
+  if (row.id !== keyId) {
+    const activeHarnessKey =
+      row.name === 'e2e-test-key' &&
+      row.scopes === '["*"]' &&
+      row.revoked_at === null &&
+      (row.expires_at === null || Date.parse(row.expires_at) > Date.now())
+    if (!activeHarnessKey) {
+      throw new Error('Postgres e2e API key hash collision matched a pre-existing non-harness key')
+    }
   }
 
   return { id: row.id, keyHash, keyPrefix }

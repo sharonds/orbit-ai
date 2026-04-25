@@ -11,7 +11,6 @@ type AdapterName = 'sqlite' | 'postgres'
 interface SchemaObject {
   readonly type?: string
   readonly customFields?: readonly object[]
-  readonly custom_fields?: readonly object[]
 }
 
 interface Envelope<T> {
@@ -20,7 +19,7 @@ interface Envelope<T> {
 
 const FIELD_NAME = 'linkedin_url'
 
-describe('Journey 12 — schema read parity and tenant isolation', () => {
+describe('Plan C schema read parity and tenant isolation', () => {
   it('keeps beta custom field metadata out of acme-bound schema reads across surfaces', async () => {
     const adapter = (process.env.ORBIT_E2E_ADAPTER ?? 'sqlite') as AdapterName
     const stack = await buildStack({ tenant: 'both', adapter })
@@ -111,10 +110,12 @@ function assertObjectContainsField(object: SchemaObject, fieldName: string, labe
 }
 
 function fieldNames(object: SchemaObject): string[] {
-  return [...(object.customFields ?? []), ...(object.custom_fields ?? [])]
+  expect(object, 'schema object uses camelCase customFields shape').not.toHaveProperty('custom_fields')
+  return [...(object.customFields ?? [])]
     .map((field) => {
       const record = field as Record<string, unknown>
-      return record.fieldName ?? record.field_name ?? record.name
+      expect(record, 'custom field uses camelCase fieldName shape').not.toHaveProperty('field_name')
+      return record.fieldName ?? record.name
     })
     .filter((name): name is string => typeof name === 'string')
 }

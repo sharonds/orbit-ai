@@ -8,6 +8,9 @@ describe('deal value validation', () => {
     ['infinite number', { name: 'Bad Deal', value: Infinity }],
     ['too many integer digits', { name: 'Bad Deal', value: '12345678901234567.00' }],
     ['too many fractional digits', { name: 'Bad Deal', value: '1.234' }],
+    ['numeric value with too many fractional digits', { name: 'Bad Deal', value: 1.234 }],
+    ['large numeric value with unsafe fractional cents', { name: 'Bad Deal', value: 12345678901234.123 }],
+    ['large numeric value that can shift apparent cents', { name: 'Bad Deal', value: 90071992547409.9 }],
   ] as const)('rejects %s', (_label, input) => {
     const result = dealCreateInputSchema.safeParse(input)
     expect(result.success).toBe(false)
@@ -21,6 +24,10 @@ describe('deal value validation', () => {
 
   it('normalizes integer numbers to two fractional digits', () => {
     expect(dealCreateInputSchema.parse({ name: 'Good Deal', value: 1234 }).value).toBe('1234.00')
+  })
+
+  it('normalizes cent-safe fractional numbers without binary rounding drift', () => {
+    expect(dealCreateInputSchema.parse({ name: 'Good Deal', value: 0.29 }).value).toBe('0.29')
   })
 
   it('accepts negative decimal strings', () => {

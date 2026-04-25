@@ -44,11 +44,12 @@ describe('Journey 7 — inspect schema + add a custom field safely', () => {
       })
       expect(after.exitCode, `schema get exitCode (stdout: ${after.stdout}; stderr: ${after.stderr})`).toBe(0)
 
-      // Output is OrbitEnvelope: { data: { type: 'contacts', custom_fields: [...] } }
-      const getEnv = after.json as { data?: { custom_fields?: Array<{ field_name?: string; fieldName?: string }> } } | { custom_fields?: Array<{ field_name?: string; fieldName?: string }> } | null
-      const contactsObj = (getEnv as { data?: { custom_fields?: Array<{ field_name?: string; fieldName?: string }> } })?.data ?? (getEnv as { custom_fields?: Array<{ field_name?: string; fieldName?: string }> })
-      const fields = contactsObj?.custom_fields ?? []
-      expect(fields.some((f) => (f.field_name ?? f.fieldName) === 'lifetime_value'), 'lifetime_value field should be present').toBe(true)
+      // Output is OrbitEnvelope: { data: { type: 'contacts', customFields: [...] } }
+      const getEnv = after.json as { data?: { customFields?: Array<{ fieldName?: string; name?: string }> } } | { customFields?: Array<{ fieldName?: string; name?: string }> } | null
+      const contactsObj = (getEnv as { data?: { customFields?: Array<{ fieldName?: string; name?: string }> } })?.data ?? (getEnv as { customFields?: Array<{ fieldName?: string; name?: string }> })
+      expect(contactsObj, 'schema get contacts uses camelCase customFields shape').not.toHaveProperty('custom_fields')
+      const fields = contactsObj?.customFields ?? []
+      expect(fields.some((f) => (f.fieldName ?? f.name) === 'lifetime_value'), 'lifetime_value field should be present').toBe(true)
 
       if (workspace.adapter === 'postgres') {
         await expectFreshPostgresSchemaRead(workspace.databaseUrl, workspace.orgId)

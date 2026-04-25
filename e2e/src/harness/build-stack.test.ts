@@ -96,7 +96,33 @@ describePostgres('buildStack Postgres API key setup', () => {
 
     await expect(selectApiKey(betaRow.id)).resolves.toEqual(betaRow)
   })
+
+  it('rejects same-org API key hash collisions for non-harness rows', async () => {
+    const { acmeOrgId } = await seedAcmeTenant()
+    const existingRow = await insertApiKey({
+      id: 'key_e2e_collision_same_org',
+      organizationId: acmeOrgId,
+      rawApiKey: hashCollisionRawKey,
+      keyPrefix: hashCollisionRawKey.slice(0, 16),
+      name: 'consumer-owned key',
+      scopes: '["contacts:read"]',
+    })
+
+    await expect(
+      buildStack({ tenant: 'acme', adapter: 'postgres', rawApiKey: hashCollisionRawKey }),
+    ).rejects.toThrow(/pre-existing non-harness key/)
+
+    await expect(selectApiKey(existingRow.id)).resolves.toEqual(existingRow)
+  })
 })
+
+async function seedAcmeTenant(): Promise<{ acmeOrgId: string }> {
+  const activeAdapter = adapter
+  if (!activeAdapter) throw new Error('Postgres adapter not initialized')
+  const seedOptions = { mode: 'reset' as const, allowResetOfExistingOrg: true }
+  const acme = await seed(activeAdapter, { profile: TENANT_PROFILES.acme, ...seedOptions })
+  return { acmeOrgId: acme.organization.id }
+}
 
 async function seedBothTenants(): Promise<{ betaOrgId: string }> {
   const activeAdapter = adapter
@@ -113,6 +139,21 @@ async function insertBetaApiKey(input: {
   readonly rawApiKey: string
   readonly keyPrefix: string
 }): Promise<ApiKeySnapshot> {
+  return insertApiKey({
+    ...input,
+    name: 'beta collision key',
+    scopes: '["contacts:read"]',
+  })
+}
+
+async function insertApiKey(input: {
+  readonly id: string
+  readonly organizationId: string
+  readonly rawApiKey: string
+  readonly keyPrefix: string
+  readonly name: string
+  readonly scopes: string
+}): Promise<ApiKeySnapshot> {
   const activeDatabase = database
   if (!activeDatabase) throw new Error('Postgres database not initialized')
   const keyHash = await sha256hex(input.rawApiKey)
@@ -123,10 +164,10 @@ async function insertBetaApiKey(input: {
     VALUES (
       ${input.id},
       ${input.organizationId},
-      ${'beta collision key'},
+      ${input.name},
       ${keyHash},
       ${input.keyPrefix},
-      ${'["contacts:read"]'}::jsonb,
+      ${input.scopes}::jsonb,
       NULL,
       ${'2035-01-01T00:00:00.000Z'}::timestamptz,
       ${'2026-01-01T00:00:00.000Z'}::timestamptz,
@@ -162,7 +203,7 @@ async function cleanupApiKeys(): Promise<void> {
   if (!activeDatabase) return
   await activeDatabase.execute(sql`
     DELETE FROM api_keys
-    WHERE id IN (${'key_e2e_collision_hash'}, ${'key_e2e_collision_prefix'})
+    WHERE id IN (${'key_e2e_collision_hash'}, ${'key_e2e_collision_prefix'}, ${'key_e2e_collision_same_org'})
       OR key_prefix = ${sharedPrefix}
   `)
 }
