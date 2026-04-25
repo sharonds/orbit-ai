@@ -13,6 +13,7 @@ export function expectMcpSuccess(response: McpToolResponse, label: string): Reco
   expect(response.isError, `${label}: isError`).toBeFalsy()
   const payload = parseMcpTextPayload(response, label)
   expect(payload.ok, `${label}: ok flag`).toBe(true)
+  expect(payload, `${label}: data envelope`).toHaveProperty('data')
   return payload
 }
 
