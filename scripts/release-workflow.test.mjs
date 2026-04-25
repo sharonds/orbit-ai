@@ -287,6 +287,34 @@ test('verifier fails when package files allowlist omits declared artifacts', () 
   }
 })
 
+test('verifier rejects package artifact paths that escape the package root', () => {
+  const fixture = makePackageFixture({
+    manifest: publishableManifest({
+      main: '/dist/index.js',
+      types: '../index.d.ts',
+      bin: { fixture: 'bin/../fixture.js' },
+      exports: {
+        './unsafe': './dist/../../unsafe.js',
+      },
+    }),
+    files: {
+      'dist/index.js': '',
+      'dist/index.d.ts': '',
+      'bin/fixture.js': '',
+    },
+  })
+  try {
+    const result = runNodeScript(VERIFY_PACKAGE_ARTIFACTS, fixture.root)
+    assert.notEqual(result.status, 0)
+    assert.match(output(result), /invalid package artifact path "\/dist\/index\.js"/)
+    assert.match(output(result), /invalid package artifact path "\.\.\/index\.d\.ts"/)
+    assert.match(output(result), /invalid package artifact path "bin\/\.\.\/fixture\.js"/)
+    assert.match(output(result), /invalid package artifact path "\.\/dist\/\.\.\/\.\.\/unsafe\.js"/)
+  } finally {
+    fixture.cleanup()
+  }
+})
+
 test('verifier accepts npm glob patterns in package files allowlist', () => {
   const fixture = makePackageFixture({
     manifest: publishableManifest({

@@ -40,7 +40,17 @@ for (const dir of packageDirs) {
   collectExportFiles(manifest.exports, requiredFiles)
 
   for (const file of requiredFiles) {
+    if (typeof file !== 'string') {
+      failures.push(`${manifest.name}: package artifact path must be a string`)
+      continue
+    }
+
     const normalized = normalizePackagePath(file)
+    if (!isSafePackagePath(normalized)) {
+      failures.push(`${manifest.name}: invalid package artifact path "${file}"`)
+      continue
+    }
+
     if (!existsSync(join(dir, normalized))) {
       failures.push(`${manifest.name}: missing ${normalized}`)
       continue
@@ -151,6 +161,14 @@ function collectExportFiles(value, requiredFiles) {
 
 function normalizePackagePath(file) {
   return file.replace(/^\.\//, '').replace(/\/+$/, '')
+}
+
+function isSafePackagePath(file) {
+  if (file === '' || file.startsWith('/') || /^[A-Za-z]:/.test(file) || file.includes('\\')) {
+    return false
+  }
+
+  return !file.split('/').includes('..')
 }
 
 function isIncludedByFilesAllowlist(file, files) {
