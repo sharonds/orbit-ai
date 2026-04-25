@@ -2,11 +2,14 @@ import { describe, it, expect } from 'vitest'
 import { runCli } from '../harness/run-cli.js'
 import { prepareCliWorkspace } from '../harness/prepare-cli-workspace.js'
 
-describe('Journey 8 — preview and apply a reversible migration', () => {
-  it('migrate --preview and --apply work without error; destructive flag is reported', async () => {
+// This journey is not a destructive-migration safety gate. The alpha migration
+// engine is a passthrough stub until Plan C.5 implements executable diff/apply
+// behavior. Release documentation must not claim Journey 8 proves destructive
+// migration detection.
+describe('Journey 8 - migration preview/apply alpha stub passthrough', () => {
+  it('CLI returns the current stub response without claiming migration safety', async () => {
     const workspace = await prepareCliWorkspace({ tenant: 'acme' })
     try {
-      // Add a custom field (uses already-working fields create)
       const add = await runCli({
         args: ['--mode', 'direct', 'fields', 'create', 'contacts', '--name', 'region', '--type', 'text'],
         cwd: workspace.cwd,
@@ -21,19 +24,22 @@ describe('Journey 8 — preview and apply a reversible migration', () => {
         env: workspace.env,
       })
       expect(preview.exitCode, `migrate --preview exitCode (stderr: ${preview.stderr})`).toBe(0)
-      const plan = preview.json as { destructive?: boolean; operations?: unknown[]; applied?: unknown[] } | null
-      // In alpha, addField is applied immediately — no pending migrations.
-      // Verify the preview returns a non-error response with a destructive indicator.
+      const plan = preview.json as { destructive?: boolean; operations?: unknown[]; status?: string } | null
       expect(plan).toBeTruthy()
-      expect(plan?.destructive ?? false).toBe(false)
+      expect(plan?.operations).toEqual([])
+      expect(plan?.destructive).toBe(false)
+      expect(plan?.status).toBe('ok')
 
-      // Apply — should succeed (even with nothing pending)
       const apply = await runCli({
-        args: ['--mode', 'direct', 'migrate', '--apply', '--yes'],
+        args: ['--mode', 'direct', '--json', 'migrate', '--apply', '--yes'],
         cwd: workspace.cwd,
         env: workspace.env,
       })
       expect(apply.exitCode, `migrate --apply exitCode (stderr: ${apply.stderr})`).toBe(0)
+      const applyResult = apply.json as { applied?: unknown[]; status?: string } | null
+      expect(applyResult).toBeTruthy()
+      expect(applyResult?.applied).toEqual([])
+      expect(applyResult?.status).toBe('ok')
     } finally {
       await workspace.cleanup()
     }
