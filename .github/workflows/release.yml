@@ -274,7 +274,8 @@ jobs:
         run: node scripts/verify-package-artifacts.mjs
 
       - name: Socket security scan (pre-publish gate)
-        run: npx --yes @socketsecurity/cli@latest scan --strict
+        if: ${{ secrets.SOCKET_SECURITY_API_KEY != '' }}
+        run: npx --yes @socketsecurity/cli@latest scan create --strict .
         env:
           SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 
