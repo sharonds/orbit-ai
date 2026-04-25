@@ -21,7 +21,10 @@ export async function startApiServer(api: { fetch(request: Request): Promise<Res
           headers.set(key, value)
         }
       }
-      const response = await api.fetch(new Request(url, { method: req.method, headers, body }))
+      const init: RequestInit = { headers }
+      if (req.method !== undefined) init.method = req.method
+      if (body !== undefined) init.body = body
+      const response = await api.fetch(new Request(url, init))
       res.statusCode = response.status
       const setCookieValues =
         typeof (response.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie === 'function'
