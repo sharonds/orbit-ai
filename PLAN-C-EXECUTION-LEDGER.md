@@ -18,7 +18,7 @@ Branch: `codex/plan-c-followups`
 | 3 API listener harness | Done | 8c70fc0, ca1b754, ee62091 | `pnpm -F @orbit-ai/e2e typecheck`; `pnpm -F @orbit-ai/e2e test src/harness/api-server.test.ts`; `node --test scripts/release-workflow.test.mjs` passed under Node 22 | Code-quality review by subagents; final review over `ad28cee..ee62091` found no Critical/High/Medium/Low findings | Added local HTTP listener, runtime bind/forward/close proof, explicit bind-failure cleanup, Set-Cookie preservation, and exact-optional RequestInit handling. |
 | 4 Journey 15 tenant isolation | Pending |  |  |  |  |
 | 5 Journey 11 MCP tools | Pending |  |  |  |  |
-| 6 CRUD update persistence | Pending |  |  |  |  |
+| 6 CRUD update persistence | Done | 2ce9471 | `pnpm -F @orbit-ai/e2e typecheck`; `pnpm -F @orbit-ai/e2e test src/journeys/03-crud-contacts.test.ts src/journeys/04-crud-companies.test.ts src/journeys/05-crud-deals.test.ts` passed under Node 22 | Spec/code review found no Critical/High/Medium/Low findings | Plan field names corrected to current public contract: contacts/companies/deals assert `name`; contacts do not expose `last_name`, and deal `title` serializes as public `name`. |
 | 7 Adapter-aware CLI workspace | Pending |  |  |  |  |
 | 8 CI Postgres matrix | Pending |  |  |  |  |
 | 9 api_keys upsert safety | Pending |  |  |  |  |
