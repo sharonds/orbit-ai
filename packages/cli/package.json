@@ -40,6 +40,7 @@
   },
   "scripts": {
     "build": "rm -rf dist && tsc && chmod +x dist/index.js",
+    "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "dev": "tsx src/index.ts"

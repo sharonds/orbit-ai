@@ -148,7 +148,7 @@ import { OrbitClient } from '@orbit-ai/sdk'
 
 const client = new OrbitClient({
   apiKey: process.env.ORBIT_API_KEY!,
-  baseUrl: process.env.ORBIT_API_BASE_URL!,
+  baseUrl: process.env.ORBIT_BASE_URL!,
 })
 
 const contacts = await client.contacts.list({ limit: 25 })

@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Added**: Maintainer release playbook covering changesets, dry-runs, emergency publish handling, npm/GitHub setup, and troubleshooting.
 - **Changed**: Publish manifests now ship README and LICENSE files, exclude compiled tests from tarballs, and declare public npm access consistently.
 - **Added**: CI guard preventing manual package version bumps outside the Changesets release branch.
+- **Changed**: Hardened Plan B release readiness follow-ups with release E2E validation, public-repository provenance checks, package artifact verification for entrypoints/exports/bin/files allowlists and root-confined artifact paths, clearer release dry-run diagnostics, and Codex execution/coverage docs.
 
 ### @orbit-ai/e2e — New package (alpha.1 publish gate)
 

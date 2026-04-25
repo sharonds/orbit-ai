@@ -18,5 +18,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["orbit-ai-nodejs-quickstart"]
+  "ignore": ["orbit-ai-nodejs-quickstart", "@orbit-ai/e2e"]
 }

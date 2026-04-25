@@ -7,8 +7,8 @@ getting a pull request merged.
 ## Ground rules
 
 - Be kind and constructive. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
-- **Security issues** go to `security@orbit-ai.dev` — not a public issue. See
-  [SECURITY.md](SECURITY.md).
+- **Security issues** should be reported through GitHub Private Vulnerability
+  Reporting — not a public issue. See [SECURITY.md](SECURITY.md).
 - One concern per PR. A refactor and a feature in the same PR will be asked to split.
 - All non-trivial changes must include tests. PRs that drop coverage significantly
   will be asked to add them.
@@ -48,6 +48,11 @@ packages/
   core/   @orbit-ai/core  — schema, adapters, entity services, migrations
   api/    @orbit-ai/api   — Hono REST server (auth, rate limiting, idempotency)
   sdk/    @orbit-ai/sdk   — TypeScript client (HTTP + DirectTransport)
+  cli/    @orbit-ai/cli   — terminal interface and automation commands
+  mcp/    @orbit-ai/mcp   — Model Context Protocol server and tools
+  integrations/           — Gmail, Google Calendar, and Stripe connectors
+  demo-seed/              — deterministic multi-tenant demo data
+  create-orbit-app/       — starter project scaffolder
 
 docs/
   specs/          Per-component specs (01-core.md through 06-integrations.md)
@@ -58,9 +63,6 @@ docs/
 examples/
   nodejs-quickstart/   Minimal runnable example
 ```
-
-Planned but not yet in the repo: `packages/cli`, `packages/mcp`,
-`packages/integrations`.
 
 ## Common commands
 
