@@ -13,7 +13,7 @@ End-to-end journey tests for Orbit AI. This package is the publish gate for `0.1
 | 5 | CRUD deals | SDK HTTP, SDK direct, raw API, CLI, MCP |
 | 6 | Move a deal between pipeline stages | SDK HTTP write + SDK direct read |
 | 7 | Inspect schema + add a custom field safely | CLI (`schema list`, `fields create`) |
-| 8 | Preview + apply a reversible migration | CLI (`migrate --preview`, `migrate --apply`) |
+| 8 | Migration preview/apply alpha stub passthrough | CLI (`migrate --preview`, `migrate --apply`) |
 | 9 | SDK in HTTP mode (auth, pagination, typed errors) | SDK HTTP |
 | 10 | SDK in direct-core mode (in-process, shared error semantics) | SDK direct |
 | 11 | MCP server + core tool flows | MCP JSON-RPC (tool registration, search/create/get) |

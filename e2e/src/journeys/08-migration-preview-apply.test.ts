@@ -10,14 +10,6 @@ describe('Journey 8 - migration preview/apply alpha stub passthrough', () => {
   it('CLI returns the current stub response without claiming migration safety', async () => {
     const workspace = await prepareCliWorkspace({ tenant: 'acme' })
     try {
-      const add = await runCli({
-        args: ['--mode', 'direct', 'fields', 'create', 'contacts', '--name', 'region', '--type', 'text'],
-        cwd: workspace.cwd,
-        env: workspace.env,
-      })
-      expect(add.exitCode, `fields create exitCode (stderr: ${add.stderr})`).toBe(0)
-
-      // Preview — orbit --json migrate --preview
       const preview = await runCli({
         args: ['--mode', 'direct', '--json', 'migrate', '--preview'],
         cwd: workspace.cwd,

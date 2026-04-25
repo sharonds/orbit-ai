@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Journeys 3–5: CRUD contacts/companies/deals across 5 surfaces (SDK HTTP, SDK direct, raw API, CLI, MCP)
 - Journey 6: deal pipeline stage transitions
 - Journey 7: schema inspection + safe custom field creation
-- Journey 8: migration preview + apply with destructive gate
+- Journey 8: migration preview/apply alpha stub passthrough; destructive migration safety remains deferred to Plan C.5
 - Journey 9: SDK HTTP mode — pagination and typed error semantics
 - Journey 10: SDK direct-core mode — in-process read/write
 - Journey 11: MCP server tool registration and JSON-RPC calls
