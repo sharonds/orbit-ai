@@ -110,39 +110,76 @@ test('ci e2e-scope regexes cover release-sensitive paths', () => {
   const [sqlitePattern, postgresPattern] = patterns
 
   for (const path of [
+    'package.json',
+    'pnpm-workspace.yaml',
     'packages/demo-seed/package.json',
+    'packages/demo-seed/src/index.ts',
     'packages/create-orbit-app/package.json',
     'packages/cli/package.json',
+    'packages/cli/src/index.ts',
+    'packages/mcp/src/server.ts',
+    'packages/core/src/index.ts',
+    'packages/api/src/routes/objects.ts',
+    'packages/sdk/src/client.ts',
     'e2e/README.md',
+    'e2e/src/harness/build-stack.ts',
     'examples/nodejs-quickstart/package.json',
     'pnpm-lock.yaml',
     '.github/workflows/ci.yml',
     '.github/workflows/release.yml',
     'scripts/release-workflow.test.mjs',
     'scripts/release-dry-run.mjs',
+    'scripts/release/checks.mjs',
     'scripts/verify-package-artifacts.mjs',
     '.changeset/plan-b-codex-followups.md',
+    'docs/product/release-definition-v2.md',
   ]) {
     assert.match(path, sqlitePattern, `${path} should trigger SQLite E2E`)
   }
 
   for (const path of [
+    'package.json',
+    'pnpm-workspace.yaml',
     'packages/core/package.json',
+    'packages/create-orbit-app/package.json',
     'packages/api/src/routes/objects.ts',
     'packages/sdk/package.json',
+    'packages/cli/src/index.ts',
+    'packages/mcp/src/server.ts',
+    'packages/demo-seed/src/index.ts',
     'e2e/src/harness/build-stack.ts',
     'e2e/src/journeys/_crud-matrix.ts',
     'e2e/src/journeys/07-custom-field.test.ts',
+    'e2e/src/journeys/12-sdk-helpers.test.ts',
+    'e2e/src/journeys/15-tenant-isolation.test.ts',
     'pnpm-lock.yaml',
+    '.github/workflows/ci.yml',
     '.github/workflows/release.yml',
     'scripts/release-workflow.test.mjs',
+    'scripts/release/checks.mjs',
     '.changeset/plan-b-codex-followups.md',
+    'docs/product/release-definition-v2.md',
   ]) {
     assert.match(path, postgresPattern, `${path} should trigger Postgres E2E`)
   }
 
   assert.doesNotMatch('docs/releasing.md', sqlitePattern)
-  assert.doesNotMatch('packages/create-orbit-app/package.json', postgresPattern)
+  assert.doesNotMatch('packages/create-orbit-app/src/index.ts', postgresPattern)
+})
+
+test('Postgres E2E CI job covers adapter-aware journeys and harness safety tests', () => {
+  const postgresJobIndex = ciWorkflow.indexOf('journeys-postgres:')
+  assert.ok(postgresJobIndex > -1, 'missing Postgres E2E job')
+  const postgresJob = ciWorkflow.slice(postgresJobIndex)
+  const requiredPostgresCommand =
+    'pnpm -F @orbit-ai/e2e test src/journeys/02 src/journeys/03 src/journeys/04 src/journeys/05 src/journeys/06 src/journeys/07 src/journeys/08 src/journeys/09 src/journeys/10 src/journeys/11 src/journeys/12 src/journeys/15'
+
+  assert.match(postgresJob, new RegExp(escapeRegExp(requiredPostgresCommand)), 'Postgres E2E job must run the required journey subset')
+  assert.match(
+    postgresJob,
+    /pnpm -F @orbit-ai\/e2e test src\/harness\/build-stack\.test\.ts/,
+    'Postgres E2E job must run the build-stack harness safety test',
+  )
 })
 
 test('E2E API listener exists for CLI API-mode journeys', () => {
@@ -648,6 +685,10 @@ function runNodeScript(script, cwd, extraEnv = {}) {
     encoding: 'utf8',
     env: { ...process.env, ...extraEnv },
   })
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function output(result) {
