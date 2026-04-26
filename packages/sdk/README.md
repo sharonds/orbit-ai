@@ -113,6 +113,57 @@ The client exposes one property per entity:
 Every resource except `search` and `schema` supports `create`, `get`, `update`,
 `delete`, `list`, and `pages`.
 
+## Schema migrations
+
+`client.schema` exposes the alpha migration surface:
+
+```typescript
+const operation = {
+  type: 'custom_field.rename',
+  entityType: 'contacts',
+  fieldName: 'tier',
+  newFieldName: 'plan_tier',
+} as const
+
+const preview = await client.schema.previewMigration({
+  operations: [
+    operation,
+  ],
+}) as { operations: [typeof operation]; checksum: string }
+
+const applied = await client.schema.applyMigration({
+  operations: preview.operations,
+  checksum: preview.checksum,
+  confirmation: {
+    destructive: true,
+    checksum: preview.checksum,
+    confirmedAt: new Date().toISOString(),
+  },
+})
+
+const rollbackChecksum = '64-hex-character-rollback-checksum'
+const rolledBack = await client.schema.rollbackMigration(applied.migrationId as string, {
+  checksum: rollbackChecksum,
+  confirmation: {
+    destructive: true,
+    checksum: rollbackChecksum,
+    confirmedAt: new Date().toISOString(),
+  },
+})
+```
+
+Preview returns a checksum bound to adapter, trusted org scope, and normalized
+operations. Destructive apply and rollback must pass a matching confirmation
+checksum; for rollback, use the checksum computed for the stored reverse
+operations. Apply results include `rollbackable` and `rollbackDecision`.
+`custom_field.delete` apply is executable but non-rollbackable unless future
+value snapshots exist; `custom_field.rename` is rollbackable.
+The minimal confirmation object shown above is sufficient only outside
+production-like environments. When the trusted runtime environment is `staging`
+or `production`, core also requires `confirmation.safeguards` with environment
+acknowledgement, backup or snapshot evidence, ledger evidence, and a rollback or
+non-rollbackable decision before elevated execution.
+
 ## Direct-core transport (server-side / tests)
 
 > **@security** DirectTransport bypasses HTTP, auth middleware, rate limiting,
@@ -135,12 +186,21 @@ const adapter = createSqliteStorageAdapter({ database: db })
 const client = new OrbitClient({
   adapter,
   context: { orgId: 'org_test' },
+  // Required only when this process is allowed to execute migrations:
+  // migrationAuthority: { run: (_context, fn) => adapter.runWithMigrationAuthority(fn) },
 })
 
 // All operations go directly to the adapter — no HTTP, no auth.
 // Response fields are identical to HTTP mode: snake_case, same envelope shape.
 const contact = await client.contacts.create({ name: 'Test User' })
 ```
+
+DirectTransport never infers elevated migration authority from the adapter for
+request paths. Preview works without `migrationAuthority`, but migration
+apply/rollback and destructive custom-field delete/update paths return
+`MIGRATION_AUTHORITY_UNAVAILABLE` unless the client was constructed with an
+explicit authority. Constructor, reads, and ordinary CRUD do not enter migration
+authority.
 
 ## What's NOT in the SDK package
 

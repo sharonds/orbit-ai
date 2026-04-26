@@ -48,9 +48,10 @@ pnpm -F @orbit-ai/e2e typecheck
 ## Honest Coverage Notes
 
 - Journeys 3–5 include read-after-update assertions for CRUD parity.
-- Journey 8 verifies destructive custom-field delete preview/apply behavior and MCP exclusion. Postgres coverage runs in the CI subset.
+- Journey 8 verifies destructive custom-field delete preview/apply behavior, non-rollbackable apply output, and MCP exclusion. Postgres coverage runs in the CI subset when `DATABASE_URL` is set.
+- Journey 16 verifies rollbackable custom-field rename migration semantics.
 - Journey 11 does not cover MCP stdio wire behavior.
 - Journey 15 covers contacts and deals only. Broader entity isolation and restricted-role Postgres RLS proof are deferred.
-- DirectTransport custom-field destructive update/delete behavior is covered by Plan C.5 migration tests.
+- DirectTransport custom-field delete is covered by Journey 8; lower-level Plan C.5 tests cover additional destructive field update/delete paths.
 - Connector journeys persist and redact Gmail, Google Calendar, and Stripe credentials only; they do not prove live provider dispatch.
 - npm Trusted Publishing, Dependabot, and `pnpm audit` gating remain deferred per Plan B follow-ups.

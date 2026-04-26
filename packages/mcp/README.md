@@ -112,7 +112,7 @@ All 23 tools operate on the entity specified in the `entity` argument (e.g. `"co
 | `create_custom_field` | Add a custom field to an entity |
 | `update_custom_field` | Update safe custom field metadata (`label`, `description`) |
 
-Destructive schema migration operations are intentionally not exposed as MCP tools in the alpha. Custom-field rename, type-change, delete, promote, data-losing updates, and migration preview/apply/rollback remain API/SDK/CLI-only until MCP destructive schema operations have separate elicitation and UX design. If `update_custom_field` receives anything outside safe metadata, it returns a structured unsupported destructive-operation error instead of executing.
+Destructive schema migration operations are intentionally not exposed as MCP tools in the alpha. Custom-field rename, type-change, delete, promote, data-losing updates, and checksum-bound migration preview/apply/rollback remain API/SDK/CLI-only until MCP destructive schema operations have separate elicitation and UX design. No `preview_schema_migration`, `apply_schema_migration`, or `rollback_schema_migration` tools are registered. If `update_custom_field` receives anything outside safe metadata, it returns a structured unsupported destructive-operation error instead of executing.
 
 ### Imports & Exports
 

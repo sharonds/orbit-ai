@@ -19,8 +19,9 @@
   queries and cursor-based pagination
 - **Tenant context** — every write and read is scoped to `{ orgId, userId }` at the
   application layer; Postgres-family adapters also ship RLS policies
-- **Migration engine** — transaction-wrapped, reversible migrations with a schema snapshot
-  registry
+- **Migration engine** — checksum-bound preview/apply/rollback with a schema
+  snapshot registry, ledgered reverse operations, and explicit non-rollbackable
+  decisions when reverse data is not available
 
 ## Installation
 
@@ -75,6 +76,34 @@ provide a second enforcement layer.
 
 SQLite has no RLS — application-layer filtering is the only mechanism. Do not use SQLite
 in multi-tenant production deployments.
+
+## Schema migrations
+
+Core exposes the alpha schema migration engine used by the API, SDK, and CLI:
+
+- `schema.preview(ctx, { operations })` returns the normalized operations, checksum,
+  destructive flag, warnings, adapter/scope binding, and confirmation instructions.
+- `schema.apply(ctx, { operations, checksum, confirmation?, idempotencyKey? })`
+  validates the checksum against the current adapter, trusted org scope, and
+  operations before executing.
+- `schema.rollback(ctx, { migrationId, checksum?, confirmation? })` rolls back a
+  previously rollbackable migration by replaying stored reverse operations.
+
+The alpha executable operation set is intentionally narrow: `custom_field.add`,
+`custom_field.delete`, and `custom_field.rename`. Preview schemas also accept
+future semantic operation payloads such as field update/promote and column/index
+changes, but apply fails closed for operation types that do not yet have an
+executor. Destructive operations require
+`confirmation: { destructive: true, checksum, confirmedAt }` with the checksum
+from preview; production-like environments additionally require safeguard
+evidence in `confirmation.safeguards` before elevated execution.
+`custom_field.delete` apply is executable but non-rollbackable unless future
+value snapshots exist; `custom_field.rename` is rollbackable.
+
+Migration execution requires an explicit `SchemaMigrationAuthority` when services
+are created. Request/runtime adapters expose normal data access; elevated DDL
+access is only entered through that authority and only for apply/rollback paths.
+Preview and ordinary reads do not enter migration authority.
 
 ## License
 

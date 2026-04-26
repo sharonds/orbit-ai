@@ -68,7 +68,7 @@ Same as v1: Gmail, Google Calendar, Stripe.
 
 ## 5. Release Gate — Required User Journeys
 
-All 15 journeys inherited from v1 Section 5.1 plus Plan C hardening must work end-to-end against the `@orbit-ai/demo-seed` dataset, driven by automated tests.
+All 16 journeys inherited from v1 Section 5.1 plus Plan C/C.5 hardening must work end-to-end against the `@orbit-ai/demo-seed` dataset, driven by automated tests.
 
 | # | Journey | Primary surface(s) |
 |---|---|---|
@@ -79,7 +79,7 @@ All 15 journeys inherited from v1 Section 5.1 plus Plan C hardening must work en
 | 5 | Create, list, get, update, delete **deals** | SDK + API + CLI + MCP |
 | 6 | Move a deal between pipeline stages | SDK + API |
 | 7 | Inspect schema and add a custom field safely | CLI + core |
-| 8 | Migration preview/apply alpha stub passthrough; not a migration-safety gate | CLI + core |
+| 8 | Migration preview/apply destructive custom-field delete safety | API HTTP + SDK HTTP + SDK Direct + CLI Direct + MCP exclusion |
 | 9 | Use the SDK in **HTTP mode** against the API | SDK + API |
 | 10 | Use the SDK in **direct-core** mode (DirectTransport) | SDK + core |
 | 11 | Start the MCP server and execute core tool flows | MCP |
@@ -87,29 +87,31 @@ All 15 journeys inherited from v1 Section 5.1 plus Plan C hardening must work en
 | 13 | Configure **Google Calendar** connector successfully | Integrations + CLI |
 | 14 | Configure **Stripe** connector successfully | Integrations + CLI |
 | 15 | Prove tenant isolation for seeded contacts and deals | SDK HTTP + SDK Direct + raw API + CLI API mode + MCP |
+| 16 | Prove custom-field rename migration semantics | SDK Direct |
 
 ### 5.1 Journey test requirements
 
 - Each journey is a named, automated E2E test file under `e2e/journeys/`.
-- Each journey test runs against at least the SQLite adapter. Journeys 2–12 and 15 additionally run against one Postgres adapter (Neon or local Postgres).
+- Each journey test runs against at least the SQLite adapter. Journeys 2–12 and 15–16 additionally run against one Postgres adapter when the Postgres CI matrix is enabled. Neon-specific behavior remains fake/conditional unless Neon CI credentials are configured and passing.
 - Tests use the deterministic `@orbit-ai/demo-seed` dataset as baseline fixture.
 - Tests are executed in CI as part of the release pipeline — a failing journey blocks publish.
 
 ### 5.1.1 Plan C evidence and limitations
 
-- Journey 8 is an alpha stub passthrough check only. It does **not** prove migration safety; destructive migration analysis and real preview/apply semantics remain deferred to Plan C.5.
+- Journey 8 is the destructive migration safety gate for `custom_field.delete`: preview computes the checksum, apply rejects stale or missing destructive confirmation, confirmed apply executes the delete, the result is marked non-rollbackable, and MCP remains excluded from preview/apply/rollback migration tools.
+- Journey 16 proves `custom_field.rename` migration semantics in SDK Direct mode. Rename is destructive because it moves stored custom-field values, but it is rollbackable.
 - Journey 15 is the tenant-isolation gate across SDK HTTP, SDK Direct, raw API, CLI API mode, and MCP. It explicitly covers contacts and deals only; broader entity isolation is deferred.
 - The Postgres gate is valid only when runtime adapter proof is present and the CI Postgres matrix passes. Restricted-role Postgres RLS is not proved by Plan C; tenant isolation remains application-layer E2E coverage.
 - CRUD parity includes read-after-update assertions so create/list/get/update/delete journeys prove persisted updates, not only command success.
 - Journey 11 requires every listed core MCP tool to be invoked. It uses an in-process MCP transport and does not cover stdio wire behavior.
-- DirectTransport `PATCH`/`DELETE` of custom fields remains a known limitation until Plan C.5 implements `engine.updateField` and `engine.deleteField`.
+- DirectTransport `PATCH`/`DELETE` of custom fields is implemented for the alpha migration surface. `custom_field.delete` apply is executable but non-rollbackable unless future value snapshots exist; `custom_field.rename` is rollbackable.
 - Connector journeys persist and redact credentials only; they do not prove live Gmail, Google Calendar, or Stripe provider dispatch.
 - npm Trusted Publishing, Dependabot, and `pnpm audit` gating remain deferred per Plan B follow-ups.
 
 ### 5.2 Fail conditions for alpha.1
 
 alpha.1 **does not publish** if:
-- Any of the 15 journeys lacks a passing automated test.
+- Any of the 16 journeys lacks a passing automated test.
 - Any published package has a broken `files` manifest (missing `dist/`, `README.md`, or `LICENSE`).
 - The `create-orbit-app` starter fails a clean `npm install && npm start` on a fresh machine.
 - The landing page lacks a working waitlist signup or install command.
@@ -170,7 +172,7 @@ Listed to prevent scope creep during plan execution:
 ## 12. Final Rule
 
 Orbit AI is alpha.1-ready when:
-1. All 15 journeys pass in CI against the demo seed
+1. All 16 journeys pass in CI against the demo seed
 2. All 8 packages publish cleanly to npm under `0.1.0-alpha.1`
 3. `npx create-orbit-app` works end-to-end on a fresh machine
 4. The landing page is live with a working waitlist
