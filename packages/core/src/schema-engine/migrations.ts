@@ -6,6 +6,7 @@ import {
   destructiveConfirmationSchema,
   schemaMigrationChecksumSchema,
   type DestructiveConfirmation,
+  type DestructiveMigrationEnvironment,
   type SchemaMigrationChecksum,
 } from './destructive-confirmation.js'
 
@@ -103,6 +104,7 @@ export {
   destructiveConfirmationSchema,
   schemaMigrationChecksumSchema,
   type DestructiveConfirmation,
+  type DestructiveMigrationEnvironment,
   type SchemaMigrationChecksum,
 }
 

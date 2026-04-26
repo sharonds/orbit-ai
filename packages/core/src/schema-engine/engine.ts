@@ -7,7 +7,10 @@ import type { CustomFieldDefinitionRecord } from '../entities/custom-field-defin
 import type { SchemaMigrationRepository } from '../entities/schema-migrations/repository.js'
 import type { SchemaMigrationRecord } from '../entities/schema-migrations/validators.js'
 import type { CustomFieldDefinition } from '../types/schema.js'
-import { assertDestructiveConfirmation } from './destructive-confirmation.js'
+import {
+  assertDestructiveConfirmation,
+  type DestructiveMigrationEnvironment,
+} from './destructive-confirmation.js'
 import {
   computeSchemaMigrationChecksum,
   schemaMigrationApplyInputSchema,
@@ -65,6 +68,7 @@ export interface OrbitSchemaEngineDependencies {
   ledger: () => SchemaMigrationRepository
   adapter?: () => SchemaEngineSchemaAdapter
   migrationAuthority?: SchemaMigrationAuthority
+  destructiveMigrationEnvironment?: DestructiveMigrationEnvironment
 }
 
 export type SchemaEngineSchemaAdapter = Pick<
@@ -109,12 +113,14 @@ export class OrbitSchemaEngine {
   private readonly getLedger: () => SchemaMigrationRepository
   private readonly getSchemaAdapter: () => SchemaEngineSchemaAdapter
   private readonly migrationAuthority: SchemaMigrationAuthority | undefined
+  private readonly destructiveMigrationEnvironment: DestructiveMigrationEnvironment | undefined
 
   constructor(deps: OrbitSchemaEngineDependencies) {
     this.getCustomFields = deps.customFields
     this.getLedger = deps.ledger
     this.getSchemaAdapter = deps.adapter ?? (() => DEFAULT_SCHEMA_ADAPTER)
     this.migrationAuthority = deps.migrationAuthority
+    this.destructiveMigrationEnvironment = deps.destructiveMigrationEnvironment
   }
 
   private get repository(): CustomFieldDefinitionRepository {
@@ -336,6 +342,7 @@ export class OrbitSchemaEngine {
       destructiveOperations,
       checksum: preview.checksum,
       confirmation: input.confirmation,
+      runtimeEnvironment: this.destructiveMigrationEnvironment,
     })
 
     await this.requireMigrationAuthority().run({
@@ -360,7 +367,6 @@ export class OrbitSchemaEngine {
     const input = typeof migration === 'string'
       ? schemaMigrationRollbackInputSchema.parse({ migrationId: migration })
       : schemaMigrationRollbackInputSchema.parse(migration)
-    const authority = this.requireMigrationAuthority()
     const adapter = this.schemaAdapter
     const adapterScope: SchemaMigrationAdapterScope = {
       name: adapter.name,
@@ -385,8 +391,9 @@ export class OrbitSchemaEngine {
       destructiveOperations,
       checksum: rollbackChecksum,
       confirmation: input.confirmation,
+      runtimeEnvironment: this.destructiveMigrationEnvironment,
     })
-    await authority.run({
+    await this.requireMigrationAuthority().run({
       ctx,
       operation: 'rollback',
       migrationId: input.migrationId,
@@ -405,7 +412,6 @@ export class OrbitSchemaEngine {
     if (!PUBLIC_CRM_ENTITY_TYPES.includes(entityType as PublicCrmEntityType)) {
       this.validationFailed(`Unknown entity type: ${entityType}`, 'entityType')
     }
-    const authority = this.requireMigrationAuthority()
     const input = schemaMigrationUpdateFieldRequestInputSchema.parse(data)
     const { confirmation: _confirmation, ...patch } = input
     const operations: SchemaMigrationPublicForwardOperation[] = [{
@@ -419,16 +425,8 @@ export class OrbitSchemaEngine {
       destructiveOperations: preview.confirmationInstructions.destructiveOperations,
       checksum: preview.checksum,
       confirmation: _confirmation,
+      runtimeEnvironment: this.destructiveMigrationEnvironment,
     })
-    if (preview.confirmationRequired) {
-      await authority.run({
-        ctx,
-        operation: 'apply',
-        checksum: preview.checksum,
-      }, async () => undefined)
-    } else {
-      void authority
-    }
     this.unsupportedMigrationOperation(`custom_field.update:${entityType}.${fieldName}`)
   }
 
@@ -439,8 +437,11 @@ export class OrbitSchemaEngine {
     data: Record<string, unknown> = {},
   ): Promise<void> {
     assertOrgContext(ctx)
-    const authority = this.requireMigrationAuthority()
-    const input = schemaMigrationDeleteFieldInputSchema.parse({ entityType, fieldName, ...data })
+    const input = schemaMigrationDeleteFieldInputSchema.parse({
+      entityType,
+      fieldName,
+      confirmation: data.confirmation,
+    })
     const operations: SchemaMigrationPublicForwardOperation[] = [{
       type: 'custom_field.delete',
       entityType: input.entityType,
@@ -451,12 +452,8 @@ export class OrbitSchemaEngine {
       destructiveOperations: preview.confirmationInstructions.destructiveOperations,
       checksum: preview.checksum,
       confirmation: input.confirmation,
+      runtimeEnvironment: this.destructiveMigrationEnvironment,
     })
-    await authority.run({
-      ctx,
-      operation: 'apply',
-      checksum: preview.checksum,
-    }, async () => undefined)
     this.unsupportedMigrationOperation(`custom_field.delete:${entityType}.${fieldName}`)
   }
 }

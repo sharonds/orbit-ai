@@ -8,6 +8,7 @@ import type { SchemaMigrationRecord } from '../entities/schema-migrations/valida
 import { OrbitError } from '../types/errors.js'
 import {
   computeSchemaMigrationChecksum,
+  type DestructiveMigrationEnvironment,
   type SchemaMigrationAdapterScope,
   type SchemaMigrationForwardOperation,
   type SchemaMigrationPublicForwardOperation,
@@ -192,12 +193,14 @@ function makeEngine(
   migrationAuthority?: SchemaMigrationAuthority,
   migrationLedger: SchemaMigrationRepository = ledger(),
   adapter?: SchemaEngineSchemaAdapter,
+  destructiveMigrationEnvironment?: DestructiveMigrationEnvironment,
 ): OrbitSchemaEngine {
   return new OrbitSchemaEngine({
     customFields: () => customFields,
     ledger: () => migrationLedger,
     ...(adapter ? { adapter: () => adapter } : {}),
     ...(migrationAuthority ? { migrationAuthority } : {}),
+    ...(destructiveMigrationEnvironment ? { destructiveMigrationEnvironment } : {}),
   })
 }
 
@@ -1013,7 +1016,7 @@ describe('OrbitSchemaEngine', () => {
     expect(migrationLedger.withMigrationLock).not.toHaveBeenCalled()
   })
 
-  it('throws structured unavailable errors when migration authority is missing', async () => {
+  it('throws structured unavailable errors when apply migration authority is missing', async () => {
     const repo: CustomFieldDefinitionRepository = {
       async create(_ctx, record) {
         return record
@@ -1028,15 +1031,6 @@ describe('OrbitSchemaEngine', () => {
     const engine = makeEngine(repo)
 
     await expect(engine.apply(ctx, APPLY_INPUT)).rejects.toMatchObject({
-      code: 'MIGRATION_AUTHORITY_UNAVAILABLE',
-    })
-    await expect(engine.rollback(ctx, 'migration_01J00000000000000000000000')).rejects.toMatchObject({
-      code: 'MIGRATION_AUTHORITY_UNAVAILABLE',
-    })
-    await expect(engine.updateField(ctx, 'contacts', 'linkedin_url', { label: 'LinkedIn' })).rejects.toMatchObject({
-      code: 'MIGRATION_AUTHORITY_UNAVAILABLE',
-    })
-    await expect(engine.deleteField(ctx, 'contacts', 'linkedin_url')).rejects.toMatchObject({
       code: 'MIGRATION_AUTHORITY_UNAVAILABLE',
     })
   })
@@ -1145,6 +1139,33 @@ describe('OrbitSchemaEngine', () => {
       code: 'DESTRUCTIVE_SAFEGUARDS_REQUIRED',
       details: {
         missingSafeguards: ['backup', 'ledger', 'rollback'],
+      },
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('rejects runtime production destructive apply without safeguard evidence even when confirmation omits environment', async () => {
+    const authority = makeAuthority()
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const engine = makeEngine(repo, authority, undefined, undefined, 'production')
+
+    await expect(engine.apply(ctx, {
+      ...DESTRUCTIVE_APPLY_INPUT,
+      confirmation: VALID_DESTRUCTIVE_CONFIRMATION,
+    })).rejects.toMatchObject({
+      code: 'DESTRUCTIVE_SAFEGUARDS_REQUIRED',
+      details: {
+        missingSafeguards: ['environmentAcknowledged', 'backup', 'ledger', 'rollback'],
       },
     })
     expect(authority.run).not.toHaveBeenCalled()
@@ -1305,6 +1326,44 @@ describe('OrbitSchemaEngine', () => {
     expect(authority.run).not.toHaveBeenCalled()
   })
 
+  it('rejects destructive rollback placeholders without confirmation before missing authority', async () => {
+    const migrationId = 'migration_01J00000000000000000000000'
+    const reverseOperations: SchemaMigrationForwardOperation[] = [{
+      type: 'column.drop',
+      tableName: 'contacts',
+      columnName: 'linkedin_url',
+    }]
+    const migrationLedger = trackingLedger()
+    vi.mocked(migrationLedger.assertRollbackPreconditions).mockResolvedValue({
+      ...migrationRecord({
+        id: migrationId,
+        forwardOperations: [{
+          type: 'column.add',
+          tableName: 'contacts',
+          columnName: 'linkedin_url',
+          columnType: 'text',
+        }],
+      }),
+      reverseOperations,
+    })
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const engine = makeEngine(repo, undefined, migrationLedger)
+
+    await expect(engine.rollback(ctx, migrationId)).rejects.toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
+    })
+  })
+
   it('allows destructive rollback placeholders through confirmation gate before rejecting unsupported', async () => {
     const authority = makeAuthority()
     const migrationId = 'migration_01J00000000000000000000000'
@@ -1378,6 +1437,96 @@ describe('OrbitSchemaEngine', () => {
     })
     await expect(engine.deleteField(ctx, 'contacts', 'linkedin_url')).rejects.toMatchObject({
       code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('rejects destructive field placeholders as unsupported after confirmation without authority execution', async () => {
+    const authority = makeAuthority()
+    const updateOperations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.update',
+      entityType: 'contacts',
+      fieldName: 'linkedin_url',
+      patch: { fieldType: 'number' },
+    }]
+    const deleteOperations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: 'contacts',
+      fieldName: 'linkedin_url',
+    }]
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return {
+          data: [field('field_01J00000000000000000000015', 'linkedin_url')],
+          hasMore: false,
+          nextCursor: null,
+        }
+      },
+    }
+    const engine = makeEngine(repo, authority)
+
+    await expect(engine.updateField(ctx, 'contacts', 'linkedin_url', {
+      fieldType: 'number',
+      confirmation: {
+        destructive: true,
+        checksum: checksumFor(updateOperations),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+    })
+    await expect(engine.deleteField(ctx, 'contacts', 'linkedin_url', {
+      confirmation: {
+        destructive: true,
+        checksum: checksumFor(deleteOperations),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('does not let deleteField body override the path target used for confirmation', async () => {
+    const authority = makeAuthority()
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: 'contacts',
+      fieldName: 'linkedin_url',
+    }]
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return {
+          data: [field('field_01J00000000000000000000016', 'linkedin_url')],
+          hasMore: false,
+          nextCursor: null,
+        }
+      },
+    }
+    const engine = makeEngine(repo, authority)
+
+    await expect(engine.deleteField(ctx, 'contacts', 'linkedin_url', {
+      entityType: 'companies',
+      fieldName: 'other_field',
+      confirmation: {
+        destructive: true,
+        checksum: checksumFor(operations),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
     })
     expect(authority.run).not.toHaveBeenCalled()
   })

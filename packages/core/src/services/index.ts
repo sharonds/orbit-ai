@@ -169,6 +169,7 @@ import {
   type IdempotencyKeyRepository,
 } from '../entities/idempotency-keys/repository.js'
 import { createIdempotencyKeyAdminService } from '../entities/idempotency-keys/service.js'
+import type { DestructiveMigrationEnvironment } from '../schema-engine/destructive-confirmation.js'
 import { OrbitSchemaEngine, type SchemaMigrationAuthority } from '../schema-engine/engine.js'
 import { createOrbitError } from '../types/errors.js'
 import { createContactContextService } from './contact-context.js'
@@ -206,6 +207,7 @@ export interface CoreServiceOptions {
   schemaMigrations?: SchemaMigrationRepository
   idempotencyKeys?: IdempotencyKeyRepository
   migrationAuthority?: SchemaMigrationAuthority
+  destructiveMigrationEnvironment?: DestructiveMigrationEnvironment
 }
 
 function resolveOptionalCoreRepository<T>({
@@ -907,6 +909,9 @@ export function createCoreServices(
       ledger: () => getSchemaMigrationsRepository(),
       adapter: () => adapter,
       ...(overrides.migrationAuthority ? { migrationAuthority: overrides.migrationAuthority } : {}),
+      ...(overrides.destructiveMigrationEnvironment
+        ? { destructiveMigrationEnvironment: overrides.destructiveMigrationEnvironment }
+        : {}),
     }),
     get contactContext() {
       const optionalActivities = getOptionalActivitiesRepository()
