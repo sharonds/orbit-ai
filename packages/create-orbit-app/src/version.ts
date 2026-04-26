@@ -32,8 +32,11 @@ export function getOrbitVersionFrom(pkgPath: string): string {
       { cause: err },
     )
   }
-  if (pkg.name !== '@orbit-ai/create-orbit-app' || !pkg.version) {
-    throw new Error(`create-orbit-app: unexpected package.json at ${pkgPath}`)
+  if (pkg.name !== '@orbit-ai/create-orbit-app') {
+    throw new Error(`create-orbit-app: unexpected package.json name at ${pkgPath}`)
+  }
+  if (!pkg.version) {
+    throw new Error(`create-orbit-app: unexpected package.json version at ${pkgPath}`)
   }
   return pkg.version
 }

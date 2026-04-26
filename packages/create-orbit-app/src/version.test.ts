@@ -50,7 +50,7 @@ describe('getOrbitVersionFrom', () => {
       version: '0.1.0-alpha.0',
     })
     try {
-      expect(() => getOrbitVersionFrom(pkgPath)).toThrow(/unexpected package\.json/)
+      expect(() => getOrbitVersionFrom(pkgPath)).toThrow(/unexpected package\.json name/)
     } finally {
       fs.rmSync(path.dirname(pkgPath), { recursive: true, force: true })
     }
@@ -59,7 +59,7 @@ describe('getOrbitVersionFrom', () => {
   it('throws when package.json is missing a version', () => {
     const pkgPath = writePackageJson({ name: '@orbit-ai/create-orbit-app' })
     try {
-      expect(() => getOrbitVersionFrom(pkgPath)).toThrow(/unexpected package\.json/)
+      expect(() => getOrbitVersionFrom(pkgPath)).toThrow(/unexpected package\.json version/)
     } finally {
       fs.rmSync(path.dirname(pkgPath), { recursive: true, force: true })
     }
