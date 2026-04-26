@@ -3,7 +3,8 @@
  *
  * These tests assert that HttpTransport and DirectTransport produce
  * identical envelope shapes, cursor metadata, error codes, and that
- * DirectTransport never calls runWithMigrationAuthority.
+ * DirectTransport only reaches migration authority when an explicit
+ * direct migration authority is configured for migration execution paths.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { HttpTransport } from '../transport/http-transport.js'
@@ -458,10 +459,10 @@ describe('Transport parity — error codes', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 4. DirectTransport must NOT call runWithMigrationAuthority
+// 4. DirectTransport migration authority boundary
 // ---------------------------------------------------------------------------
 
-describe('Transport parity — no migration authority in DirectTransport', () => {
+describe('Transport parity — DirectTransport migration authority boundary', () => {
   it('DirectTransport constructor does not call runWithMigrationAuthority', () => {
     const adapter = createTestAdapter()
     const spy = vi.spyOn(adapter, 'runWithMigrationAuthority' as any)
@@ -478,7 +479,7 @@ describe('Transport parity — no migration authority in DirectTransport', () =>
     expect(spy).not.toHaveBeenCalled()
   })
 
-  it('DirectTransport.request does not call runWithMigrationAuthority', async () => {
+  it('DirectTransport read requests do not call runWithMigrationAuthority', async () => {
     const adapter = createTestAdapter()
     const spy = vi.spyOn(adapter, 'runWithMigrationAuthority' as any)
 
