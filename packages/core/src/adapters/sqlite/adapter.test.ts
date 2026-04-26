@@ -97,6 +97,12 @@ describe('SqliteStorageAdapter', () => {
     ]) {
       expect(allSql).toContain(tableName)
     }
+    expect(allSql).toContain('checksum text not null')
+    expect(allSql).toContain('adapter text not null')
+    expect(allSql).toContain('forward_operations text not null')
+    expect(allSql).toContain('reverse_operations text not null')
+    expect(allSql).toContain('status text not null')
+    expect(allSql).toContain('schema_migrations_target_idx')
   })
 
   describe('beginTransaction().run', () => {
