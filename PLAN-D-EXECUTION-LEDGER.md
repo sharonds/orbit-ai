@@ -56,12 +56,12 @@ Note: the Plan D execution contract was supplied from the parent workspace path 
 | 3. Bound Install Execution And Harden Command Parsing | Complete | `78fcf20` | This commit | Implementation subagent `019dc987-6ff5-73e2-8ce7-b76f62d3e99f`; reviews `019dc98a-3c01-76d2-9f67-c8b0c69b0903`, `019dc98a-3c62-7dd1-ad5e-70183958509f` |
 | 4. Make Cleanup Failures Observable | Complete | `83ca615` | This commit | Implementation subagent `019dc98c-3d47-7f52-ac86-b7574499f9b4`; reviews `019dc98f-70ea-71d2-9faf-b5c77fa4b43d`, `019dc98f-7235-7313-8bc3-45b382e79f47` |
 | 5. Prove Atomic Rollback And Template Symlink Safety | Complete | `75e3075`, `156adac` | This commit | Implementation subagent `019dc991-43af-7d63-bb95-4762c2d22a20`; reviews `019dc993-1692-7562-b9f7-c0d68ea220fa`, `019dc993-172e-7a42-a726-efb33745558c`, re-reviews `019dc994-bfba-7793-a15a-ad4129d4ca3d`, `019dc994-c014-7091-a0bb-55bad16a40f7` |
-| 6. Document And Test Exact Alpha Version Pinning | Complete | `36cabb4` | This commit | Implementation subagent `019dc996-8301-7eb0-b5ef-3ed4abe980d4`; package/release review `019dc998-5f81-7e93-9c91-8d40ee7cac4a` |
+| 6. Document And Test Exact Alpha Version Pinning | Complete | `36cabb4`, `b747140` | This commit | Implementation subagent `019dc996-8301-7eb0-b5ef-3ed4abe980d4`; package/release review `019dc998-5f81-7e93-9c91-8d40ee7cac4a`; Claude review follow-up |
 | 7. Strengthen Package Manager Detection Coverage | Complete | `993a810` | This commit | Implementation subagent `019dc999-9964-7882-aae8-e7225a640842`; code review `019dc99b-34bd-78c2-bae6-b971896cc4ee` |
 | 8. Add Packed Tarball Smoke Coverage | Complete | `4667ef7`, `2f260b6`, `aa578a6` | This commit | Implementation subagent `019dc99d-00d0-7df1-9c89-405f30078d93`; reviews `019dc9a2-abff-7732-9dab-bc16658738ca`, `019dc9a2-acb6-7690-b68a-b269b4f1cd24`, re-review `019dc9a5-0203-7903-9e53-dd6e7ad7c768` |
 | 9. Update Create-Orbit-App User Documentation | Complete | `25927e8` | This commit | Implementation subagent `019dc9a7-d604-7d52-ac6b-841bfcf9a572`; reviews `019dc9a9-831a-74e2-9523-92f215968ea9`, `019dc9a9-8357-70a0-92d2-c4145ca21b38` |
 | 10. Align Release And Repo Documentation With Scoped Package Reality | Complete | `438089a`, `3dce243` | This commit | Implementation subagent `019dc9aa-d5d2-7583-8489-e0988d6902f2`; reviews `019dc9ac-79b2-7ea3-a43e-129e8caf7073`, `019dc9ac-7a1d-7af2-8620-5918d0d4ccbc`, re-review `019dc9ae-5fbd-7a22-ae68-d0a1288f3cd2` |
-| 11. Changeset And Package Artifact Readiness | Complete | `15101ab` | This commit | Implementation subagent `019dc9b0-0754-7e02-ad54-a55784722678`; package/release review `019dc9b1-d1cc-7330-a398-d06e1ab8df46` |
+| 11. Changeset And Package Artifact Readiness | Complete | `15101ab`, `b747140` | This commit | Implementation subagent `019dc9b0-0754-7e02-ad54-a55784722678`; package/release review `019dc9b1-d1cc-7330-a398-d06e1ab8df46`; Claude review follow-up |
 | 12. Final Verification, Reviews, And Concordance | Complete | `187e5ed` | This commit | Final reviews `019dc9b6-db8b-7d22-9f17-0d89630c567d`, `019dc9b6-dbcc-73b2-a876-d8c532bfe811`, `019dc9b6-dc35-7f51-bcde-995e366d8ef4`, `019dc9b6-dc69-7532-975e-c7e0ee17784d`; final re-reviews `019dc9be-8a16-7973-9e9a-3c0035869e72`, `019dc9be-8ab6-7190-9948-e552b69e507e`, `019dc9c0-4bb8-7892-b057-8fc46b673c23`, `019dc9c0-4c4a-7261-9e80-cd38b78b2750` |
 
 ## Baseline Gate
@@ -551,7 +551,7 @@ Implementation commit: `15101ab changeset: record create-orbit-app follow-up har
 
 Changed files:
 
-- `.changeset/plan-d-create-orbit-app-readiness.md`
+- `.changeset/plan-d-followups.md`
 - `scripts/release-workflow.test.mjs`
 
 Focused validation:
@@ -626,7 +626,7 @@ exit 0
 Final security grep:
 
 ```text
-$ rg -n "shell:\\s*true|exec\\(|spawn\\([^,]+,[^,]+,\\s*\\{[^}]*shell|npx create-orbit-app|root scope|CLAUDE|MEMORY|\\.claude" packages/create-orbit-app docs/product/release-definition-v2.md docs/releasing.md packages/demo-seed/README.md scripts/release-workflow.test.mjs .changeset/plan-d-create-orbit-app-readiness.md
+$ rg -n "shell:\\s*true|exec\\(|spawn\\([^,]+,[^,]+,\\s*\\{[^}]*shell|npx create-orbit-app|root scope|CLAUDE|MEMORY|\\.claude" packages/create-orbit-app docs/product/release-definition-v2.md docs/releasing.md packages/demo-seed/README.md scripts/release-workflow.test.mjs .changeset/plan-d-followups.md
 No matches.
 exit 1 (expected for no matches)
 ```
@@ -692,6 +692,43 @@ Orbit schema/API/tenant review lenses:
 
 Result: no unresolved Critical/High/Medium Task 12 findings remain before ledger-only evidence commit.
 
+### Claude Code Review Follow-Up
+
+Review source: Claude code review, Plan vs Execution.
+
+Implementation commit:
+
+- `b747140 fix(create-orbit-app): address Plan D review gaps`
+
+Findings and resolution:
+
+- Medium: changeset filename was `.changeset/plan-d-create-orbit-app-readiness.md` but Plan D required `.changeset/plan-d-followups.md`. Fixed by renaming the changeset file while preserving its package and patch bump content.
+- Medium: `getOrbitVersionFrom` threw the same `unexpected package.json` message for wrong package name and missing version, so the two Task 6 tests did not prove distinct error paths. Fixed by splitting the branches into `unexpected package.json name` and `unexpected package.json version`, with tests asserting each distinct message.
+- Positive deviation: `packages/create-orbit-app/src/packageManager.ts` extraction remains accepted as a Task 8 structure improvement.
+
+Focused validation after the follow-up:
+
+```text
+$ corepack pnpm -F @orbit-ai/create-orbit-app test -- src/version.test.ts
+Test Files  1 passed (1)
+Tests       6 passed (6)
+exit 0
+
+$ node --test scripts/release-workflow.test.mjs
+1..39
+# tests 39
+# pass 39
+# fail 0
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app typecheck
+tsc -p tsconfig.json --noEmit
+exit 0
+
+$ git diff --check
+exit 0
+```
+
 ## Deferred Items And Skipped Validation
 
 - Task 3 Low security review finding about malformed known-prefix package-manager user agents was deferred to Task 7 and resolved in `993a810`.
@@ -706,7 +743,7 @@ Result: no unresolved Critical/High/Medium Task 12 findings remain before ledger
 
 Every changed file from `git diff --name-only origin/main...HEAD` maps to Plan D as follows:
 
-- `.changeset/plan-d-create-orbit-app-readiness.md` -> Task 11.
+- `.changeset/plan-d-followups.md` -> Task 11.
 - `PLAN-D-EXECUTION-LEDGER.md` -> Tasks 1-12 execution evidence, review evidence, skipped-validation rationale, and final concordance.
 - `docs/product/release-definition-v2.md` -> Task 10 scoped release documentation; Task 12 security wording fix.
 - `docs/releasing.md` -> Task 12 package/release Medium fix for post-publish generated starter proof.
@@ -732,7 +769,7 @@ Every changed file from `git diff --name-only origin/main...HEAD` maps to Plan D
 Final branch diff:
 
 ```text
-.changeset/plan-d-create-orbit-app-readiness.md
+.changeset/plan-d-followups.md
 PLAN-D-EXECUTION-LEDGER.md
 docs/product/release-definition-v2.md
 docs/releasing.md
@@ -759,6 +796,8 @@ scripts/release-workflow.test.mjs
 Final branch commits:
 
 ```text
+b747140 fix(create-orbit-app): address Plan D review gaps
+3c5bc05 docs: complete Plan D execution concordance
 187e5ed fix(create-orbit-app): address final release review findings
 6bdfbdc docs: record Plan D task 11 evidence
 15101ab changeset: record create-orbit-app follow-up hardening
