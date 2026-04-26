@@ -60,7 +60,7 @@ Note: the Plan D execution contract was supplied from the parent workspace path 
 | 7. Strengthen Package Manager Detection Coverage | Complete | `993a810` | This commit | Implementation subagent `019dc999-9964-7882-aae8-e7225a640842`; code review `019dc99b-34bd-78c2-bae6-b971896cc4ee` |
 | 8. Add Packed Tarball Smoke Coverage | Complete | `4667ef7`, `2f260b6`, `aa578a6` | This commit | Implementation subagent `019dc99d-00d0-7df1-9c89-405f30078d93`; reviews `019dc9a2-abff-7732-9dab-bc16658738ca`, `019dc9a2-acb6-7690-b68a-b269b4f1cd24`, re-review `019dc9a5-0203-7903-9e53-dd6e7ad7c768` |
 | 9. Update Create-Orbit-App User Documentation | Complete | `25927e8` | This commit | Implementation subagent `019dc9a7-d604-7d52-ac6b-841bfcf9a572`; reviews `019dc9a9-831a-74e2-9523-92f215968ea9`, `019dc9a9-8357-70a0-92d2-c4145ca21b38` |
-| 10. Align Release And Repo Documentation With Scoped Package Reality | Pending | Pending | Pending | Pending |
+| 10. Align Release And Repo Documentation With Scoped Package Reality | Complete | `438089a`, `3dce243` | This commit | Implementation subagent `019dc9aa-d5d2-7583-8489-e0988d6902f2`; reviews `019dc9ac-79b2-7ea3-a43e-129e8caf7073`, `019dc9ac-7a1d-7af2-8620-5918d0d4ccbc`, re-review `019dc9ae-5fbd-7a22-ae68-d0a1288f3cd2` |
 | 11. Changeset And Package Artifact Readiness | Pending | Pending | Pending | Pending |
 | 12. Final Verification, Reviews, And Concordance | Pending | Pending | Pending | Pending |
 
@@ -512,6 +512,36 @@ Named review lenses:
 - Security docs review subagent `019dc9a9-8357-70a0-92d2-c4145ca21b38`: no Critical/High/Medium/Low findings; confirmed install-command trust/no-shell docs and scoped alpha usage.
 
 Result: no unresolved Critical/High/Medium Task 9 findings remain.
+
+### Task 10 Reviews
+
+Implementation subagent: `019dc9aa-d5d2-7583-8489-e0988d6902f2`
+
+Implementation commits:
+
+- `438089a docs(release): align alpha scaffolder package scope`
+- `3dce243 docs(release): fix alpha package count and demo seed usage`
+
+Changed files:
+
+- `docs/product/release-definition-v2.md`
+- `packages/demo-seed/README.md`
+
+Focused validation:
+
+```text
+$ rg -n 'npx create-orbit-app|plus `create-orbit-app` under root scope|create-orbit-app\) — \*\*current state' docs/product/release-definition-v2.md README.md llms.txt packages/*/README.md
+No matches.
+exit 1 (expected for no matches)
+```
+
+Named review lenses:
+
+- Docs review subagent `019dc9ac-79b2-7ea3-a43e-129e8caf7073`: no Critical/High/Medium/Low findings; confirmed scoped post-publish sanity command and README count.
+- Package/release review subagent `019dc9ac-7a1d-7af2-8620-5918d0d4ccbc`: Medium finding that alpha package count still said 6; Low finding that demo-seed README still said starter was not wired. Fixed in `3dce243`.
+- Package/release re-review subagent `019dc9ae-5fbd-7a22-ae68-d0a1288f3cd2`: no remaining Critical/High/Medium findings; confirmed all 8 package READMEs present and package metadata matches `@orbit-ai/create-orbit-app`.
+
+Result: no unresolved Critical/High/Medium Task 10 findings remain.
 
 ## Deferred Items And Skipped Validation
 
