@@ -1,6 +1,6 @@
 # @orbit-ai/demo-seed
 
-Deterministic, multi-tenant realistic demo dataset for Orbit AI. Designed to power E2E tests, the `@orbit-ai/create-orbit-app` starter, and landing-page demo content (none of those consumers are wired to this package yet — this is the alpha of the seeder itself).
+Deterministic, multi-tenant realistic demo dataset for Orbit AI. Designed to power E2E tests, the `@orbit-ai/create-orbit-app` starter, and landing-page demo content.
 
 > **All names, domains, and emails in this package are synthetic. No real customer data is included.** Company domains use only IANA-reserved, non-routable TLDs per RFC 2606 and RFC 6761 (`.test`, `.example`, `.invalid`); demo user emails use the RFC 6762 `.local` suffix. Nothing seeded here resolves to a real domain.
 

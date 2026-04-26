@@ -17,7 +17,7 @@ GA-era gates (full security review sign-off, interface parity matrix checked in,
 ## 2. What alpha.1 Means
 
 - The first publicly installable Orbit AI release on npm.
-- All 6 packages (`core`, `api`, `sdk`, `cli`, `mcp`, `integrations`) published under `0.1.0-alpha.1`.
+- All 8 packages (`core`, `api`, `sdk`, `cli`, `mcp`, `integrations`, `demo-seed`, `create-orbit-app`) published under `0.1.0-alpha.1`.
 - Documented, reproducible install path for an external developer.
 - Cross-surface story demonstrably works against a realistic dataset.
 
