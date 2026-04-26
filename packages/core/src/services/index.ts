@@ -905,6 +905,7 @@ export function createCoreServices(
     schema: new OrbitSchemaEngine({
       customFields: () => getCustomFieldDefinitionsRepository(),
       ledger: () => getSchemaMigrationsRepository(),
+      adapter: () => adapter,
       ...(overrides.migrationAuthority ? { migrationAuthority: overrides.migrationAuthority } : {}),
     }),
     get contactContext() {

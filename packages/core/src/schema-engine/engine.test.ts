@@ -67,13 +67,42 @@ function ledger(): SchemaMigrationRepository {
   }
 }
 
+function trackingLedger() {
+  const repository: SchemaMigrationRepository = {
+    create: vi.fn(async (_ctx, record) => record),
+    get: vi.fn(async () => null),
+    list: vi.fn(async () => ({ data: [], hasMore: false, nextCursor: null })),
+    updateStatus: vi.fn(async () => null),
+    assertRollbackPreconditions: vi.fn(async () => {
+      throw new Error('not needed in schema engine preview tests')
+    }),
+    withMigrationLock: vi.fn(async (_ctx, scope, fn) => ({
+      result: await fn(),
+      lock: {
+        key: 'test-lock',
+        orgId: ctx.orgId,
+        adapter: scope.adapter,
+        target: scope.target,
+        acquired: true,
+        contended: false,
+        released: true,
+        acquiredAt: new Date('2026-04-24T00:00:00.000Z'),
+        releasedAt: new Date('2026-04-24T00:00:00.000Z'),
+      },
+    })),
+  }
+
+  return repository
+}
+
 function makeEngine(
   customFields: CustomFieldDefinitionRepository,
   migrationAuthority?: SchemaMigrationAuthority,
+  migrationLedger: SchemaMigrationRepository = ledger(),
 ): OrbitSchemaEngine {
   return new OrbitSchemaEngine({
     customFields: () => customFields,
-    ledger: () => ledger(),
+    ledger: () => migrationLedger,
     ...(migrationAuthority ? { migrationAuthority } : {}),
   })
 }
@@ -274,6 +303,156 @@ describe('OrbitSchemaEngine', () => {
     })
 
     expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('previews adding a nullable custom field as a non-destructive operation', async () => {
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+
+    const result = await makeEngine(repo).preview(ctx, {
+      operations: [{
+        type: 'custom_field.add',
+        entityType: 'contacts',
+        fieldName: 'linkedin_url',
+        fieldType: 'url',
+      }],
+    })
+
+    expect(result).toMatchObject({
+      destructive: false,
+      confirmationRequired: false,
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      scope: { orgId: ctx.orgId },
+      operations: [{
+        type: 'custom_field.add',
+        entityType: 'contacts',
+        fieldName: 'linkedin_url',
+        fieldType: 'url',
+      }],
+      confirmationInstructions: {
+        required: false,
+        destructiveOperations: [],
+      },
+    })
+    expect(result.checksum).toMatch(/^[a-f0-9]{64}$/)
+    expect(result.summary).toContain('Add linkedin_url custom field to contacts')
+  })
+
+  it('previews deleting an existing custom field as destructive', async () => {
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list(_ctx, query) {
+        return {
+          data: query.filter?.field_name === 'legacy_code'
+            ? [field('field_01J00000000000000000000006', 'legacy_code')]
+            : [],
+          hasMore: false,
+          nextCursor: null,
+        }
+      },
+    }
+
+    const result = await makeEngine(repo).preview(ctx, {
+      operations: [{
+        type: 'custom_field.delete',
+        entityType: 'contacts',
+        fieldName: 'legacy_code',
+      }],
+    })
+
+    expect(result).toMatchObject({
+      destructive: true,
+      confirmationRequired: true,
+      operations: [{
+        type: 'custom_field.delete',
+        entityType: 'contacts',
+        fieldName: 'legacy_code',
+      }],
+      confirmationInstructions: {
+        required: true,
+        destructiveOperations: ['custom_field.delete'],
+      },
+    })
+    expect(result.confirmationInstructions.checksum).toBe(result.checksum)
+  })
+
+  it('previews renaming a custom field as destructive', async () => {
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list(_ctx, query) {
+        return {
+          data: query.filter?.field_name === 'legacy_code'
+            ? [field('field_01J00000000000000000000007', 'legacy_code')]
+            : [],
+          hasMore: false,
+          nextCursor: null,
+        }
+      },
+    }
+
+    const result = await makeEngine(repo).preview(ctx, {
+      operations: [{
+        type: 'custom_field.rename',
+        entityType: 'contacts',
+        fieldName: 'legacy_code',
+        newFieldName: 'customer_code',
+      }],
+    })
+
+    expect(result.destructive).toBe(true)
+    expect(result.confirmationRequired).toBe(true)
+    expect(result.confirmationInstructions.destructiveOperations).toEqual(['custom_field.rename'])
+  })
+
+  it('does not write ledger records or execute migration authority during preview', async () => {
+    const authority = makeAuthority()
+    const migrationLedger = trackingLedger()
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+
+    await makeEngine(repo, authority, migrationLedger).preview(ctx, {
+      operations: [{
+        type: 'column.add',
+        tableName: 'contacts',
+        columnName: 'nickname',
+        columnType: 'text',
+        nullable: true,
+      }],
+    })
+
+    expect(authority.run).not.toHaveBeenCalled()
+    expect(migrationLedger.list).toHaveBeenCalledTimes(1)
+    expect(migrationLedger.create).not.toHaveBeenCalled()
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalled()
+    expect(migrationLedger.withMigrationLock).not.toHaveBeenCalled()
   })
 
   it('throws structured unavailable errors when migration authority is missing', async () => {
