@@ -14,12 +14,28 @@ describe('detectPackageManager', () => {
   it('falls back to npm when no user-agent is set', () => {
     expect(detectPackageManager({})).toBe('npm')
   })
+
+  it('falls back to npm for malformed or unknown user-agents', () => {
+    expect(detectPackageManager({ npm_config_user_agent: 'not-a-package-manager' })).toBe('npm')
+    expect(detectPackageManager({ npm_config_user_agent: 'unknown/1.0.0' })).toBe('npm')
+  })
 })
 
 describe('parseInstallCmd', () => {
   it('splits a string command into argv tokens', () => {
     expect(parseInstallCmd('pnpm install')).toEqual(['pnpm', ['install']])
     expect(parseInstallCmd('npm install --no-fund')).toEqual(['npm', ['install', '--no-fund']])
+  })
+
+  it('preserves quoted arguments', () => {
+    expect(parseInstallCmd('pnpm install --registry "https://registry.npmjs.org"')).toEqual([
+      'pnpm',
+      ['install', '--registry', 'https://registry.npmjs.org'],
+    ])
+  })
+
+  it('rejects unterminated quotes', () => {
+    expect(() => parseInstallCmd('pnpm install "unterminated')).toThrow(/unterminated/i)
   })
 })
 
@@ -68,6 +84,18 @@ describe('runInstall (execa smoke)', () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'coa-install-pm-'))
     try {
       await expect(runInstall({ cwd, packageManager: 'pnpm', customCmd: 'npm --version' })).resolves.toBe('npm')
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true })
+    }
+  })
+
+  it('treats shell metacharacters as literal argv', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'coa-install-shell-'))
+    try {
+      const script = writeExitScript(cwd, 0)
+      const pwned = path.join(cwd, 'pwned')
+      await runInstall({ cwd, customCmd: `node ${script} && touch pwned` })
+      expect(fs.existsSync(pwned)).toBe(false)
     } finally {
       fs.rmSync(cwd, { recursive: true, force: true })
     }
