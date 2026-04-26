@@ -7,6 +7,11 @@ import { createPostgresStorageAdapter } from '../adapters/postgres/adapter.js'
 import { createPostgresOrbitDatabase } from '../adapters/postgres/database.js'
 import { initializePostgresWave2SliceESchema } from '../adapters/postgres/schema.js'
 import { IMPLEMENTED_TENANT_TABLES } from '../repositories/tenant-scope.js'
+import {
+  computeSchemaMigrationChecksum,
+  type SchemaMigrationAdapterScope,
+  type SchemaMigrationForwardOperation,
+} from '../schema-engine/migrations.js'
 import { generatePostgresRlsSql } from '../schema-engine/rls.js'
 import { createPostgresApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createPostgresAuditLogRepository } from '../entities/audit-logs/repository.js'
@@ -28,6 +33,18 @@ const ctxB = {
   orgId: 'org_01ARYZ6S41ZZZZZZZZZZZZZZZZ',
   userId: 'user_01ARYZ6S41ZZZZZZZZZZZZZZZZ',
 } as const
+const migrationAdapter = { name: 'postgres', dialect: 'postgres' } satisfies SchemaMigrationAdapterScope
+const migrationForwardOperations = [{
+  type: 'custom_field.add',
+  entityType: 'contacts',
+  fieldName: 'tier',
+  fieldType: 'text',
+}] satisfies SchemaMigrationForwardOperation[]
+const migrationReverseOperations = [{
+  type: 'custom_field.delete',
+  entityType: 'contacts',
+  fieldName: 'tier',
+}] satisfies SchemaMigrationForwardOperation[]
 
 async function createPostgresAdapter() {
   const memory = newDb()
@@ -568,14 +585,30 @@ describe('postgres persistence bridge', () => {
     const schemaMigration = await schemaMigrations.create(ctxA, {
       id: generateId('migration'),
       organizationId: ctxA.orgId,
+      checksum: computeSchemaMigrationChecksum({
+        adapter: migrationAdapter,
+        orgId: ctxA.orgId,
+        operations: migrationForwardOperations,
+      }),
+      adapter: migrationAdapter,
       description: 'Add tier field',
       entityType: 'contacts',
       operationType: 'add_column',
+      forwardOperations: migrationForwardOperations,
+      reverseOperations: migrationReverseOperations,
+      destructive: false,
+      status: 'applied',
       sqlStatements: ['ALTER TABLE contacts ADD COLUMN tier TEXT'],
       rollbackStatements: ['ALTER TABLE contacts DROP COLUMN tier'],
+      appliedBy: ctxA.userId,
       appliedByUserId: null,
       approvedByUserId: null,
+      startedAt: now,
       appliedAt: now,
+      rolledBackAt: null,
+      failedAt: null,
+      errorCode: null,
+      errorMessage: null,
       createdAt: now,
       updatedAt: now,
     })
@@ -598,6 +631,17 @@ describe('postgres persistence bridge', () => {
     expect(await idempotencyKeys.get(ctxA, idempotencyKey.id)).toMatchObject({
       id: idempotencyKey.id,
       responseBody: { id: 'company_pg_test_01' },
+    })
+
+    await expect(schemaMigrations.get(ctxA, schemaMigration.id)).resolves.toMatchObject({
+      id: schemaMigration.id,
+      checksum: schemaMigration.checksum,
+      adapter: migrationAdapter,
+      forwardOperations: migrationForwardOperations,
+      reverseOperations: migrationReverseOperations,
+      destructive: false,
+      status: 'applied',
+      appliedBy: ctxA.userId,
     })
 
     const services = createCoreServices(adapter)
@@ -627,9 +671,15 @@ describe('postgres persistence bridge', () => {
       organizationId: ctxA.orgId,
       description: 'Add tier field',
       operationType: 'add_column',
+      checksum: schemaMigration.checksum,
+      adapter: migrationAdapter,
+      destructive: false,
+      status: 'applied',
     })
     expect('sqlStatements' in (fetchedSchemaMigration ?? {})).toBe(false)
     expect('rollbackStatements' in (fetchedSchemaMigration ?? {})).toBe(false)
+    expect('forwardOperations' in (fetchedSchemaMigration ?? {})).toBe(false)
+    expect('reverseOperations' in (fetchedSchemaMigration ?? {})).toBe(false)
 
     // idempotencyKeys: requestHash/responseBody are stripped by sanitization
     const fetchedIdempotencyKey = await services.system.idempotencyKeys.get(ctxA, idempotencyKey.id)

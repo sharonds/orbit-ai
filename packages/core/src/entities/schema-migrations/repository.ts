@@ -609,8 +609,8 @@ export function createPostgresSchemaMigrationRepository(adapter: StorageAdapter)
         description: record.description,
         entity_type: record.entityType ?? null,
         operation_type: record.operationType,
-        forward_operations: record.forwardOperations,
-        reverse_operations: record.reverseOperations,
+        forward_operations: JSON.stringify(record.forwardOperations),
+        reverse_operations: JSON.stringify(record.reverseOperations),
         destructive: record.destructive,
         status: record.status,
         sql_statements: JSON.stringify(record.sqlStatements),
@@ -704,7 +704,7 @@ export function createPostgresSchemaMigrationRepository(adapter: StorageAdapter)
       return assertRollbackPreconditionsFromRows(ctx, input, await listAllSchemaMigrations(base, ctx))
     },
     async withMigrationLock(ctx, scope, fn) {
-      return withInProcessMigrationLock(ctx, scope, fn)
+      return withAdapterMigrationLock(adapter, ctx, scope, fn)
     },
   }
 }

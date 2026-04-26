@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import type { SQL } from 'drizzle-orm'
+import { describe, expect, it, vi } from 'vitest'
 
+import { asMigrationDatabase, type OrbitDatabase, type StorageAdapter } from '../../adapters/interface.js'
 import { generateId } from '../../ids/generate-id.js'
 import {
   computeSchemaMigrationChecksum,
@@ -7,7 +9,7 @@ import {
   type SchemaMigrationForwardOperation,
 } from '../../schema-engine/migrations.js'
 import { createInMemoryUserRepository } from '../users/repository.js'
-import { createInMemorySchemaMigrationRepository } from './repository.js'
+import { createInMemorySchemaMigrationRepository, createPostgresSchemaMigrationRepository } from './repository.js'
 import { createSchemaMigrationAdminService } from './service.js'
 import type { SchemaMigrationRecord } from './validators.js'
 
@@ -34,6 +36,68 @@ function createUsersForOrg() {
     role: 'admin', avatarUrl: null, externalAuthId: null, isActive: true, metadata: {},
     createdAt: new Date('2026-04-02T12:00:00.000Z'), updatedAt: new Date('2026-04-02T12:00:00.000Z'),
   }])
+}
+
+function renderSql(statement: SQL): string {
+  return statement.toQuery({
+    escapeName: (value) => value,
+    escapeParam: () => '?',
+    escapeString: (value) => JSON.stringify(value),
+    casing: { getColumnCasing: (column) => column },
+    inlineParams: false,
+    paramStartIndex: { value: 0 },
+  }).sql
+}
+
+function createFakePostgresAdapterForLocks() {
+  const statements: string[] = []
+  const tx = {
+    transaction: async <T>(fn: (txDb: OrbitDatabase) => Promise<T>) => fn(tx as OrbitDatabase),
+    execute: async () => undefined,
+    query: vi.fn(async (statement: SQL) => {
+      statements.push(renderSql(statement))
+      return [{ acquired: true }]
+    }),
+  } satisfies OrbitDatabase
+  const runWithMigrationAuthority = vi.fn(async <T>(fn: (db: ReturnType<typeof asMigrationDatabase>) => Promise<T>) =>
+    fn(asMigrationDatabase(tx)),
+  )
+
+  return {
+    statements,
+    runWithMigrationAuthority,
+    adapter: {
+      name: 'postgres',
+      dialect: 'postgres',
+      supportsRls: true,
+      supportsBranching: false,
+      supportsJsonbIndexes: true,
+      authorityModel: {
+        runtimeAuthority: 'request-scoped',
+        migrationAuthority: 'elevated',
+        requestPathMayUseElevatedCredentials: false,
+        notes: [],
+      },
+      unsafeRawDatabase: tx,
+      users: {
+        resolveByExternalAuthId: async () => null,
+        upsertFromAuth: async () => 'user_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      },
+      connect: async () => undefined,
+      disconnect: async () => undefined,
+      migrate: async () => undefined,
+      runWithMigrationAuthority,
+      lookupApiKeyForAuth: async () => null,
+      transaction: tx.transaction,
+      beginTransaction: () => ({
+        run: async (_ctx, fn) => fn(tx),
+      }),
+      execute: tx.execute,
+      query: tx.query,
+      withTenantContext: async (_ctx, fn) => fn(tx),
+      getSchemaSnapshot: async () => ({ customFields: [], tables: [] }),
+    } satisfies StorageAdapter,
+  }
 }
 
 function makeRecord(overrides: Partial<SchemaMigrationRecord> = {}): SchemaMigrationRecord {
@@ -343,5 +407,24 @@ describe('schemaMigration admin service', () => {
     await expect(first).resolves.toMatchObject({ result: 'first' })
     expect(differentOrg.result).toBe('different-org')
     expect(differentTarget.result).toBe('different-target')
+  })
+
+  it('uses Postgres migration authority and advisory transaction locks for Postgres locks', async () => {
+    const { adapter: fakeAdapter, runWithMigrationAuthority, statements } = createFakePostgresAdapterForLocks()
+    const repository = createPostgresSchemaMigrationRepository(fakeAdapter)
+
+    await expect(repository.withMigrationLock(ctx, {
+      adapter: postgresAdapter,
+      target: 'entity:contacts',
+    }, async () => 'locked')).resolves.toMatchObject({
+      result: 'locked',
+      lock: expect.objectContaining({
+        acquired: true,
+        released: true,
+      }),
+    })
+
+    expect(runWithMigrationAuthority).toHaveBeenCalledTimes(1)
+    expect(statements.some((statement) => statement.includes('pg_try_advisory_xact_lock'))).toBe(true)
   })
 })
