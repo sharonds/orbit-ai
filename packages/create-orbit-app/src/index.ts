@@ -3,9 +3,8 @@ import { rm } from 'node:fs/promises'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseOptions, type Options } from './options.js'
-import { runInteractivePrompts } from './prompts.js'
 import { copyTemplate } from './copy.js'
-import { detectPackageManager, inferPackageManagerFromCommand, installCommandFor, runInstall, type PackageManager } from './install.js'
+import { detectPackageManager, inferPackageManagerFromCommand, installCommandFor, type PackageManager } from './packageManager.js'
 import { getOrbitVersion } from './version.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -66,7 +65,7 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
 
   const resolved = optsWithDefaults.yes && optsWithDefaults.projectName && optsWithDefaults.template
     ? { ...optsWithDefaults, projectName: optsWithDefaults.projectName, template: optsWithDefaults.template }
-    : await runInteractivePrompts(optsWithDefaults)
+    : await import('./prompts.js').then(({ runInteractivePrompts }) => runInteractivePrompts(optsWithDefaults))
 
   const targetDir = path.resolve(process.cwd(), resolved.projectName)
   if (fs.existsSync(targetDir)) {
@@ -119,6 +118,7 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
   if (resolved.install) {
     console.log('\nInstalling dependencies…')
     try {
+      const { runInstall } = await import('./install.js')
       packageManager = await runInstall({
         cwd: targetDir,
         ...(resolved.installCmd !== undefined ? { customCmd: resolved.installCmd } : {}),
