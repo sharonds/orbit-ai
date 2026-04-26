@@ -4,6 +4,7 @@ import {
   computeSchemaMigrationChecksum,
   schemaMigrationApplyInputSchema,
   schemaMigrationChecksumSchema,
+  schemaMigrationPreviewOutputSchema,
   schemaMigrationPreviewInputSchema,
 } from './migrations.js'
 
@@ -25,23 +26,27 @@ describe('schema migration domain contracts', () => {
   })
 
   it('rejects caller-controlled org and actor fields in public inputs', () => {
-    expect(schemaMigrationPreviewInputSchema.safeParse({
-      orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
-      operations: [addFieldOperation],
-    }).success).toBe(false)
+    for (const key of ['orgId', 'organizationId', 'organization_id', 'actorId', 'appliedBy', 'applied_by_user_id']) {
+      expect(schemaMigrationPreviewInputSchema.safeParse({
+        [key]: 'caller-controlled',
+        operations: [addFieldOperation],
+      }).success).toBe(false)
 
-    expect(schemaMigrationPreviewInputSchema.safeParse({
-      operations: [{
-        ...addFieldOperation,
-        organizationId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
-      }],
-    }).success).toBe(false)
+      expect(schemaMigrationApplyInputSchema.safeParse({
+        [key]: 'caller-controlled',
+        checksum: '0'.repeat(64),
+        operations: [addFieldOperation],
+      }).success).toBe(false)
+    }
 
-    expect(schemaMigrationApplyInputSchema.safeParse({
-      actorId: 'user_01ARYZ6S41YYYYYYYYYYYYYYYY',
-      checksum: '0'.repeat(64),
-      operations: [addFieldOperation],
-    }).success).toBe(false)
+    for (const key of ['orgId', 'organizationId', 'organization_id', 'actorId', 'appliedBy', 'applied_by_user_id']) {
+      expect(schemaMigrationPreviewInputSchema.safeParse({
+        operations: [{
+          ...addFieldOperation,
+          [key]: 'caller-controlled',
+        }],
+      }).success).toBe(false)
+    }
   })
 
   it('computes stable checksums from adapter, trusted org scope, and forward operations', () => {
@@ -90,4 +95,68 @@ describe('schema migration domain contracts', () => {
       expect(result.success).toBe(false)
     },
   )
+
+  it('requires preview output plan metadata', () => {
+    const checksum = '0'.repeat(64)
+
+    expect(schemaMigrationPreviewOutputSchema.safeParse({
+      checksum,
+      operations: [addFieldOperation],
+      destructive: false,
+      confirmationRequired: false,
+      warnings: [],
+    }).success).toBe(false)
+
+    expect(schemaMigrationPreviewOutputSchema.safeParse({
+      checksum,
+      operations: [addFieldOperation],
+      destructive: false,
+      confirmationRequired: false,
+      warnings: [],
+      summary: 'Add linkedin_url custom field to contacts',
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      scope: { orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY' },
+      confirmationInstructions: {
+        required: false,
+        instructions: 'No destructive confirmation is required.',
+        destructiveOperations: [],
+      },
+    }).success).toBe(true)
+  })
+
+  it('rejects non-canonical semantic values before checksum computation', () => {
+    for (const badValue of [
+      () => 'nope',
+      Symbol('nope'),
+      1n,
+      Number.NaN,
+      [undefined],
+      { nested: undefined },
+    ]) {
+      expect(schemaMigrationPreviewInputSchema.safeParse({
+        operations: [{
+          ...addFieldOperation,
+          defaultValue: badValue,
+        }],
+      }).success).toBe(false)
+    }
+  })
+
+  it('rejects raw SQL/DDL/script-shaped values inside semantic payload fields', () => {
+    for (const badValue of [
+      { sql: 'alter table contacts add column tier text' },
+      { ddl: 'create table leaked (id text)' },
+      { script: '<script>alert(1)</script>' },
+      { statements: ['drop table contacts'] },
+      'alter table contacts add column tier text',
+      '<script>alert(1)</script>',
+    ]) {
+      expect(schemaMigrationPreviewInputSchema.safeParse({
+        operations: [{
+          ...addFieldOperation,
+          defaultValue: badValue,
+        }],
+      }).success).toBe(false)
+    }
+  })
 })

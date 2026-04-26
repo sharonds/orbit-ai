@@ -5,6 +5,10 @@ import type { AdapterDialect, AdapterName } from '../adapters/interface.js'
 
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9_]{0,62}$/
 const CHECKSUM_PATTERN = /^[a-f0-9]{64}$/
+const RAW_PAYLOAD_KEYS = new Set(['sql', 'ddl', 'script', 'statement', 'statements'])
+const RAW_SQL_TEXT_PATTERN = /^(alter|create|drop|truncate)\s+(table|index|schema|column|view)\b/i
+const RAW_DML_TEXT_PATTERN = /^(select|insert|update|delete)\s+.+\b(from|into|set)\b/i
+const RAW_SCRIPT_TEXT_PATTERN = /<script\b/i
 
 const adapterNameSchema = z.enum(['supabase', 'neon', 'postgres', 'sqlite'])
 const adapterDialectSchema = z.enum(['postgres', 'sqlite'])
@@ -51,6 +55,22 @@ const semanticParameterValueSchema = z.union([
   z.array(semanticScalarSchema),
 ])
 
+export type SchemaMigrationSemanticValue =
+  | string
+  | number
+  | boolean
+  | null
+  | SchemaMigrationSemanticValue[]
+  | { [key: string]: SchemaMigrationSemanticValue }
+
+export const schemaMigrationSemanticValueSchema = z.custom<SchemaMigrationSemanticValue>(
+  (value) => isSchemaMigrationSemanticValue(value),
+  { message: 'Expected a canonical semantic JSON value' },
+)
+
+export const schemaMigrationValidationSchema = z.record(z.string(), schemaMigrationSemanticValueSchema)
+export type SchemaMigrationValidation = z.infer<typeof schemaMigrationValidationSchema>
+
 export const schemaMigrationChecksumSchema = z.string().regex(CHECKSUM_PATTERN)
 export type SchemaMigrationChecksum = z.infer<typeof schemaMigrationChecksumSchema>
 
@@ -79,9 +99,9 @@ export const schemaMigrationUpdateFieldInputSchema = z.object({
   fieldType: customFieldTypeSchema.optional(),
   required: z.boolean().optional(),
   indexed: z.boolean().optional(),
-  defaultValue: z.unknown().optional(),
+  defaultValue: schemaMigrationSemanticValueSchema.optional(),
   options: z.array(z.string()).optional(),
-  validation: z.record(z.string(), z.unknown()).optional(),
+  validation: schemaMigrationValidationSchema.optional(),
 }).strict()
 export type SchemaMigrationUpdateFieldInput = z.infer<typeof schemaMigrationUpdateFieldInputSchema>
 
@@ -101,9 +121,9 @@ const customFieldAddOperationSchema = z.object({
   description: z.string().nullable().optional(),
   required: z.boolean().optional(),
   indexed: z.boolean().optional(),
-  defaultValue: z.unknown().optional(),
+  defaultValue: schemaMigrationSemanticValueSchema.optional(),
   options: z.array(z.string()).optional(),
-  validation: z.record(z.string(), z.unknown()).optional(),
+  validation: schemaMigrationValidationSchema.optional(),
 }).strict()
 
 const customFieldUpdateOperationSchema = z.object({
@@ -142,7 +162,7 @@ const columnAddOperationSchema = z.object({
   columnName: columnNameSchema,
   columnType: semanticColumnTypeSchema,
   nullable: z.boolean().optional(),
-  defaultValue: z.unknown().optional(),
+  defaultValue: schemaMigrationSemanticValueSchema.optional(),
 }).strict()
 
 const columnDropOperationSchema = z.object({
@@ -247,14 +267,29 @@ export const schemaMigrationRollbackInputSchema = z.object({
 }).strict()
 export type SchemaMigrationRollbackInput = z.infer<typeof schemaMigrationRollbackInputSchema>
 
+export const schemaMigrationConfirmationInstructionsSchema = z.object({
+  required: z.boolean(),
+  instructions: z.string().min(1),
+  destructiveOperations: z.array(z.string()),
+  checksum: schemaMigrationChecksumSchema.optional(),
+  expiresAt: z.string().datetime({ offset: true }).optional(),
+}).strict()
+export type SchemaMigrationConfirmationInstructions = z.infer<typeof schemaMigrationConfirmationInstructionsSchema>
+
 export const schemaMigrationPreviewOutputSchema = z.object({
   checksum: schemaMigrationChecksumSchema,
   operations: z.array(schemaMigrationForwardOperationSchema),
   destructive: z.boolean(),
+  summary: z.string().min(1),
+  adapter: schemaMigrationAdapterScopeSchema,
+  scope: schemaMigrationTrustedScopeSchema,
+  confirmationInstructions: schemaMigrationConfirmationInstructionsSchema,
   confirmationRequired: z.boolean(),
   warnings: z.array(z.string()),
 }).strict()
 export type SchemaMigrationPreviewOutput = z.infer<typeof schemaMigrationPreviewOutputSchema>
+export const schemaMigrationPlanSchema = schemaMigrationPreviewOutputSchema
+export type SchemaMigrationPlan = SchemaMigrationPreviewOutput
 
 export const schemaMigrationApplyOutputSchema = z.object({
   migrationId: z.string().min(1),
@@ -294,6 +329,33 @@ export function computeSchemaMigrationChecksum(input: {
 
 function stableCanonicalJson(value: unknown): string {
   return JSON.stringify(toStableValue(value))
+}
+
+function isSchemaMigrationSemanticValue(value: unknown, seen = new WeakSet<object>()): value is SchemaMigrationSemanticValue {
+  if (value === null || typeof value === 'boolean') return true
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (typeof value === 'string') return !isRawPayloadString(value)
+  if (Array.isArray(value)) return value.every((entry) => isSchemaMigrationSemanticValue(entry, seen))
+  if (typeof value !== 'object') return false
+
+  const proto = Object.getPrototypeOf(value)
+  if (proto !== Object.prototype && proto !== null) return false
+  if (seen.has(value)) return false
+  seen.add(value)
+
+  for (const [key, entryValue] of Object.entries(value as Record<string, unknown>)) {
+    if (RAW_PAYLOAD_KEYS.has(key.toLowerCase())) return false
+    if (!isSchemaMigrationSemanticValue(entryValue, seen)) return false
+  }
+
+  return true
+}
+
+function isRawPayloadString(value: string): boolean {
+  const trimmed = value.trim()
+  return RAW_SQL_TEXT_PATTERN.test(trimmed) ||
+    RAW_DML_TEXT_PATTERN.test(trimmed) ||
+    RAW_SCRIPT_TEXT_PATTERN.test(trimmed)
 }
 
 function toStableValue(value: unknown): unknown {

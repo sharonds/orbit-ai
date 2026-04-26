@@ -1,4 +1,4 @@
-import { createCoreServices, resolvePublicEntityServiceKey, type OrbitEnvelope, type OrbitAuthContext, type OrbitErrorCode } from '@orbit-ai/core'
+import { createCoreServices, orbitErrorCodeToStatus, resolvePublicEntityServiceKey, type OrbitEnvelope, type OrbitAuthContext, type OrbitErrorCode } from '@orbit-ai/core'
 import type { OrbitClientOptions } from '../config.js'
 import type { OrbitTransport, TransportRequest } from './index.js'
 import { OrbitApiError } from '../errors.js'
@@ -106,7 +106,7 @@ export class DirectTransport implements OrbitTransport {
             recovery: orbitErr.recovery,
             retryable: orbitErr.retryable,
           }),
-          this.errorCodeToStatus(code),
+          orbitErrorCodeToStatus(code),
         )
       }
       throw err
@@ -445,39 +445,6 @@ export class DirectTransport implements OrbitTransport {
     return segments[startIdx] === 'search' || segments[startIdx + 1] === 'search'
   }
 
-  private errorCodeToStatus(code: string): number {
-    const map: Record<string, number> = {
-      AUTH_INVALID_API_KEY: 401,
-      AUTH_INSUFFICIENT_SCOPE: 403,
-      AUTH_CONTEXT_REQUIRED: 401,
-      RATE_LIMITED: 429,
-      VALIDATION_FAILED: 400,
-      INVALID_CURSOR: 400,
-      RESOURCE_NOT_FOUND: 404,
-      RELATION_NOT_FOUND: 404,
-      CONFLICT: 409,
-      IDEMPOTENCY_CONFLICT: 409,
-      SCHEMA_INVALID_FIELD: 400,
-      SCHEMA_ENTITY_EXISTS: 409,
-      SCHEMA_DESTRUCTIVE_BLOCKED: 403,
-      SCHEMA_INCOMPATIBLE_PROMOTION: 400,
-      MIGRATION_FAILED: 500,
-      MIGRATION_AUTHORITY_UNAVAILABLE: 503,
-      DESTRUCTIVE_CONFIRMATION_REQUIRED: 409,
-      DESTRUCTIVE_CONFIRMATION_STALE: 409,
-      MIGRATION_CONFLICT: 409,
-      ROLLBACK_PRECONDITION_FAILED: 412,
-      MIGRATION_OPERATION_UNSUPPORTED: 400,
-      ADAPTER_UNAVAILABLE: 503,
-      ADAPTER_TRANSACTION_FAILED: 500,
-      RLS_GENERATION_FAILED: 500,
-      WEBHOOK_DELIVERY_FAILED: 502,
-      SEARCH_RESULT_TOO_LARGE: 400,
-      PAYLOAD_TOO_LARGE: 413,
-      INTERNAL_ERROR: 500,
-    }
-    return map[code] ?? 500
-  }
 }
 
 interface ZodIssueLike {
