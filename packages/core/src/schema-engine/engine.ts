@@ -1,3 +1,6 @@
+import { Buffer } from 'node:buffer'
+import { sql } from 'drizzle-orm'
+
 import { generateId } from '../ids/generate-id.js'
 import { assertOrgContext } from '../services/service-helpers.js'
 import { createOrbitError } from '../types/errors.js'
@@ -354,6 +357,9 @@ export class OrbitSchemaEngine {
     if (input.checksum !== preview.checksum) {
       this.destructiveConfirmationStale(preview.checksum, input.checksum)
     }
+    if (preview.operations.length > 1) {
+      this.unsupportedMigrationOperation('batch schema migrations require multi-target locking')
+    }
     const existing = await this.findExistingApplyMigration(ctx, input, preview)
     if (existing) {
       if (existing.status === 'applied') {
@@ -376,6 +382,7 @@ export class OrbitSchemaEngine {
       checksum: preview.checksum,
       confirmation: input.confirmation,
       runtimeEnvironment: this.destructiveMigrationEnvironment,
+      requireRuntimeEnvironment: this.migrationAuthority !== undefined,
     })
 
     const authority = this.requireMigrationAuthority()
@@ -408,10 +415,10 @@ export class OrbitSchemaEngine {
       createdAt: now,
       updatedAt: now,
     }
-    await this.ledger.create(ctx, record)
 
-    const target = preview.operations.length === 1 ? operationTarget(preview.operations[0]!) : 'multi'
+    const target = operationTarget(preview.operations[0]!)
     return this.ledger.withMigrationLock(ctx, { adapter: preview.adapter, target }, async () => {
+      await this.ledger.create(ctx, record)
       await this.ledger.updateStatus(ctx, migrationId, {
         status: 'running',
         startedAt: new Date(),
@@ -423,8 +430,8 @@ export class OrbitSchemaEngine {
           operation: 'apply',
           checksum: preview.checksum,
           migrationId,
-        }, async () => {
-          await this.executeForwardOperations(ctx, preview.operations)
+        }, async (db) => {
+          await this.executeForwardOperations(db, ctx, preview.operations)
         })
         await this.ledger.updateStatus(ctx, migrationId, {
           status: 'applied',
@@ -440,18 +447,14 @@ export class OrbitSchemaEngine {
           ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
         }
       } catch (error) {
+        const failure = sanitizedMigrationFailure('apply', error)
         await this.ledger.updateStatus(ctx, migrationId, {
           status: 'failed',
           failedAt: new Date(),
-          errorCode: 'MIGRATION_FAILED',
-          errorMessage: 'Schema migration apply failed',
+          errorCode: failure.code,
+          errorMessage: failure.message,
         })
-        throw createOrbitError({
-          code: 'MIGRATION_FAILED',
-          message: 'Schema migration apply failed',
-          retryable: false,
-          details: { phase: 'apply', ...sanitizedMigrationFailureDetails(error) },
-        })
+        throw migrationExecutionError('apply', error)
       }
     }).then((locked) => locked.result)
   }
@@ -489,9 +492,13 @@ export class OrbitSchemaEngine {
       checksum: rollbackChecksum,
       confirmation: input.confirmation,
       runtimeEnvironment: this.destructiveMigrationEnvironment,
+      requireRuntimeEnvironment: this.migrationAuthority !== undefined,
     })
     const authority = this.requireMigrationAuthority()
-    const target = record.forwardOperations.length === 1 ? operationTarget(record.forwardOperations[0]!) : 'multi'
+    if (record.forwardOperations.length > 1 || record.reverseOperations.length > 1) {
+      this.unsupportedMigrationOperation('batch schema migration rollback requires multi-target locking')
+    }
+    const target = operationTarget(record.forwardOperations[0]!)
     return this.ledger.withMigrationLock(ctx, { adapter: adapterScope, target }, async () => {
       try {
         await authority.run({
@@ -499,8 +506,8 @@ export class OrbitSchemaEngine {
           operation: 'rollback',
           migrationId: input.migrationId,
           checksum: rollbackChecksum,
-        }, async () => {
-          await this.executeForwardOperations(ctx, record.reverseOperations)
+        }, async (db) => {
+          await this.executeForwardOperations(db, ctx, record.reverseOperations)
         })
         await this.ledger.updateStatus(ctx, input.migrationId, {
           status: 'rolled_back',
@@ -516,18 +523,14 @@ export class OrbitSchemaEngine {
           operations: record.reverseOperations,
         }
       } catch (error) {
+        const failure = sanitizedMigrationFailure('rollback', error)
         await this.ledger.updateStatus(ctx, input.migrationId, {
-          status: 'failed',
+          status: 'applied',
           failedAt: new Date(),
-          errorCode: 'MIGRATION_FAILED',
-          errorMessage: 'Schema migration rollback failed',
+          errorCode: failure.code,
+          errorMessage: failure.message,
         })
-        throw createOrbitError({
-          code: 'MIGRATION_FAILED',
-          message: 'Schema migration rollback failed',
-          retryable: false,
-          details: { phase: 'rollback', ...sanitizedMigrationFailureDetails(error) },
-        })
+        throw migrationExecutionError('rollback', error)
       }
     }).then((locked) => locked.result)
   }
@@ -554,23 +557,27 @@ export class OrbitSchemaEngine {
   }
 
   private async executeForwardOperations(
+    db: MigrationDatabase,
     ctx: OrbitAuthContext,
     operations: SchemaMigrationForwardOperation[],
   ): Promise<void> {
     for (const operation of operations) {
-      await this.executeForwardOperation(ctx, operation)
+      await this.executeForwardOperation(db, ctx, operation)
     }
   }
 
   private async executeForwardOperation(
+    db: MigrationDatabase,
     ctx: OrbitAuthContext,
     operation: SchemaMigrationForwardOperation,
   ): Promise<void> {
     switch (operation.type) {
       case 'custom_field.add':
-        await this.repository.create(ctx, customFieldRecordFromAddOperation(assertOrgContext(ctx), operation))
+        await executeCustomFieldAdd(db, assertOrgContext(ctx), operation)
         return
       case 'custom_field.delete':
+        await executeCustomFieldDelete(db, assertOrgContext(ctx), operation)
+        return
       case 'custom_field.update':
       case 'custom_field.rename':
       case 'custom_field.promote':
@@ -579,7 +586,7 @@ export class OrbitSchemaEngine {
       case 'column.rename':
       case 'index.add':
       case 'index.drop':
-        return
+        this.unsupportedMigrationOperation(operation.type)
       case 'adapter.semantic':
         this.unsupportedMigrationOperation(`adapter.semantic:${operation.operation}`)
     }
@@ -1197,12 +1204,36 @@ function migrationDescription(
   idempotencyKey: string | undefined,
 ): string {
   return idempotencyKey
-    ? `${preview.summary} [idempotency:${idempotencyKey}]`
+    ? `${preview.summary} ${encodeIdempotencyMarker(idempotencyKey)}`
     : preview.summary
 }
 
 function recordHasIdempotencyKey(record: SchemaMigrationRecord, idempotencyKey: string): boolean {
-  return record.description.includes(`[idempotency:${idempotencyKey}]`)
+  return parseIdempotencyMarker(record.description) === idempotencyKey
+}
+
+function encodeIdempotencyMarker(idempotencyKey: string): string {
+  const payload = Buffer.from(JSON.stringify({ idempotencyKey }), 'utf8').toString('base64url')
+  return `[orbit-idempotency:${payload}]`
+}
+
+function parseIdempotencyMarker(description: string): string | null {
+  const marker = description.match(/\[orbit-idempotency:([A-Za-z0-9_-]+)\]$/)
+  if (!marker) return null
+  try {
+    const parsed = JSON.parse(Buffer.from(marker[1]!, 'base64url').toString('utf8')) as unknown
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'idempotencyKey' in parsed &&
+      typeof parsed.idempotencyKey === 'string'
+    ) {
+      return parsed.idempotencyKey
+    }
+  } catch {
+    return null
+  }
+  return null
 }
 
 function customFieldRecordFromAddOperation(
@@ -1230,9 +1261,90 @@ function customFieldRecordFromAddOperation(
   }
 }
 
-function sanitizedMigrationFailureDetails(error: unknown): Record<string, unknown> {
-  const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+async function executeCustomFieldAdd(
+  db: MigrationDatabase,
+  orgId: string,
+  operation: Extract<SchemaMigrationForwardOperation, { type: 'custom_field.add' }>,
+): Promise<void> {
+  const record = customFieldRecordFromAddOperation(orgId, operation)
+  await db.execute(sql`
+    insert into custom_field_definitions (
+      id,
+      organization_id,
+      entity_type,
+      field_name,
+      field_type,
+      label,
+      description,
+      is_required,
+      is_indexed,
+      is_promoted,
+      promoted_column_name,
+      default_value,
+      options,
+      validation,
+      created_at,
+      updated_at
+    ) values (
+      ${record.id},
+      ${record.organizationId},
+      ${record.entityType},
+      ${record.fieldName},
+      ${record.fieldType},
+      ${record.label},
+      ${record.description},
+      ${record.isRequired},
+      ${record.isIndexed},
+      ${record.isPromoted},
+      ${record.promotedColumnName},
+      ${record.defaultValue === null ? null : JSON.stringify(record.defaultValue)},
+      ${JSON.stringify(record.options)},
+      ${JSON.stringify(record.validation)},
+      ${record.createdAt},
+      ${record.updatedAt}
+    )
+  `)
+}
+
+async function executeCustomFieldDelete(
+  db: MigrationDatabase,
+  orgId: string,
+  operation: Extract<SchemaMigrationForwardOperation, { type: 'custom_field.delete' }>,
+): Promise<void> {
+  await db.execute(sql`
+    delete from custom_field_definitions
+    where organization_id = ${orgId}
+      and entity_type = ${operation.entityType}
+      and field_name = ${operation.fieldName}
+  `)
+}
+
+function sanitizedMigrationFailure(
+  phase: 'apply' | 'rollback',
+  error: unknown,
+): { code: 'MIGRATION_FAILED' | 'MIGRATION_OPERATION_UNSUPPORTED', message: string, causeCode: string } {
+  const causeCode = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
     ? error.code
     : 'INTERNAL_ERROR'
-  return { causeCode: code }
+  const code = causeCode === 'MIGRATION_OPERATION_UNSUPPORTED'
+    ? 'MIGRATION_OPERATION_UNSUPPORTED'
+    : 'MIGRATION_FAILED'
+  return {
+    code,
+    message: `Schema migration failed (phase=${phase}; causeCode=${causeCode})`,
+    causeCode,
+  }
+}
+
+function migrationExecutionError(phase: 'apply' | 'rollback', error: unknown) {
+  const failure = sanitizedMigrationFailure(phase, error)
+  return createOrbitError({
+    code: failure.code,
+    message: failure.message,
+    retryable: false,
+    details: {
+      phase,
+      causeCode: failure.causeCode,
+    },
+  })
 }

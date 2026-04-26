@@ -54,6 +54,7 @@ export interface DestructiveConfirmationInput {
   checksum: string
   confirmation?: DestructiveConfirmation | undefined
   runtimeEnvironment?: DestructiveMigrationEnvironment | undefined
+  requireRuntimeEnvironment?: boolean | undefined
 }
 
 export function assertDestructiveConfirmation(input: DestructiveConfirmationInput): void {
@@ -81,7 +82,11 @@ export function assertDestructiveConfirmation(input: DestructiveConfirmationInpu
     })
   }
 
-  const missingSafeguards = missingProductionSafeguards(input.confirmation.safeguards, input.runtimeEnvironment)
+  const missingSafeguards = missingProductionSafeguards(
+    input.confirmation.safeguards,
+    input.runtimeEnvironment,
+    input.requireRuntimeEnvironment === true,
+  )
   if (missingSafeguards.length > 0) {
     throw createOrbitError({
       code: 'DESTRUCTIVE_SAFEGUARDS_REQUIRED',
@@ -98,7 +103,11 @@ export function assertDestructiveConfirmation(input: DestructiveConfirmationInpu
 function missingProductionSafeguards(
   safeguards: DestructiveSafeguards | undefined,
   runtimeEnvironment: DestructiveMigrationEnvironment | undefined,
+  requireRuntimeEnvironment: boolean,
 ): string[] {
+  if (!runtimeEnvironment && requireRuntimeEnvironment) {
+    return ['runtimeEnvironment']
+  }
   if (!runtimeEnvironment || !PRODUCTION_LIKE_ENVIRONMENTS.has(runtimeEnvironment)) {
     return []
   }

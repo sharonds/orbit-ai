@@ -183,7 +183,7 @@ function migrationRecord(overrides: {
   status?: SchemaMigrationRecord['status']
   adapter?: SchemaMigrationAdapterScope
   id?: string
-}): SchemaMigrationRecord {
+} & Partial<SchemaMigrationRecord>): SchemaMigrationRecord {
   const adapter = overrides.adapter ?? { name: 'sqlite', dialect: 'sqlite' }
   const forwardOperations = overrides.forwardOperations
   const now = new Date('2026-04-24T00:00:00.000Z')
@@ -244,14 +244,23 @@ function checksumFor(operations: SchemaMigrationPublicForwardOperation[]): strin
   })
 }
 
-function makeAuthority() {
+function makeAuthority(db = makeMigrationDb()) {
   const run = vi.fn(async <T>(
     _context: Parameters<SchemaMigrationAuthority['run']>[0],
     fn: Parameters<SchemaMigrationAuthority['run']>[1],
   ): Promise<T> => {
-    return fn({} as Parameters<Parameters<SchemaMigrationAuthority['run']>[1]>[0])
+    return fn(db)
   })
   return { run }
+}
+
+function makeMigrationDb() {
+  const db = {
+    transaction: vi.fn(async <T>(fn: (tx: typeof db) => Promise<T>) => fn(db)),
+    execute: vi.fn(async () => undefined),
+    query: vi.fn(async () => []),
+  }
+  return db as unknown as Parameters<Parameters<SchemaMigrationAuthority['run']>[1]>[0]
 }
 
 const APPLY_OPERATIONS: SchemaMigrationPublicForwardOperation[] = [{
@@ -1152,8 +1161,9 @@ describe('OrbitSchemaEngine', () => {
     expect(authority.run).not.toHaveBeenCalled()
   })
 
-  it('enters migration authority for destructive apply operations only after matching confirmation', async () => {
+  it('fails closed for unsupported destructive apply operations after matching confirmation', async () => {
     const authority = makeAuthority()
+    const migrationLedger = trackingLedger()
     const repo: CustomFieldDefinitionRepository = {
       async create(_ctx, record) {
         return record
@@ -1165,16 +1175,20 @@ describe('OrbitSchemaEngine', () => {
         return { data: [], hasMore: false, nextCursor: null }
       },
     }
-    const engine = makeEngine(repo, authority)
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
 
     await expect(engine.apply(ctx, {
       ...DESTRUCTIVE_APPLY_INPUT,
       confirmation: VALID_DESTRUCTIVE_CONFIRMATION,
-    })).resolves.toMatchObject({
-      checksum: DESTRUCTIVE_APPLY_INPUT.checksum,
-      status: 'applied',
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
     })
     expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
+      status: 'failed',
+      errorCode: 'MIGRATION_OPERATION_UNSUPPORTED',
+      errorMessage: expect.stringContaining('phase=apply'),
+    }))
     expect(authority.run).toHaveBeenCalledWith(
       expect.objectContaining({
         ctx,
@@ -1185,7 +1199,7 @@ describe('OrbitSchemaEngine', () => {
     )
   })
 
-  it('ignores caller production environment when runtime environment is omitted', async () => {
+  it('fails closed for destructive apply when trusted runtime environment is omitted', async () => {
     const authority = makeAuthority()
     const repo: CustomFieldDefinitionRepository = {
       async create(_ctx, record) {
@@ -1203,11 +1217,13 @@ describe('OrbitSchemaEngine', () => {
     await expect(engine.apply(ctx, {
       ...DESTRUCTIVE_APPLY_INPUT,
       confirmation: PRODUCTION_DESTRUCTIVE_CONFIRMATION,
-    })).resolves.toMatchObject({
-      checksum: DESTRUCTIVE_APPLY_INPUT.checksum,
-      status: 'applied',
+    })).rejects.toMatchObject({
+      code: 'DESTRUCTIVE_SAFEGUARDS_REQUIRED',
+      details: {
+        missingSafeguards: ['runtimeEnvironment'],
+      },
     })
-    expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(authority.run).not.toHaveBeenCalled()
   })
 
   it('rejects runtime production destructive apply without safeguard evidence even when confirmation omits environment', async () => {
@@ -1270,8 +1286,9 @@ describe('OrbitSchemaEngine', () => {
     expect(authority.run).not.toHaveBeenCalled()
   })
 
-  it('accepts production-like destructive apply only when safeguard evidence is complete', async () => {
+  it('accepts production-like destructive safeguards before failing unsupported execution', async () => {
     const authority = makeAuthority()
+    const migrationLedger = trackingLedger()
     const repo: CustomFieldDefinitionRepository = {
       async create(_ctx, record) {
         return record
@@ -1283,14 +1300,13 @@ describe('OrbitSchemaEngine', () => {
         return { data: [], hasMore: false, nextCursor: null }
       },
     }
-    const engine = makeEngine(repo, authority)
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'production')
 
     await expect(engine.apply(ctx, {
       ...DESTRUCTIVE_APPLY_INPUT,
       confirmation: PRODUCTION_DESTRUCTIVE_CONFIRMATION_WITH_EVIDENCE,
-    })).resolves.toMatchObject({
-      checksum: DESTRUCTIVE_APPLY_INPUT.checksum,
-      status: 'applied',
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
     })
     expect(authority.run).toHaveBeenCalledTimes(1)
   })
@@ -1386,7 +1402,8 @@ describe('OrbitSchemaEngine', () => {
   })
 
   it('applies a semantic custom field migration with real ledger transitions and idempotent retry', async () => {
-    const authority = makeAuthority()
+    const migrationDb = makeMigrationDb()
+    const authority = makeAuthority(migrationDb)
     const migrationLedger = trackingLedger()
     const records = new Map<string, SchemaMigrationRecord>()
     vi.mocked(migrationLedger.create).mockImplementation(async (_ctx, record) => {
@@ -1413,8 +1430,12 @@ describe('OrbitSchemaEngine', () => {
       execute: vi.fn(),
       query: vi.fn(),
     }
-    const repo = createInMemoryCustomFieldRepo()
-    const engine = makeEngine(repo, authority, migrationLedger)
+    const repo = createInMemoryCustomFieldRepo({
+      async create() {
+        throw new Error('runtime repository must not execute schema migrations')
+      },
+    })
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
 
     const result = await engine.apply({ ...ctx, runtimeDb } as any, {
       ...APPLY_INPUT,
@@ -1449,6 +1470,7 @@ describe('OrbitSchemaEngine', () => {
       appliedAt: expect.any(Date),
     }))
     expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(migrationDb.execute).toHaveBeenCalledTimes(1)
     expect(runtimeDb.execute).not.toHaveBeenCalled()
     expect(runtimeDb.query).not.toHaveBeenCalled()
 
@@ -1484,7 +1506,7 @@ describe('OrbitSchemaEngine', () => {
       return records[index]!
     })
     const repo = createInMemoryCustomFieldRepo()
-    const engine = makeEngine(repo, authority, migrationLedger)
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
 
     await engine.apply(ctx, {
       ...APPLY_INPUT,
@@ -1506,8 +1528,83 @@ describe('OrbitSchemaEngine', () => {
     })
   })
 
-  it('records sanitized apply failure details when semantic execution fails inside authority', async () => {
+  it('does not match idempotency keys by freeform description substring', async () => {
+    const migrationDb = makeMigrationDb()
+    const authority = makeAuthority(migrationDb)
+    const otherOperations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.add',
+      entityType: 'contacts',
+      fieldName: 'twitter_url',
+      fieldType: 'url',
+    }]
+    const migrationLedger = trackingLedger([
+      migrationRecord({
+        forwardOperations: APPLY_OPERATIONS,
+        description: 'legacy note [idempotency:same-key] is not structured metadata',
+      }),
+    ])
+    const repo = createInMemoryCustomFieldRepo()
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.apply(ctx, {
+      operations: otherOperations,
+      checksum: checksumFor(otherOperations),
+      idempotencyKey: 'same-key',
+    })).resolves.toMatchObject({
+      status: 'applied',
+      appliedOperations: otherOperations,
+    })
+    expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(migrationDb.execute).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects batched migrations until multi-target locking is implemented', async () => {
     const authority = makeAuthority()
+    const migrationLedger = trackingLedger()
+    const operations: SchemaMigrationPublicForwardOperation[] = [
+      APPLY_OPERATIONS[0]!,
+      {
+        type: 'custom_field.add',
+        entityType: 'companies',
+        fieldName: 'linkedin_url',
+        fieldType: 'url',
+      },
+    ]
+    const repo = createInMemoryCustomFieldRepo()
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.apply(ctx, {
+      operations,
+      checksum: checksumFor(operations),
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+    })
+    expect(migrationLedger.create).not.toHaveBeenCalled()
+    expect(migrationLedger.withMigrationLock).not.toHaveBeenCalled()
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('does not create a pending ledger row when migration lock acquisition fails', async () => {
+    const authority = makeAuthority()
+    const migrationLedger = trackingLedger()
+    vi.mocked(migrationLedger.withMigrationLock).mockRejectedValue(Object.assign(new Error('locked'), {
+      code: 'MIGRATION_CONFLICT',
+    }))
+    const repo = createInMemoryCustomFieldRepo()
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.apply(ctx, APPLY_INPUT)).rejects.toMatchObject({
+      code: 'MIGRATION_CONFLICT',
+    })
+    expect(migrationLedger.create).not.toHaveBeenCalled()
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalled()
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('records sanitized apply failure details when semantic execution fails inside authority', async () => {
+    const migrationDb = makeMigrationDb()
+    vi.mocked(migrationDb.execute).mockRejectedValue(new Error('raw sql ALTER TABLE contacts ADD COLUMN secret text leaked'))
+    const authority = makeAuthority(migrationDb)
     const migrationLedger = trackingLedger()
     let stored: SchemaMigrationRecord | null = null
     vi.mocked(migrationLedger.create).mockImplementation(async (_ctx, record) => {
@@ -1518,12 +1615,8 @@ describe('OrbitSchemaEngine', () => {
       stored = { ...stored!, ...patch } as SchemaMigrationRecord
       return stored
     })
-    const repo = createInMemoryCustomFieldRepo({
-      async create() {
-        throw new Error('raw sql ALTER TABLE contacts ADD COLUMN secret text leaked')
-      },
-    })
-    const engine = makeEngine(repo, authority, migrationLedger)
+    const repo = createInMemoryCustomFieldRepo()
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
 
     await expect(engine.apply(ctx, APPLY_INPUT)).rejects.toMatchObject({
       code: 'MIGRATION_FAILED',
@@ -1532,13 +1625,14 @@ describe('OrbitSchemaEngine', () => {
     expect(stored).toMatchObject({
       status: 'failed',
       errorCode: 'MIGRATION_FAILED',
-      errorMessage: 'Schema migration apply failed',
+      errorMessage: 'Schema migration failed (phase=apply; causeCode=INTERNAL_ERROR)',
       failedAt: expect.any(Date),
     })
   })
 
   it('rolls back an applied migration through authority and marks the ledger rolled back', async () => {
-    const authority = makeAuthority()
+    const migrationDb = makeMigrationDb()
+    const authority = makeAuthority(migrationDb)
     const migrationLedger = trackingLedger()
     const migrationId = 'migration_01J00000000000000000000000'
     let record = {
@@ -1561,7 +1655,7 @@ describe('OrbitSchemaEngine', () => {
     const repo = createInMemoryCustomFieldRepo([
       field('field_01J00000000000000000000020', 'linkedin_url'),
     ])
-    const engine = makeEngine(repo, authority, migrationLedger)
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
 
     const rollbackChecksum = computeSchemaMigrationChecksum({
       adapter: { name: 'sqlite', dialect: 'sqlite' },
@@ -1584,6 +1678,7 @@ describe('OrbitSchemaEngine', () => {
     })
 
     expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(migrationDb.execute).toHaveBeenCalledTimes(1)
     expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, migrationId, expect.objectContaining({
       status: 'rolled_back',
       rolledBackAt: expect.any(Date),
@@ -1591,11 +1686,9 @@ describe('OrbitSchemaEngine', () => {
   })
 
   it('records sanitized rollback failure details', async () => {
-    const authority: SchemaMigrationAuthority = {
-      run: vi.fn(async () => {
-        throw new Error('DROP TABLE contacts leaked from provider')
-      }),
-    }
+    const migrationDb = makeMigrationDb()
+    vi.mocked(migrationDb.execute).mockRejectedValue(new Error('DROP TABLE contacts leaked from provider'))
+    const authority = makeAuthority(migrationDb)
     const migrationLedger = trackingLedger()
     const migrationId = 'migration_01J00000000000000000000000'
     const record = {
@@ -1612,7 +1705,7 @@ describe('OrbitSchemaEngine', () => {
     vi.mocked(migrationLedger.assertRollbackPreconditions).mockResolvedValue(record)
     vi.mocked(migrationLedger.updateStatus).mockResolvedValue(record)
     const repo = createInMemoryCustomFieldRepo()
-    const engine = makeEngine(repo, authority, migrationLedger)
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
 
     const rollbackChecksum = computeSchemaMigrationChecksum({
       adapter: { name: 'sqlite', dialect: 'sqlite' },
@@ -1632,9 +1725,9 @@ describe('OrbitSchemaEngine', () => {
       details: { phase: 'rollback' },
     })
     expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, migrationId, expect.objectContaining({
-      status: 'failed',
+      status: 'applied',
       errorCode: 'MIGRATION_FAILED',
-      errorMessage: 'Schema migration rollback failed',
+      errorMessage: 'Schema migration failed (phase=rollback; causeCode=INTERNAL_ERROR)',
       failedAt: expect.any(Date),
     }))
   })
@@ -1758,8 +1851,9 @@ describe('OrbitSchemaEngine', () => {
     })
   })
 
-  it('allows destructive rollback placeholders through confirmation gate and records rollback', async () => {
+  it('fails closed for unsupported destructive rollback operations after confirmation', async () => {
     const authority = makeAuthority()
+    const migrationLedger = trackingLedger()
     const migrationId = 'migration_01J00000000000000000000000'
     const reverseOperations: SchemaMigrationForwardOperation[] = [{
       type: 'column.drop',
@@ -1771,7 +1865,6 @@ describe('OrbitSchemaEngine', () => {
       orgId: ctx.orgId,
       operations: reverseOperations,
     })
-    const migrationLedger = trackingLedger()
     vi.mocked(migrationLedger.assertRollbackPreconditions).mockResolvedValue({
       ...migrationRecord({
         id: migrationId,
@@ -1795,7 +1888,7 @@ describe('OrbitSchemaEngine', () => {
         return { data: [], hasMore: false, nextCursor: null }
       },
     }
-    const engine = makeEngine(repo, authority, migrationLedger)
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
 
     await expect(engine.rollback(ctx, {
       migrationId,
@@ -1805,11 +1898,15 @@ describe('OrbitSchemaEngine', () => {
         checksum,
         confirmedAt: '2026-04-26T12:00:00.000Z',
       },
-    })).resolves.toMatchObject({
-      migrationId,
-      status: 'rolled_back',
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
     })
     expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, migrationId, expect.objectContaining({
+      status: 'applied',
+      errorCode: 'MIGRATION_OPERATION_UNSUPPORTED',
+      errorMessage: expect.stringContaining('phase=rollback'),
+    }))
   })
 
   it('rejects destructive field placeholders without confirmation before authority or unsupported execution', async () => {
