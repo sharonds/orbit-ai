@@ -52,7 +52,7 @@ Note: the Plan D execution contract was supplied from the parent workspace path 
 | Task | Status | Implementation SHA(s) | Ledger SHA | Subagent / Review Evidence |
 |---|---|---|---|---|
 | 1. Create Worktree And Execution Ledger | Complete | N/A | This commit | Process review subagent `019dc980-596f-7a31-9103-72caae6a37e0`; Critical/High findings fixed before commit |
-| 2. Add `--version` And Tighten Option Validation | Pending | Pending | Pending | Pending |
+| 2. Add `--version` And Tighten Option Validation | Complete | `def8680` | This commit | Implementation subagent `019dc982-58e2-7b23-a3e9-5e7d7992869e`; reviews `019dc985-1d85-7bf3-9782-8a11d862367d`, `019dc985-1e03-7881-9917-abc363198cc4`, `019dc985-1ebf-7513-982f-a1bc9bc6be20` |
 | 3. Bound Install Execution And Harden Command Parsing | Pending | Pending | Pending | Pending |
 | 4. Make Cleanup Failures Observable | Pending | Pending | Pending | Pending |
 | 5. Prove Atomic Rollback And Template Symlink Safety | Pending | Pending | Pending | Pending |
@@ -189,6 +189,41 @@ Findings:
 - High: Task 1 status and review evidence were still pending. Fix: mark Task 1 complete and record review findings/fixes here.
 
 Result: no unresolved Critical/High/Medium Task 1 process findings remain before ledger commit.
+
+### Task 2 Reviews
+
+Implementation subagent: `019dc982-58e2-7b23-a3e9-5e7d7992869e`
+
+Implementation commit: `def8680 feat(create-orbit-app): add version flag and option conflict checks`
+
+Changed files:
+
+- `packages/create-orbit-app/src/options.ts`
+- `packages/create-orbit-app/src/index.ts`
+- `packages/create-orbit-app/src/options.test.ts`
+- `packages/create-orbit-app/src/prompts.test.ts`
+- `packages/create-orbit-app/src/__tests__/index.test.ts`
+
+Focused validation:
+
+```text
+$ corepack pnpm -F @orbit-ai/create-orbit-app test -- src/options.test.ts src/prompts.test.ts src/__tests__/index.test.ts
+Test Files  3 passed (3)
+Tests       30 passed (30)
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app typecheck
+tsc -p tsconfig.json --noEmit
+exit 0
+```
+
+Named review lenses:
+
+- Code review subagent `019dc985-1d85-7bf3-9782-8a11d862367d`: no Critical/High/Medium/Low findings. Reviewer also ran full create-orbit-app tests and typecheck successfully.
+- Package UX review subagent `019dc985-1e03-7881-9917-abc363198cc4`: no Critical/High/Medium findings. Low finding: `--help` and `--version` are parsed after semantic validation, so combinations with conflicting install flags exit 2 instead of printing metadata. Decision: defer; Low severity and not required by Task 2 contract.
+- Security review subagent `019dc985-1ebf-7513-982f-a1bc9bc6be20`: no Critical/High/Medium/Low findings. Reviewer also ran full create-orbit-app tests successfully.
+
+Result: no unresolved Critical/High/Medium Task 2 findings remain.
 
 ## Deferred Items And Skipped Validation
 
