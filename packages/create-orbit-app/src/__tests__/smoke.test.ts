@@ -13,11 +13,6 @@ const packageDir = path.resolve(__dirname, '..', '..')
 const repoRoot = path.resolve(packageDir, '..', '..')
 const templatePackageJsonPath = path.resolve(__dirname, '..', '..', 'templates', 'default', 'package.json')
 const execFileAsync = promisify(execFile)
-const postPublishStarterRuntimeProof = [
-  'npx @orbit-ai/create-orbit-app@alpha my-app --yes',
-  'cd my-app',
-  'npm start',
-].join('\n')
 
 async function runCommand(file: string, args: string[], options: { cwd: string; env?: NodeJS.ProcessEnv }) {
   return execFileAsync(file, args, {
@@ -146,15 +141,6 @@ describe('create-orbit-app smoke', () => {
       expect(generatedPackageJson.dependencies['@orbit-ai/demo-seed']).toBe(createOrbitAppPkg.version)
       expect(generatedPackageJsonContent).not.toContain('__APP_NAME__')
       expect(generatedPackageJsonContent).not.toContain('__ORBIT_VERSION__')
-
-      // This Vitest case is the pre-publish packed scaffolder E2E proof. The
-      // generated starter runtime proof must run after the exact alpha
-      // dependencies are published and installable.
-      expect(postPublishStarterRuntimeProof).toBe([
-        'npx @orbit-ai/create-orbit-app@alpha my-app --yes',
-        'cd my-app',
-        'npm start',
-      ].join('\n'))
     } finally {
       fs.rmSync(workDir, { recursive: true, force: true })
     }
