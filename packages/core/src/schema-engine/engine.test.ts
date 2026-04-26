@@ -238,6 +238,38 @@ const DESTRUCTIVE_APPLY_INPUT = {
   operations: DESTRUCTIVE_APPLY_OPERATIONS,
   checksum: checksumFor(DESTRUCTIVE_APPLY_OPERATIONS),
 }
+const VALID_DESTRUCTIVE_CONFIRMATION = {
+  destructive: true,
+  checksum: DESTRUCTIVE_APPLY_INPUT.checksum,
+  confirmedAt: '2026-04-26T12:00:00.000Z',
+}
+const PRODUCTION_DESTRUCTIVE_CONFIRMATION = {
+  ...VALID_DESTRUCTIVE_CONFIRMATION,
+  safeguards: {
+    environment: 'production',
+    environmentAcknowledged: true,
+  },
+}
+const PRODUCTION_DESTRUCTIVE_CONFIRMATION_WITH_EVIDENCE = {
+  ...VALID_DESTRUCTIVE_CONFIRMATION,
+  safeguards: {
+    environment: 'production',
+    environmentAcknowledged: true,
+    backup: {
+      kind: 'snapshot',
+      evidenceId: 'snapshot_20260426_120000',
+      capturedAt: '2026-04-26T12:00:00.000Z',
+    },
+    ledger: {
+      evidenceId: 'audit_01J00000000000000000000000',
+      recordedAt: '2026-04-26T12:00:00.000Z',
+    },
+    rollback: {
+      decision: 'non_rollbackable',
+      reason: 'Column drop cannot be reversed without restoring from snapshot.',
+    },
+  },
+}
 
 describe('OrbitSchemaEngine', () => {
   it('rejects listObjects without org context before repository access', async () => {
@@ -1058,6 +1090,91 @@ describe('OrbitSchemaEngine', () => {
     expect(authority.run).not.toHaveBeenCalled()
   })
 
+  it('enters migration authority for destructive apply operations only after matching confirmation', async () => {
+    const authority = makeAuthority()
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const engine = makeEngine(repo, authority)
+
+    await expect(engine.apply(ctx, {
+      ...DESTRUCTIVE_APPLY_INPUT,
+      confirmation: VALID_DESTRUCTIVE_CONFIRMATION,
+    })).resolves.toMatchObject({
+      checksum: DESTRUCTIVE_APPLY_INPUT.checksum,
+      status: 'noop',
+    })
+    expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(authority.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ctx,
+        operation: 'apply',
+        checksum: DESTRUCTIVE_APPLY_INPUT.checksum,
+      }),
+      expect.any(Function),
+    )
+  })
+
+  it('rejects production-like destructive apply without required safeguard evidence before authority', async () => {
+    const authority = makeAuthority()
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const engine = makeEngine(repo, authority)
+
+    await expect(engine.apply(ctx, {
+      ...DESTRUCTIVE_APPLY_INPUT,
+      confirmation: PRODUCTION_DESTRUCTIVE_CONFIRMATION,
+    })).rejects.toMatchObject({
+      code: 'DESTRUCTIVE_SAFEGUARDS_REQUIRED',
+      details: {
+        missingSafeguards: ['backup', 'ledger', 'rollback'],
+      },
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('accepts production-like destructive apply only when safeguard evidence is complete', async () => {
+    const authority = makeAuthority()
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const engine = makeEngine(repo, authority)
+
+    await expect(engine.apply(ctx, {
+      ...DESTRUCTIVE_APPLY_INPUT,
+      confirmation: PRODUCTION_DESTRUCTIVE_CONFIRMATION_WITH_EVIDENCE,
+    })).resolves.toMatchObject({
+      checksum: DESTRUCTIVE_APPLY_INPUT.checksum,
+      status: 'noop',
+    })
+    expect(authority.run).toHaveBeenCalledTimes(1)
+  })
+
   it('rejects apply when the supplied checksum does not match current adapter, org, and operations', async () => {
     const authority = makeAuthority()
     const repo: CustomFieldDefinitionRepository = {
@@ -1148,8 +1265,27 @@ describe('OrbitSchemaEngine', () => {
     )
   })
 
-  it('calls migration authority with context for rollback placeholders before rejecting unsupported', async () => {
+  it('rejects destructive rollback placeholders without confirmation before authority or unsupported execution', async () => {
     const authority = makeAuthority()
+    const migrationId = 'migration_01J00000000000000000000000'
+    const reverseOperations: SchemaMigrationForwardOperation[] = [{
+      type: 'column.drop',
+      tableName: 'contacts',
+      columnName: 'linkedin_url',
+    }]
+    const migrationLedger = trackingLedger()
+    vi.mocked(migrationLedger.assertRollbackPreconditions).mockResolvedValue({
+      ...migrationRecord({
+        id: migrationId,
+        forwardOperations: [{
+          type: 'column.add',
+          tableName: 'contacts',
+          columnName: 'linkedin_url',
+          columnType: 'text',
+        }],
+      }),
+      reverseOperations,
+    })
     const repo: CustomFieldDefinitionRepository = {
       async create(_ctx, record) {
         return record
@@ -1161,24 +1297,68 @@ describe('OrbitSchemaEngine', () => {
         return { data: [], hasMore: false, nextCursor: null }
       },
     }
-    const engine = makeEngine(repo, authority)
-    const migrationId = 'migration_01J00000000000000000000000'
+    const engine = makeEngine(repo, authority, migrationLedger)
 
     await expect(engine.rollback(ctx, migrationId)).rejects.toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('allows destructive rollback placeholders through confirmation gate before rejecting unsupported', async () => {
+    const authority = makeAuthority()
+    const migrationId = 'migration_01J00000000000000000000000'
+    const reverseOperations: SchemaMigrationForwardOperation[] = [{
+      type: 'column.drop',
+      tableName: 'contacts',
+      columnName: 'linkedin_url',
+    }]
+    const checksum = computeSchemaMigrationChecksum({
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      orgId: ctx.orgId,
+      operations: reverseOperations,
+    })
+    const migrationLedger = trackingLedger()
+    vi.mocked(migrationLedger.assertRollbackPreconditions).mockResolvedValue({
+      ...migrationRecord({
+        id: migrationId,
+        forwardOperations: [{
+          type: 'column.add',
+          tableName: 'contacts',
+          columnName: 'linkedin_url',
+          columnType: 'text',
+        }],
+      }),
+      reverseOperations,
+    })
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const engine = makeEngine(repo, authority, migrationLedger)
+
+    await expect(engine.rollback(ctx, {
+      migrationId,
+      checksum,
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
       code: 'MIGRATION_OPERATION_UNSUPPORTED',
     })
     expect(authority.run).toHaveBeenCalledTimes(1)
-    expect(authority.run).toHaveBeenCalledWith(
-      expect.objectContaining({
-        ctx,
-        operation: 'rollback',
-        migrationId,
-      }),
-      expect.any(Function),
-    )
   })
 
-  it('rejects unsupported destructive field placeholders before entering migration authority', async () => {
+  it('rejects destructive field placeholders without confirmation before authority or unsupported execution', async () => {
     const authority = makeAuthority()
     const repo: CustomFieldDefinitionRepository = {
       async create(_ctx, record) {
@@ -1193,11 +1373,11 @@ describe('OrbitSchemaEngine', () => {
     }
     const engine = makeEngine(repo, authority)
 
-    await expect(engine.updateField(ctx, 'contacts', 'linkedin_url', { label: 'LinkedIn' })).rejects.toMatchObject({
-      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+    await expect(engine.updateField(ctx, 'contacts', 'linkedin_url', { fieldType: 'number' })).rejects.toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
     })
     await expect(engine.deleteField(ctx, 'contacts', 'linkedin_url')).rejects.toMatchObject({
-      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+      code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
     })
     expect(authority.run).not.toHaveBeenCalled()
   })

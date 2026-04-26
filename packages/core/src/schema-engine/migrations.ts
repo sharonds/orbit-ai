@@ -2,9 +2,14 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 
 import type { AdapterDialect, AdapterName } from '../adapters/interface.js'
+import {
+  destructiveConfirmationSchema,
+  schemaMigrationChecksumSchema,
+  type DestructiveConfirmation,
+  type SchemaMigrationChecksum,
+} from './destructive-confirmation.js'
 
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9_]{0,62}$/
-const CHECKSUM_PATTERN = /^[a-f0-9]{64}$/
 const RAW_PAYLOAD_KEYS = new Set(['sql', 'ddl', 'script', 'statement', 'statements'])
 const RAW_SQL_TEXT_PATTERNS = [
   /^(alter|create|drop)\s+(table|index|schema|column|view|extension|database|trigger|function|procedure|role|user)\b/i,
@@ -82,9 +87,6 @@ export const schemaMigrationSemanticValueSchema = z.custom<SchemaMigrationSemant
 export const schemaMigrationValidationSchema = z.record(z.string(), schemaMigrationSemanticValueSchema)
 export type SchemaMigrationValidation = z.infer<typeof schemaMigrationValidationSchema>
 
-export const schemaMigrationChecksumSchema = z.string().regex(CHECKSUM_PATTERN)
-export type SchemaMigrationChecksum = z.infer<typeof schemaMigrationChecksumSchema>
-
 export const schemaMigrationAdapterScopeSchema = z.object({
   name: adapterNameSchema,
   dialect: adapterDialectSchema,
@@ -97,12 +99,12 @@ export const schemaMigrationTrustedScopeSchema = z.object({
 }).strict()
 export type SchemaMigrationTrustedScope = z.infer<typeof schemaMigrationTrustedScopeSchema>
 
-export const destructiveConfirmationSchema = z.object({
-  destructive: z.literal(true),
-  checksum: schemaMigrationChecksumSchema,
-  confirmedAt: z.string().datetime({ offset: true }),
-}).strict()
-export type DestructiveConfirmation = z.infer<typeof destructiveConfirmationSchema>
+export {
+  destructiveConfirmationSchema,
+  schemaMigrationChecksumSchema,
+  type DestructiveConfirmation,
+  type SchemaMigrationChecksum,
+}
 
 export const schemaMigrationUpdateFieldInputSchema = z.object({
   label: z.string().min(1).optional(),
@@ -115,6 +117,11 @@ export const schemaMigrationUpdateFieldInputSchema = z.object({
   validation: schemaMigrationValidationSchema.optional(),
 }).strict()
 export type SchemaMigrationUpdateFieldInput = z.infer<typeof schemaMigrationUpdateFieldInputSchema>
+
+export const schemaMigrationUpdateFieldRequestInputSchema = schemaMigrationUpdateFieldInputSchema.extend({
+  confirmation: destructiveConfirmationSchema.optional(),
+}).strict()
+export type SchemaMigrationUpdateFieldRequestInput = z.infer<typeof schemaMigrationUpdateFieldRequestInputSchema>
 
 export const schemaMigrationDeleteFieldInputSchema = z.object({
   entityType: entityTypeSchema,

@@ -7,6 +7,7 @@ import type { CustomFieldDefinitionRecord } from '../entities/custom-field-defin
 import type { SchemaMigrationRepository } from '../entities/schema-migrations/repository.js'
 import type { SchemaMigrationRecord } from '../entities/schema-migrations/validators.js'
 import type { CustomFieldDefinition } from '../types/schema.js'
+import { assertDestructiveConfirmation } from './destructive-confirmation.js'
 import {
   computeSchemaMigrationChecksum,
   schemaMigrationApplyInputSchema,
@@ -14,7 +15,7 @@ import {
   schemaMigrationPreviewInputSchema,
   schemaMigrationPreviewOutputSchema,
   schemaMigrationRollbackInputSchema,
-  schemaMigrationUpdateFieldInputSchema,
+  schemaMigrationUpdateFieldRequestInputSchema,
   type SchemaMigrationAdapterScope,
   type SchemaMigrationForwardOperation,
   type SchemaMigrationPreviewOutput,
@@ -192,17 +193,6 @@ export class OrbitSchemaEngine {
     })
   }
 
-  private destructiveConfirmationRequired(operations: string[], checksum: string): never {
-    throw createOrbitError({
-      code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
-      message: 'Destructive schema migration operations require confirmation before elevated execution',
-      details: {
-        destructiveOperations: operations,
-        checksum,
-      },
-    })
-  }
-
   private destructiveConfirmationStale(checksum: string, confirmationChecksum: string): never {
     throw createOrbitError({
       code: 'DESTRUCTIVE_CONFIRMATION_STALE',
@@ -342,15 +332,11 @@ export class OrbitSchemaEngine {
       this.destructiveConfirmationStale(preview.checksum, input.checksum)
     }
     const destructiveOperations = preview.confirmationInstructions.destructiveOperations
-    if (destructiveOperations.length > 0 && !input.confirmation) {
-      this.destructiveConfirmationRequired(destructiveOperations, preview.checksum)
-    }
-    if (destructiveOperations.length > 0) {
-      const confirmation = input.confirmation
-      if (confirmation && confirmation.checksum !== preview.checksum) {
-        this.destructiveConfirmationStale(preview.checksum, confirmation.checksum)
-      }
-    }
+    assertDestructiveConfirmation({
+      destructiveOperations,
+      checksum: preview.checksum,
+      confirmation: input.confirmation,
+    })
 
     await this.requireMigrationAuthority().run({
       ctx,
@@ -370,16 +356,41 @@ export class OrbitSchemaEngine {
     ctx: OrbitAuthContext,
     migration: string | Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    assertOrgContext(ctx)
+    const orgId = assertOrgContext(ctx)
     const input = typeof migration === 'string'
       ? schemaMigrationRollbackInputSchema.parse({ migrationId: migration })
       : schemaMigrationRollbackInputSchema.parse(migration)
-    void this.ledger
-    await this.requireMigrationAuthority().run({
+    const authority = this.requireMigrationAuthority()
+    const adapter = this.schemaAdapter
+    const adapterScope: SchemaMigrationAdapterScope = {
+      name: adapter.name,
+      dialect: adapter.dialect,
+    }
+    const record = await this.ledger.assertRollbackPreconditions(ctx, {
+      migrationId: input.migrationId,
+      adapter: adapterScope,
+    })
+    const rollbackChecksum = computeSchemaMigrationChecksum({
+      adapter: adapterScope,
+      orgId,
+      operations: record.reverseOperations,
+    })
+    if (input.checksum && input.checksum !== rollbackChecksum) {
+      this.destructiveConfirmationStale(rollbackChecksum, input.checksum)
+    }
+    const destructiveOperations = record.reverseOperations
+      .filter((operation) => isDestructiveForwardOperation(operation))
+      .map((operation) => operation.type)
+    assertDestructiveConfirmation({
+      destructiveOperations,
+      checksum: rollbackChecksum,
+      confirmation: input.confirmation,
+    })
+    await authority.run({
       ctx,
       operation: 'rollback',
       migrationId: input.migrationId,
-      ...(input.checksum ? { checksum: input.checksum } : {}),
+      checksum: rollbackChecksum,
     }, async () => undefined)
     this.unsupportedMigrationOperation(`rollback:${input.migrationId}`)
   }
@@ -394,8 +405,30 @@ export class OrbitSchemaEngine {
     if (!PUBLIC_CRM_ENTITY_TYPES.includes(entityType as PublicCrmEntityType)) {
       this.validationFailed(`Unknown entity type: ${entityType}`, 'entityType')
     }
-    schemaMigrationUpdateFieldInputSchema.parse(data)
-    this.requireMigrationAuthority()
+    const authority = this.requireMigrationAuthority()
+    const input = schemaMigrationUpdateFieldRequestInputSchema.parse(data)
+    const { confirmation: _confirmation, ...patch } = input
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.update',
+      entityType,
+      fieldName,
+      patch,
+    }]
+    const preview = await this.preview(ctx, { operations })
+    assertDestructiveConfirmation({
+      destructiveOperations: preview.confirmationInstructions.destructiveOperations,
+      checksum: preview.checksum,
+      confirmation: _confirmation,
+    })
+    if (preview.confirmationRequired) {
+      await authority.run({
+        ctx,
+        operation: 'apply',
+        checksum: preview.checksum,
+      }, async () => undefined)
+    } else {
+      void authority
+    }
     this.unsupportedMigrationOperation(`custom_field.update:${entityType}.${fieldName}`)
   }
 
@@ -403,10 +436,27 @@ export class OrbitSchemaEngine {
     ctx: OrbitAuthContext,
     entityType: string,
     fieldName: string,
+    data: Record<string, unknown> = {},
   ): Promise<void> {
     assertOrgContext(ctx)
-    schemaMigrationDeleteFieldInputSchema.parse({ entityType, fieldName })
-    this.requireMigrationAuthority()
+    const authority = this.requireMigrationAuthority()
+    const input = schemaMigrationDeleteFieldInputSchema.parse({ entityType, fieldName, ...data })
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: input.entityType,
+      fieldName: input.fieldName,
+    }]
+    const preview = await this.preview(ctx, { operations })
+    assertDestructiveConfirmation({
+      destructiveOperations: preview.confirmationInstructions.destructiveOperations,
+      checksum: preview.checksum,
+      confirmation: input.confirmation,
+    })
+    await authority.run({
+      ctx,
+      operation: 'apply',
+      checksum: preview.checksum,
+    }, async () => undefined)
     this.unsupportedMigrationOperation(`custom_field.delete:${entityType}.${fieldName}`)
   }
 }
@@ -804,6 +854,10 @@ function operationTarget(operation: SchemaMigrationForwardOperation): string {
     case 'adapter.semantic':
       return `adapter:${operation.operation}`
   }
+}
+
+function isDestructiveForwardOperation(operation: SchemaMigrationForwardOperation): boolean {
+  return DESTRUCTIVE_PREVIEW_OPERATION_TYPES.has(operation.type)
 }
 
 function createConfirmationInstructions(
