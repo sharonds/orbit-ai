@@ -325,6 +325,34 @@ describe('OrbitSchemaEngine', () => {
     expect(authority.run).not.toHaveBeenCalled()
   })
 
+  it('does not enter migration authority for destructive apply operations with stale confirmation checksum', async () => {
+    const authority = makeAuthority()
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const engine = makeEngine(repo, authority)
+
+    await expect(engine.apply(ctx, {
+      ...DESTRUCTIVE_APPLY_INPUT,
+      confirmation: {
+        destructive: true,
+        checksum: 'c'.repeat(64),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
   it('calls migration authority with context for non-destructive apply placeholders', async () => {
     const authority = makeAuthority()
     const repo: CustomFieldDefinitionRepository = {

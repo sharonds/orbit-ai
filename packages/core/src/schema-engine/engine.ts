@@ -143,6 +143,17 @@ export class OrbitSchemaEngine {
     })
   }
 
+  private destructiveConfirmationStale(checksum: string, confirmationChecksum: string): never {
+    throw createOrbitError({
+      code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+      message: 'Destructive schema migration confirmation checksum does not match the requested migration checksum',
+      details: {
+        checksum,
+        confirmationChecksum,
+      },
+    })
+  }
+
   async listObjects(ctx: OrbitAuthContext): Promise<SchemaObjectSummary[]> {
     assertOrgContext(ctx)
     const allFields = await this.listAllCustomFields(ctx)
@@ -227,6 +238,12 @@ export class OrbitSchemaEngine {
       .map((operation) => operation.type)
     if (destructiveOperations.length > 0 && !input.confirmation) {
       this.destructiveConfirmationRequired(destructiveOperations, input.checksum)
+    }
+    if (destructiveOperations.length > 0) {
+      const confirmation = input.confirmation
+      if (confirmation && confirmation.checksum !== input.checksum) {
+        this.destructiveConfirmationStale(input.checksum, confirmation.checksum)
+      }
     }
 
     await this.requireMigrationAuthority().run({
