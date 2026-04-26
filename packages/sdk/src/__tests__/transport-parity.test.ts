@@ -9,8 +9,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { HttpTransport } from '../transport/http-transport.js'
 import { DirectTransport } from '../transport/direct-transport.js'
 import { OrbitApiError } from '../errors.js'
-import type { OrbitEnvelope, PageMeta, EnvelopeLinks } from '@orbit-ai/core'
-import { SqliteStorageAdapter } from '@orbit-ai/core'
+import type { OrbitEnvelope, PageMeta, EnvelopeLinks, OrbitErrorCode } from '@orbit-ai/core'
+import { OrbitError, SqliteStorageAdapter } from '@orbit-ai/core'
 import type { StorageAdapter } from '@orbit-ai/core'
 import type { OrbitTransport, TransportRequest } from '../transport/index.js'
 import type { OrbitClientOptions } from '../config.js'
@@ -35,6 +35,15 @@ const CREATE_REQUEST: TransportRequest = {
   path: '/v1/contacts',
   body: { name: 'Ada Lovelace', email: 'ada@example.com' },
 }
+
+const MIGRATION_ERROR_STATUS_CASES: Array<[OrbitErrorCode, number]> = [
+  ['MIGRATION_AUTHORITY_UNAVAILABLE', 503],
+  ['DESTRUCTIVE_CONFIRMATION_REQUIRED', 409],
+  ['DESTRUCTIVE_CONFIRMATION_STALE', 409],
+  ['MIGRATION_CONFLICT', 409],
+  ['ROLLBACK_PRECONDITION_FAILED', 412],
+  ['MIGRATION_OPERATION_UNSUPPORTED', 400],
+]
 
 function assertEnvelopeShape<T>(envelope: OrbitEnvelope<T>): void {
   // data
@@ -404,6 +413,48 @@ describe('Transport parity — error codes', () => {
     expect(httpErr.error.request_id).toBeDefined()
     expect(typeof httpErr.error.request_id).toBe('string')
   })
+
+  it.each(MIGRATION_ERROR_STATUS_CASES)(
+    'keeps migration error %s status/code identical across HTTP and direct mode',
+    async (code, status) => {
+      fetchSpy.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error: { code, message: code } }),
+          { status, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+      ;(direct as any).services = {
+        schema: {
+          preview: async () => {
+            throw new OrbitError({ code, message: code })
+          },
+        },
+      }
+
+      const request: TransportRequest = {
+        method: 'POST',
+        path: '/v1/schema/migrations/preview',
+        body: {
+          operations: [{
+            type: 'custom_field.add',
+            entityType: 'contacts',
+            fieldName: 'linkedin_url',
+            fieldType: 'url',
+          }],
+        },
+      }
+
+      const httpErr = await http.request(request).catch((e) => e)
+      const directErr = await direct.request(request).catch((e) => e)
+
+      expect(httpErr).toBeInstanceOf(OrbitApiError)
+      expect(directErr).toBeInstanceOf(OrbitApiError)
+      expect((httpErr as OrbitApiError).status).toBe(status)
+      expect((directErr as OrbitApiError).status).toBe(status)
+      expect((httpErr as OrbitApiError).error.code).toBe(code)
+      expect((directErr as OrbitApiError).error.code).toBe(code)
+    },
+  )
 })
 
 // ---------------------------------------------------------------------------
