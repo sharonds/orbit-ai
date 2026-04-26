@@ -1558,6 +1558,59 @@ describe('OrbitSchemaEngine', () => {
     expect(migrationDb.execute).toHaveBeenCalledTimes(1)
   })
 
+  it('rejects new idempotency keys on checksum-only replays', async () => {
+    const authority = makeAuthority()
+    const migrationLedger = trackingLedger([
+      migrationRecord({
+        forwardOperations: APPLY_OPERATIONS,
+        description: 'Add linkedin_url custom field to contacts',
+      }),
+    ])
+    const repo = createInMemoryCustomFieldRepo()
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.apply(ctx, {
+      ...APPLY_INPUT,
+      idempotencyKey: 'new-unbound-key',
+    })).rejects.toMatchObject({
+      code: 'IDEMPOTENCY_CONFLICT',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('fails closed for direct custom field delete apply without reverse metadata proof', async () => {
+    const authority = makeAuthority()
+    const migrationLedger = trackingLedger()
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: 'contacts',
+      fieldName: 'linkedin_url',
+    }]
+    const checksum = checksumFor(operations)
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000030', 'linkedin_url'),
+    ])
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.apply(ctx, {
+      operations,
+      checksum,
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+    })
+    expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
+      status: 'failed',
+      errorCode: 'MIGRATION_OPERATION_UNSUPPORTED',
+      errorMessage: expect.stringContaining('phase=apply'),
+    }))
+  })
+
   it('rejects batched migrations until multi-target locking is implemented', async () => {
     const authority = makeAuthority()
     const migrationLedger = trackingLedger()

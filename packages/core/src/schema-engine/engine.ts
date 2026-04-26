@@ -362,18 +362,21 @@ export class OrbitSchemaEngine {
     }
     const existing = await this.findExistingApplyMigration(ctx, input, preview)
     if (existing) {
-      if (existing.status === 'applied') {
+      if (input.idempotencyKey && existing.matchedBy !== 'idempotencyKey') {
+        this.idempotencyConflict(input.idempotencyKey)
+      }
+      if (existing.record.status === 'applied') {
         return {
-          migrationId: existing.id,
-          checksum: existing.checksum,
+          migrationId: existing.record.id,
+          checksum: existing.record.checksum,
           status: 'applied',
-          appliedOperations: existing.forwardOperations,
+          appliedOperations: existing.record.forwardOperations,
           ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
         }
       }
       this.migrationConflict('Schema migration is not in an idempotent applied state', {
-        migrationId: existing.id,
-        status: existing.status,
+        migrationId: existing.record.id,
+        status: existing.record.status,
       })
     }
     const destructiveOperations = preview.confirmationInstructions.destructiveOperations
@@ -507,7 +510,7 @@ export class OrbitSchemaEngine {
           migrationId: input.migrationId,
           checksum: rollbackChecksum,
         }, async (db) => {
-          await this.executeForwardOperations(db, ctx, record.reverseOperations)
+          await this.executeForwardOperations(db, ctx, record.reverseOperations, 'rollback')
         })
         await this.ledger.updateStatus(ctx, input.migrationId, {
           status: 'rolled_back',
@@ -539,7 +542,7 @@ export class OrbitSchemaEngine {
     ctx: OrbitAuthContext,
     input: SchemaMigrationApplyInput,
     preview: SchemaMigrationPreviewOutput,
-  ): Promise<SchemaMigrationRecord | null> {
+  ): Promise<ExistingApplyMigrationMatch | null> {
     const records = await this.listAllSchemaMigrations(ctx)
     const matchingKey = input.idempotencyKey
       ? records.find((record) => recordHasIdempotencyKey(record, input.idempotencyKey!))
@@ -547,22 +550,24 @@ export class OrbitSchemaEngine {
     if (matchingKey && matchingKey.checksum !== preview.checksum) {
       this.idempotencyConflict(input.idempotencyKey!)
     }
-    if (matchingKey) return matchingKey
+    if (matchingKey) return { record: matchingKey, matchedBy: 'idempotencyKey' }
 
-    return records.find((record) =>
+    const matchingChecksum = records.find((record) =>
       record.checksum === preview.checksum &&
       record.adapter.name === preview.adapter.name &&
       record.adapter.dialect === preview.adapter.dialect
-    ) ?? null
+    )
+    return matchingChecksum ? { record: matchingChecksum, matchedBy: 'checksum' } : null
   }
 
   private async executeForwardOperations(
     db: MigrationDatabase,
     ctx: OrbitAuthContext,
     operations: SchemaMigrationForwardOperation[],
+    phase: SchemaMigrationAuthorityOperation = 'apply',
   ): Promise<void> {
     for (const operation of operations) {
-      await this.executeForwardOperation(db, ctx, operation)
+      await this.executeForwardOperation(db, ctx, operation, phase)
     }
   }
 
@@ -570,12 +575,16 @@ export class OrbitSchemaEngine {
     db: MigrationDatabase,
     ctx: OrbitAuthContext,
     operation: SchemaMigrationForwardOperation,
+    phase: SchemaMigrationAuthorityOperation,
   ): Promise<void> {
     switch (operation.type) {
       case 'custom_field.add':
         await executeCustomFieldAdd(db, assertOrgContext(ctx), operation)
         return
       case 'custom_field.delete':
+        if (phase !== 'rollback') {
+          this.unsupportedMigrationOperation(operation.type)
+        }
         await executeCustomFieldDelete(db, assertOrgContext(ctx), operation)
         return
       case 'custom_field.update':
@@ -670,6 +679,11 @@ interface PreviewClassificationContext {
   ledger: PreviewLedgerState
   snapshot: SchemaSnapshot
   warnings: string[]
+}
+
+interface ExistingApplyMigrationMatch {
+  record: SchemaMigrationRecord
+  matchedBy: 'idempotencyKey' | 'checksum'
 }
 
 interface CustomFieldEvidence {
