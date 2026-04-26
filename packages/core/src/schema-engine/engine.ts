@@ -5,6 +5,7 @@ import type { MigrationDatabase, OrbitAuthContext, SchemaSnapshot, StorageAdapte
 import type { CustomFieldDefinitionRepository } from '../entities/custom-field-definitions/repository.js'
 import type { CustomFieldDefinitionRecord } from '../entities/custom-field-definitions/validators.js'
 import type { SchemaMigrationRepository } from '../entities/schema-migrations/repository.js'
+import type { SchemaMigrationRecord } from '../entities/schema-migrations/validators.js'
 import type { CustomFieldDefinition } from '../types/schema.js'
 import {
   computeSchemaMigrationChecksum,
@@ -275,15 +276,17 @@ export class OrbitSchemaEngine {
     const [repositoryFields, snapshot, ledgerState] = await Promise.all([
       this.listAllCustomFields(ctx),
       adapter.getSchemaSnapshot(),
-      this.ledger.list(ctx, { limit: 25, filter: { status: 'running' } }),
+      this.ledger.list(ctx, { limit: 100 }),
     ])
     const customFields = mergeCustomFieldSources(orgId, snapshot.customFields, repositoryFields)
-    const warnings = createLedgerWarnings(ledgerState.data.length)
+    const ledgerClassification = buildPreviewLedgerState(ledgerState.data, adapterScope)
+    const warnings = createLedgerWarnings(ledgerClassification.runningMigrationCount)
     const operations = input.operations.map((operation) => operation as SchemaMigrationForwardOperation)
     const destructiveOperations = input.operations
       .filter((operation) => classifyPreviewOperation(operation, {
         adapter,
         customFields,
+        ledger: ledgerClassification,
         snapshot,
         warnings,
       }).destructive)
@@ -395,8 +398,16 @@ export class OrbitSchemaEngine {
 interface PreviewClassificationContext {
   adapter: SchemaEngineSchemaAdapter
   customFields: Map<string, CustomFieldDefinition | CustomFieldDefinitionRecord>
+  ledger: PreviewLedgerState
   snapshot: SchemaSnapshot
   warnings: string[]
+}
+
+interface PreviewLedgerState {
+  appliedCustomFieldAdds: Set<string>
+  appliedCustomFieldDependencies: Set<string>
+  runningMigrationCount: number
+  runningTargets: Set<string>
 }
 
 function mergeCustomFieldSources(
@@ -420,6 +431,54 @@ function customFieldKey(entityType: string, fieldName: string): string {
   return `${entityType}.${fieldName}`
 }
 
+function buildPreviewLedgerState(
+  records: SchemaMigrationRecord[],
+  adapter: SchemaMigrationAdapterScope,
+): PreviewLedgerState {
+  const state: PreviewLedgerState = {
+    appliedCustomFieldAdds: new Set(),
+    appliedCustomFieldDependencies: new Set(),
+    runningMigrationCount: 0,
+    runningTargets: new Set(),
+  }
+
+  for (const record of records) {
+    if (record.adapter.name !== adapter.name || record.adapter.dialect !== adapter.dialect) {
+      continue
+    }
+    if (record.status === 'running') {
+      state.runningMigrationCount += 1
+      for (const operation of record.forwardOperations) {
+        state.runningTargets.add(operationTarget(operation))
+      }
+      continue
+    }
+    if (record.status !== 'applied') {
+      continue
+    }
+    for (const operation of record.forwardOperations) {
+      if (
+        operation.type === 'custom_field.add' ||
+        operation.type === 'custom_field.update' ||
+        operation.type === 'custom_field.delete' ||
+        operation.type === 'custom_field.rename' ||
+        operation.type === 'custom_field.promote'
+      ) {
+        const key = customFieldKey(operation.entityType, operation.fieldName)
+        state.appliedCustomFieldDependencies.add(key)
+        if (operation.type === 'custom_field.add') {
+          state.appliedCustomFieldAdds.add(key)
+        }
+      }
+      if (operation.type === 'custom_field.rename') {
+        state.appliedCustomFieldDependencies.add(customFieldKey(operation.entityType, operation.newFieldName))
+      }
+    }
+  }
+
+  return state
+}
+
 function createLedgerWarnings(runningMigrationCount: number): string[] {
   if (runningMigrationCount === 0) return []
   return [
@@ -431,6 +490,10 @@ function classifyPreviewOperation(
   operation: SchemaMigrationPublicForwardOperation,
   context: PreviewClassificationContext,
 ): { destructive: boolean } {
+  if (classifyLedgerRisk(operation, context).destructive) {
+    return { destructive: true }
+  }
+
   if (DESTRUCTIVE_PREVIEW_OPERATION_TYPES.has(operation.type)) {
     warnIfMissingCustomField(operation, context)
     return { destructive: true }
@@ -482,6 +545,40 @@ function classifyPreviewOperation(
     default:
       return { destructive: false }
   }
+}
+
+function classifyLedgerRisk(
+  operation: SchemaMigrationPublicForwardOperation,
+  context: PreviewClassificationContext,
+): { destructive: boolean } {
+  const target = operationTarget(operation)
+  if (context.ledger.runningTargets.has(target)) {
+    context.warnings.push(
+      `A running schema migration already targets ${target}; applying another operation there is conflict-prone.`,
+    )
+    return { destructive: true }
+  }
+
+  const key = customFieldOperationKey(operation)
+  if (!key) {
+    return { destructive: false }
+  }
+
+  if (operation.type === 'custom_field.add' && context.ledger.appliedCustomFieldAdds.has(key)) {
+    context.warnings.push(
+      `Applied migration history already includes custom field ${key}; adding it again is redundant or conflicting.`,
+    )
+    return { destructive: true }
+  }
+
+  if (operation.type !== 'custom_field.add' && context.ledger.appliedCustomFieldDependencies.has(key)) {
+    context.warnings.push(
+      `Applied migration history includes prior changes for custom field ${key}; this operation depends on migration history.`,
+    )
+    return { destructive: true }
+  }
+
+  return { destructive: false }
 }
 
 function classifyCustomFieldUpdate(
@@ -561,6 +658,39 @@ function isCompatibleCustomFieldWidening(from: string, to: string): boolean {
 function removesCustomFieldOptions(existingOptions: string[], nextOptions: string[]): boolean {
   const next = new Set(nextOptions)
   return existingOptions.some((option) => !next.has(option))
+}
+
+function customFieldOperationKey(operation: SchemaMigrationPublicForwardOperation): string | null {
+  switch (operation.type) {
+    case 'custom_field.add':
+    case 'custom_field.update':
+    case 'custom_field.delete':
+    case 'custom_field.rename':
+    case 'custom_field.promote':
+      return customFieldKey(operation.entityType, operation.fieldName)
+    default:
+      return null
+  }
+}
+
+function operationTarget(operation: SchemaMigrationForwardOperation): string {
+  switch (operation.type) {
+    case 'custom_field.add':
+    case 'custom_field.update':
+    case 'custom_field.delete':
+    case 'custom_field.rename':
+    case 'custom_field.promote':
+      return `custom_field:${operation.entityType}.${operation.fieldName}`
+    case 'column.add':
+    case 'column.drop':
+    case 'column.rename':
+      return `table:${operation.tableName}`
+    case 'index.add':
+    case 'index.drop':
+      return `table:${operation.tableName}`
+    case 'adapter.semantic':
+      return `adapter:${operation.operation}`
+  }
 }
 
 function createConfirmationInstructions(

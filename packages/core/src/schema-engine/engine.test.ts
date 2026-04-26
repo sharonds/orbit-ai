@@ -4,8 +4,14 @@ import type { OrbitAuthContext } from '../adapters/interface.js'
 import type { CustomFieldDefinitionRepository } from '../entities/custom-field-definitions/repository.js'
 import type { CustomFieldDefinitionRecord } from '../entities/custom-field-definitions/validators.js'
 import type { SchemaMigrationRepository } from '../entities/schema-migrations/repository.js'
+import type { SchemaMigrationRecord } from '../entities/schema-migrations/validators.js'
 import { OrbitError } from '../types/errors.js'
-import { computeSchemaMigrationChecksum, type SchemaMigrationPublicForwardOperation } from './migrations.js'
+import {
+  computeSchemaMigrationChecksum,
+  type SchemaMigrationAdapterScope,
+  type SchemaMigrationForwardOperation,
+  type SchemaMigrationPublicForwardOperation,
+} from './migrations.js'
 
 const ctx: OrbitAuthContext = { orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY', scopes: ['*'] }
 const betaCtx: OrbitAuthContext = { orgId: 'org_01ARYZ6S41ZZZZZZZZZZZZZZZZ', scopes: ['*'] }
@@ -74,11 +80,11 @@ function ledger(): SchemaMigrationRepository {
   }
 }
 
-function trackingLedger() {
+function trackingLedger(records: SchemaMigrationRecord[] = []) {
   const repository: SchemaMigrationRepository = {
     create: vi.fn(async (_ctx, record) => record),
     get: vi.fn(async () => null),
-    list: vi.fn(async () => ({ data: [], hasMore: false, nextCursor: null })),
+    list: vi.fn(async () => ({ data: records, hasMore: false, nextCursor: null })),
     updateStatus: vi.fn(async () => null),
     assertRollbackPreconditions: vi.fn(async () => {
       throw new Error('not needed in schema engine preview tests')
@@ -100,6 +106,48 @@ function trackingLedger() {
   }
 
   return repository
+}
+
+function migrationRecord(overrides: {
+  forwardOperations: SchemaMigrationForwardOperation[]
+  status?: SchemaMigrationRecord['status']
+  adapter?: SchemaMigrationAdapterScope
+  id?: string
+}): SchemaMigrationRecord {
+  const adapter = overrides.adapter ?? { name: 'sqlite', dialect: 'sqlite' }
+  const forwardOperations = overrides.forwardOperations
+  const now = new Date('2026-04-24T00:00:00.000Z')
+
+  return {
+    id: overrides.id ?? 'migration_01J00000000000000000000000',
+    organizationId: ctx.orgId,
+    checksum: computeSchemaMigrationChecksum({
+      adapter,
+      orgId: ctx.orgId,
+      operations: forwardOperations,
+    }),
+    adapter,
+    description: 'Test schema migration',
+    entityType: 'contacts',
+    operationType: 'custom_field',
+    forwardOperations,
+    reverseOperations: [],
+    destructive: false,
+    status: overrides.status ?? 'applied',
+    sqlStatements: [],
+    rollbackStatements: [],
+    appliedByUserId: null,
+    appliedBy: null,
+    approvedByUserId: null,
+    startedAt: now,
+    appliedAt: overrides.status === 'running' ? null : now,
+    rolledBackAt: null,
+    failedAt: null,
+    errorCode: null,
+    errorMessage: null,
+    createdAt: now,
+    updatedAt: now,
+  } as SchemaMigrationRecord
 }
 
 function makeEngine(
@@ -437,6 +485,137 @@ describe('OrbitSchemaEngine', () => {
       },
     })
     expect(result.confirmationInstructions.checksum).toBe(result.checksum)
+  })
+
+  it('uses applied ledger history to classify duplicate custom field adds as destructive', async () => {
+    const migrationLedger = trackingLedger([
+      migrationRecord({
+        forwardOperations: [{
+          type: 'custom_field.add',
+          entityType: 'contacts',
+          fieldName: 'tier',
+          fieldType: 'text',
+        }],
+      }),
+    ])
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+
+    const result = await makeEngine(repo, undefined, migrationLedger).preview(ctx, {
+      operations: [{
+        type: 'custom_field.add',
+        entityType: 'contacts',
+        fieldName: 'tier',
+        fieldType: 'text',
+      }],
+    })
+
+    expect(result.destructive).toBe(true)
+    expect(result.confirmationRequired).toBe(true)
+    expect(result.confirmationInstructions.destructiveOperations).toEqual(['custom_field.add'])
+    expect(result.warnings).toContain(
+      'Applied migration history already includes custom field contacts.tier; adding it again is redundant or conflicting.',
+    )
+    expect(migrationLedger.create).not.toHaveBeenCalled()
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalled()
+  })
+
+  it('uses applied ledger history to classify dependent custom field updates as destructive', async () => {
+    const migrationLedger = trackingLedger([
+      migrationRecord({
+        forwardOperations: [{
+          type: 'custom_field.add',
+          entityType: 'contacts',
+          fieldName: 'tier',
+          fieldType: 'text',
+        }],
+      }),
+    ])
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return {
+          data: [field('field_01J00000000000000000000010', 'tier')],
+          hasMore: false,
+          nextCursor: null,
+        }
+      },
+    }
+
+    const result = await makeEngine(repo, undefined, migrationLedger).preview(ctx, {
+      operations: [{
+        type: 'custom_field.update',
+        entityType: 'contacts',
+        fieldName: 'tier',
+        patch: { label: 'Tier' },
+      }],
+    })
+
+    expect(result.destructive).toBe(true)
+    expect(result.confirmationRequired).toBe(true)
+    expect(result.confirmationInstructions.destructiveOperations).toEqual(['custom_field.update'])
+    expect(result.warnings).toContain(
+      'Applied migration history includes prior changes for custom field contacts.tier; this operation depends on migration history.',
+    )
+  })
+
+  it('uses running ledger history to classify same-target operations as conflict-prone', async () => {
+    const migrationLedger = trackingLedger([
+      migrationRecord({
+        status: 'running',
+        forwardOperations: [{
+          type: 'custom_field.update',
+          entityType: 'contacts',
+          fieldName: 'tier',
+          patch: { label: 'Tier' },
+        }],
+      }),
+    ])
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return {
+          data: [field('field_01J00000000000000000000011', 'tier')],
+          hasMore: false,
+          nextCursor: null,
+        }
+      },
+    }
+
+    const result = await makeEngine(repo, undefined, migrationLedger).preview(ctx, {
+      operations: [{
+        type: 'custom_field.update',
+        entityType: 'contacts',
+        fieldName: 'tier',
+        patch: { label: 'Customer Tier' },
+      }],
+    })
+
+    expect(result.destructive).toBe(true)
+    expect(result.confirmationRequired).toBe(true)
+    expect(result.warnings).toContain('1 schema migration is already running for this organization.')
+    expect(result.warnings).toContain(
+      'A running schema migration already targets custom_field:contacts.tier; applying another operation there is conflict-prone.',
+    )
   })
 
   it('previews renaming a custom field as destructive', async () => {

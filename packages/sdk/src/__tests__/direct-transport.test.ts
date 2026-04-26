@@ -3,11 +3,13 @@ import { OrbitClient } from '../client.js'
 import { OrbitApiError } from '../errors.js'
 import { DirectTransport, resolveServiceKey } from '../transport/direct-transport.js'
 import {
+  computeSchemaMigrationChecksum,
   SqliteStorageAdapter,
   createSqliteOrbitDatabase,
   createSqliteStorageAdapter,
   initializeSqliteWave2SliceESchema,
   createSqliteOrganizationRepository,
+  type SchemaMigrationPublicForwardOperation,
 } from '@orbit-ai/core'
 import type { StorageAdapter } from '@orbit-ai/core'
 import type { OrbitClientOptions } from '../config.js'
@@ -86,19 +88,23 @@ describe('DirectTransport', () => {
       context: { orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY' },
       version: '2026-04-01',
     })
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.add',
+      entityType: 'contacts',
+      fieldName: 'linkedin_url',
+      fieldType: 'url',
+    }]
 
     await expect(transport.request({
       method: 'POST',
       path: '/v1/schema/migrations/apply',
       body: {
-        operations: [
-          {
-            type: 'custom_field.promote',
-            entityType: 'contacts',
-            fieldName: 'linkedin_url',
-          },
-        ],
-        checksum: 'a'.repeat(64),
+        operations,
+        checksum: computeSchemaMigrationChecksum({
+          adapter: { name: 'sqlite', dialect: 'sqlite' },
+          orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
+          operations,
+        }),
       },
     })).rejects.toMatchObject({
       error: { code: 'MIGRATION_AUTHORITY_UNAVAILABLE' },
