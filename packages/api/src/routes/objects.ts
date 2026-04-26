@@ -79,7 +79,7 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
     const { confirmation: _confirmation, ...patch } = body
     const authContext = c.get('orbit')
     if (!hasScope(authContext, 'schema:write') && !hasScope(authContext, 'schema:apply')) {
-      return c.json(toError(c, 'AUTH_INSUFFICIENT_SCOPE', 'API key lacks required scope: schema:write'), 403)
+      return c.json(toError(c, 'AUTH_INSUFFICIENT_SCOPE', 'API key lacks required scope: schema:write or schema:apply'), 403)
     }
     const preview = await schema.preview(c.get('orbit'), {
       operations: [{

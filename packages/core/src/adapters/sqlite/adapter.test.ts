@@ -192,6 +192,8 @@ describe('SqliteStorageAdapter', () => {
     expect(allSql).toContain('forward_operations text not null')
     expect(allSql).toContain('reverse_operations text not null')
     expect(allSql).toContain('status text not null')
+    expect(allSql).toContain('alter table schema_migrations add column checksum text not null')
+    expect(allSql).toContain("where applied_at is not null")
     expect(allSql).toContain('schema_migrations_target_idx')
   })
 

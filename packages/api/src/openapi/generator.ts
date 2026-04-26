@@ -246,6 +246,43 @@ const schemaMigrationPublicOperationSchema = {
   ],
 }
 
+const schemaMigrationForwardOperationSchema = {
+  oneOf: [
+    ...schemaMigrationPublicOperationSchema.oneOf,
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'operation'],
+      properties: {
+        type: { const: 'adapter.semantic' },
+        adapter: { type: 'string', enum: ['supabase', 'neon', 'postgres', 'sqlite'] },
+        operation: {
+          type: 'string',
+          enum: [
+            'copy_column_values',
+            'rebuild_table',
+            'refresh_rls',
+            'sync_custom_field_metadata',
+            'validate_constraints',
+          ],
+        },
+        parameters: {
+          type: 'object',
+          additionalProperties: {
+            oneOf: [
+              { type: 'string' },
+              { type: 'number' },
+              { type: 'boolean' },
+              { type: 'array', items: { oneOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }, { type: 'null' }] } },
+              { type: 'null' },
+            ],
+          },
+        },
+      },
+    },
+  ],
+}
+
 export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> {
   const paths: Record<string, unknown> = {}
 
@@ -822,6 +859,7 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
           },
         },
         SchemaMigrationPublicOperation: schemaMigrationPublicOperationSchema,
+        SchemaMigrationForwardOperation: schemaMigrationForwardOperationSchema,
         SchemaMigrationTrustedScope: {
           type: 'object',
           additionalProperties: false,
@@ -932,7 +970,7 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
             checksum: checksumSchema,
             operations: {
               type: 'array',
-              items: { $ref: '#/components/schemas/SchemaMigrationPublicOperation' },
+              items: { $ref: '#/components/schemas/SchemaMigrationForwardOperation' },
             },
             destructive: { type: 'boolean' },
             summary: { type: 'string', minLength: 1 },
@@ -953,7 +991,7 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
             status: { type: 'string', enum: ['applied', 'noop'] },
             appliedOperations: {
               type: 'array',
-              items: { $ref: '#/components/schemas/SchemaMigrationPublicOperation' },
+              items: { $ref: '#/components/schemas/SchemaMigrationForwardOperation' },
             },
             rollbackable: { type: 'boolean' },
             rollbackDecision: { $ref: '#/components/schemas/DestructiveRollbackDecision' },
@@ -971,7 +1009,7 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
             status: { const: 'rolled_back' },
             operations: {
               type: 'array',
-              items: { $ref: '#/components/schemas/SchemaMigrationPublicOperation' },
+              items: { $ref: '#/components/schemas/SchemaMigrationForwardOperation' },
             },
           },
         },

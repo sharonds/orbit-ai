@@ -574,9 +574,10 @@ export class OrbitSchemaEngine {
     if (matchingKey && matchingKey.checksum !== preview.checksum) {
       this.idempotencyConflict(input.idempotencyKey!)
     }
-    if (matchingKey) return { record: matchingKey, matchedBy: 'idempotencyKey' }
+    if (matchingKey?.status === 'applied') return { record: matchingKey, matchedBy: 'idempotencyKey' }
 
     const matchingChecksum = records.find((record) =>
+      record.status === 'applied' &&
       record.checksum === preview.checksum &&
       record.adapter.name === preview.adapter.name &&
       record.adapter.dialect === preview.adapter.dialect
@@ -1579,10 +1580,10 @@ function customFieldValueRenameStatement(
   if (dialect === 'postgres') {
     return sql`
       update ${sql.raw(tableName)}
-      set custom_fields = (custom_fields - ${oldFieldName}) || jsonb_build_object(${newFieldName}, custom_fields -> ${oldFieldName}),
+      set custom_fields = (custom_fields - ${oldFieldName}::text) || jsonb_build_object(${newFieldName}::text, custom_fields -> ${oldFieldName}::text),
           updated_at = now()
       where organization_id = ${orgId}
-        and custom_fields ? ${oldFieldName}
+        and custom_fields ? ${oldFieldName}::text
     `
   }
 

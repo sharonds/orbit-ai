@@ -447,6 +447,24 @@ const SQLITE_WAVE_2_SLICE_E_SCHEMA_STATEMENTS = [
     created_at text not null,
     updated_at text not null
   )`,
+  `alter table schema_migrations add column checksum text not null default '0000000000000000000000000000000000000000000000000000000000000000'`,
+  `alter table schema_migrations add column adapter text not null default '{"name":"sqlite","dialect":"sqlite"}'`,
+  `alter table schema_migrations add column forward_operations text not null default '[]'`,
+  `alter table schema_migrations add column reverse_operations text not null default '[]'`,
+  `alter table schema_migrations add column destructive integer not null default 0`,
+  `alter table schema_migrations add column status text not null default 'pending'`,
+  `alter table schema_migrations add column sql_statements text not null default '[]'`,
+  `alter table schema_migrations add column rollback_statements text not null default '[]'`,
+  `alter table schema_migrations add column applied_by text`,
+  `alter table schema_migrations add column started_at text`,
+  `alter table schema_migrations add column rolled_back_at text`,
+  `alter table schema_migrations add column failed_at text`,
+  `alter table schema_migrations add column error_code text`,
+  `alter table schema_migrations add column error_message text`,
+  `update schema_migrations
+    set status = 'applied'
+    where applied_at is not null
+      and status = 'pending'`,
   `create index if not exists schema_migrations_target_idx on schema_migrations (organization_id, status, applied_at)`,
   `create index if not exists schema_migrations_applied_at_idx on schema_migrations (applied_at)`,
   `create table if not exists idempotency_keys (
@@ -468,8 +486,18 @@ const SQLITE_WAVE_2_SLICE_E_SCHEMA_STATEMENTS = [
 
 export async function initializeSqliteWave2SliceESchema(db: OrbitDatabase): Promise<void> {
   for (const statement of SQLITE_WAVE_2_SLICE_E_SCHEMA_STATEMENTS) {
-    await db.execute(sql.raw(statement))
+    try {
+      await db.execute(sql.raw(statement))
+    } catch (error) {
+      if (!isSqliteDuplicateColumnError(error)) {
+        throw error
+      }
+    }
   }
+}
+
+function isSqliteDuplicateColumnError(error: unknown): boolean {
+  return error instanceof Error && /duplicate column name/i.test(error.message)
 }
 
 export async function initializeSqliteWave1Schema(db: OrbitDatabase): Promise<void> {

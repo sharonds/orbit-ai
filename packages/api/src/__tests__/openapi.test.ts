@@ -95,12 +95,18 @@ describe('OpenAPI spec', () => {
     const previewResponse = spec.components.schemas.SchemaMigrationPreviewResponse
     expect(previewResponse.properties.confirmationInstructions.$ref).toBe('#/components/schemas/SchemaMigrationConfirmationInstructions')
     expect(previewResponse.properties.scope.$ref).toBe('#/components/schemas/SchemaMigrationTrustedScope')
+    expect(previewResponse.properties.operations.items.$ref).toBe('#/components/schemas/SchemaMigrationForwardOperation')
 
     const applyResponse = spec.components.schemas.SchemaMigrationApplyResponse
     expect(applyResponse.required).toEqual(expect.arrayContaining(['rollbackable', 'rollbackDecision']))
     expect(applyResponse.properties.rollbackable).toEqual({ type: 'boolean' })
     expect(applyResponse.properties.rollbackDecision.$ref).toBe('#/components/schemas/DestructiveRollbackDecision')
+    expect(applyResponse.properties.appliedOperations.items.$ref).toBe('#/components/schemas/SchemaMigrationForwardOperation')
     expect(spec.components.schemas.DestructiveRollbackDecision.oneOf).toHaveLength(2)
+    const forwardOperationVariants = spec.components.schemas.SchemaMigrationForwardOperation.oneOf
+    expect(forwardOperationVariants.some((operation: any) => operation.properties.type.const === 'adapter.semantic')).toBe(true)
+    const rollbackResponse = spec.components.schemas.SchemaMigrationRollbackResponse
+    expect(rollbackResponse.properties.operations.items.$ref).toBe('#/components/schemas/SchemaMigrationForwardOperation')
   })
 
   it('contacts emits full CRUD (proves gating does not over-restrict)', () => {

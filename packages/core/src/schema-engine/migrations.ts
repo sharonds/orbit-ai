@@ -110,7 +110,7 @@ export {
   type SchemaMigrationChecksum,
 }
 
-export const schemaMigrationUpdateFieldInputSchema = z.object({
+const schemaMigrationUpdateFieldPatchShape = {
   label: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
   fieldType: customFieldTypeSchema.optional(),
@@ -119,12 +119,19 @@ export const schemaMigrationUpdateFieldInputSchema = z.object({
   defaultValue: schemaMigrationSemanticValueSchema.optional(),
   options: z.array(z.string()).optional(),
   validation: schemaMigrationValidationSchema.optional(),
-}).strict()
+} as const
+
+export const schemaMigrationUpdateFieldInputSchema = z.object(schemaMigrationUpdateFieldPatchShape).strict().refine((value) => Object.keys(value).length > 0, {
+  message: 'At least one custom field patch property is required',
+})
 export type SchemaMigrationUpdateFieldInput = z.infer<typeof schemaMigrationUpdateFieldInputSchema>
 
-export const schemaMigrationUpdateFieldRequestInputSchema = schemaMigrationUpdateFieldInputSchema.extend({
+export const schemaMigrationUpdateFieldRequestInputSchema = z.object({
+  ...schemaMigrationUpdateFieldPatchShape,
   confirmation: destructiveConfirmationSchema.optional(),
-}).strict()
+}).strict().refine((value) => Object.keys(value).some((key) => key !== 'confirmation'), {
+  message: 'At least one custom field patch property is required',
+})
 export type SchemaMigrationUpdateFieldRequestInput = z.infer<typeof schemaMigrationUpdateFieldRequestInputSchema>
 
 export const schemaMigrationDeleteFieldInputSchema = z.object({

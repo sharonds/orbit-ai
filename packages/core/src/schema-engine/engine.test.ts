@@ -1,3 +1,4 @@
+import type { SQL } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 import { OrbitSchemaEngine, type SchemaEngineSchemaAdapter, type SchemaMigrationAuthority } from './engine.js'
 import type { OrbitAuthContext } from '../adapters/interface.js'
@@ -255,6 +256,28 @@ function checksumFor(operations: SchemaMigrationPublicForwardOperation[]): strin
     orgId: ctx.orgId,
     operations,
   })
+}
+
+function checksumForAdapter(
+  operations: SchemaMigrationPublicForwardOperation[],
+  adapter: SchemaMigrationAdapterScope,
+): string {
+  return computeSchemaMigrationChecksum({
+    adapter,
+    orgId: ctx.orgId,
+    operations,
+  })
+}
+
+function renderSql(statement: SQL): string {
+  return statement.toQuery({
+    escapeName: (value) => value,
+    escapeParam: (index) => `$${index + 1}`,
+    escapeString: (value) => JSON.stringify(value),
+    casing: { getColumnCasing: (column) => column },
+    inlineParams: false,
+    paramStartIndex: { value: 0 },
+  }).sql
 }
 
 function makeAuthority(db = makeMigrationDb()) {
@@ -1532,6 +1555,70 @@ describe('OrbitSchemaEngine', () => {
     expect(authority.run).toHaveBeenCalledTimes(1)
   })
 
+  it('retries failed idempotency-key migrations instead of treating them as completed', async () => {
+    const migrationDb = makeMigrationDb()
+    vi.mocked(migrationDb.execute)
+      .mockRejectedValueOnce(new Error('temporary DDL failure'))
+      .mockResolvedValue(undefined)
+    const authority = makeAuthority(migrationDb)
+    const migrationLedger = trackingLedger()
+    const records = new Map<string, SchemaMigrationRecord>()
+    vi.mocked(migrationLedger.create).mockImplementation(async (_ctx, record) => {
+      records.set(record.id, record)
+      return record
+    })
+    vi.mocked(migrationLedger.list).mockImplementation(async () => ({
+      data: [...records.values()],
+      hasMore: false,
+      nextCursor: null,
+    }))
+    vi.mocked(migrationLedger.updateStatus).mockImplementation(async (_ctx, id, patch) => {
+      const record = records.get(id)
+      if (!record) return null
+      const next = { ...record, ...patch } as SchemaMigrationRecord
+      records.set(id, next)
+      return next
+    })
+    const repo = createInMemoryCustomFieldRepo()
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.apply(ctx, {
+      ...APPLY_INPUT,
+      idempotencyKey: 'retry-after-failure',
+    })).rejects.toMatchObject({ code: 'MIGRATION_FAILED' })
+
+    await expect(engine.apply(ctx, {
+      ...APPLY_INPUT,
+      idempotencyKey: 'retry-after-failure',
+    })).resolves.toMatchObject({
+      status: 'applied',
+      appliedOperations: APPLY_OPERATIONS,
+      idempotencyKey: 'retry-after-failure',
+    })
+
+    expect(authority.run).toHaveBeenCalledTimes(2)
+    expect([...records.values()].map((record) => record.status)).toEqual(['failed', 'applied'])
+  })
+
+  it('retries checksum-only migrations after a failed ledger row', async () => {
+    const failed = migrationRecord({
+      forwardOperations: APPLY_OPERATIONS,
+      status: 'failed',
+      description: 'failed first attempt',
+    })
+    const migrationLedger = trackingLedger([failed])
+    const migrationDb = makeMigrationDb()
+    const authority = makeAuthority(migrationDb)
+    const repo = createInMemoryCustomFieldRepo()
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.apply(ctx, APPLY_INPUT)).resolves.toMatchObject({
+      status: 'applied',
+      appliedOperations: APPLY_OPERATIONS,
+    })
+    expect(authority.run).toHaveBeenCalledTimes(1)
+  })
+
   it('rejects reused migration idempotency keys with different operations', async () => {
     const authority = makeAuthority()
     const migrationLedger = trackingLedger()
@@ -2262,17 +2349,28 @@ describe('OrbitSchemaEngine', () => {
     const migrationDb = makeMigrationDb()
     const authority = makeAuthority(migrationDb)
     const migrationLedger = trackingLedger()
+    const adapter = {
+      name: 'postgres',
+      dialect: 'postgres',
+      supportsJsonbIndexes: true,
+      async getSchemaSnapshot() {
+        return {
+          customFields: [],
+          tables: ['contacts', 'custom_field_definitions', 'schema_migrations'],
+        }
+      },
+    } satisfies SchemaEngineSchemaAdapter
     const operations: SchemaMigrationPublicForwardOperation[] = [{
       type: 'custom_field.rename',
       entityType: 'contacts',
       fieldName: 'linkedin',
       newFieldName: 'linkedin_url',
     }]
-    const checksum = checksumFor(operations)
+    const checksum = checksumForAdapter(operations, { name: adapter.name, dialect: adapter.dialect })
     const repo = createInMemoryCustomFieldRepo([
       field('field_01J00000000000000000000042', 'linkedin'),
     ])
-    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+    const engine = makeEngine(repo, authority, migrationLedger, adapter, 'development')
 
     await expect(engine.apply(ctx, {
       operations,
@@ -2292,6 +2390,9 @@ describe('OrbitSchemaEngine', () => {
     })
     expect(authority.run).toHaveBeenCalledTimes(1)
     expect(migrationDb.execute).toHaveBeenCalledTimes(2)
+    const valueRenameSql = renderSql(vi.mocked(migrationDb.execute).mock.calls[1]![0])
+    expect(valueRenameSql).toContain('jsonb_build_object($2::text, custom_fields -> $3::text)')
+    expect(valueRenameSql).toContain('custom_fields ? $5::text')
   })
 
   it('applies confirmed custom field delete through authority after metadata preconditions pass', async () => {

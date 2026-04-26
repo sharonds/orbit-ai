@@ -6,6 +6,8 @@ import {
   schemaMigrationChecksumSchema,
   schemaMigrationPreviewOutputSchema,
   schemaMigrationPreviewInputSchema,
+  schemaMigrationUpdateFieldInputSchema,
+  schemaMigrationUpdateFieldRequestInputSchema,
 } from './migrations.js'
 
 const addFieldOperation = {
@@ -134,6 +136,17 @@ describe('schema migration domain contracts', () => {
         }],
       }).success).toBe(false)
     }
+  })
+
+  it('rejects empty custom field update patches', () => {
+    expect(schemaMigrationUpdateFieldInputSchema.safeParse({}).success).toBe(false)
+    expect(schemaMigrationUpdateFieldRequestInputSchema.safeParse({
+      confirmation: {
+        destructive: true,
+        checksum: '0'.repeat(64),
+        confirmedAt: new Date().toISOString(),
+      },
+    }).success).toBe(false)
   })
 
   it('requires preview output plan metadata', () => {

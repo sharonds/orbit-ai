@@ -1023,6 +1023,55 @@ describe('Object / Schema routes', () => {
     expect((services as any).schema.updateField).not.toHaveBeenCalled()
   })
 
+  it('PATCH /v1/objects/:type/fields/:fieldName rejects empty update bodies', async () => {
+    const services = mockWave2CoreServices()
+    ;(services as any).schema = {
+      preview: vi.fn(async () => ({ destructive: false })),
+      updateField: vi.fn(async () => ({ fieldName: 'status_code' })),
+    }
+    const app = createRouteTestApp(['schema:write'])
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    for (const body of [{}, { confirmation: TEST_DESTRUCTIVE_CONFIRMATION }]) {
+      const res = await app.request('/v1/objects/contacts/fields/status_code', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      expect(res.status).toBe(400)
+      const payload = (await res.json()) as { error: { code: string } }
+      expect(payload.error.code).toBe('VALIDATION_FAILED')
+    }
+
+    expect((services as any).schema.preview).not.toHaveBeenCalled()
+    expect((services as any).schema.updateField).not.toHaveBeenCalled()
+  })
+
+  it('PATCH /v1/objects/:type/fields/:fieldName reports both accepted scopes at the initial gate', async () => {
+    const services = mockWave2CoreServices()
+    ;(services as any).schema = {
+      preview: vi.fn(async () => ({ destructive: false })),
+      updateField: vi.fn(async () => ({ fieldName: 'status_code' })),
+    }
+    const app = createRouteTestApp(['contacts:read'])
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/objects/contacts/fields/status_code', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label: 'Status code' }),
+    })
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: { code: string, message: string } }
+    expect(body.error.code).toBe('AUTH_INSUFFICIENT_SCOPE')
+    expect(body.error.message).toContain('schema:write or schema:apply')
+    expect((services as any).schema.preview).not.toHaveBeenCalled()
+    expect((services as any).schema.updateField).not.toHaveBeenCalled()
+  })
+
   it('PATCH /v1/objects/:type/fields/:fieldName requires schema:apply for destructive updates', async () => {
     const services = mockWave2CoreServices()
     ;(services as any).schema = {
