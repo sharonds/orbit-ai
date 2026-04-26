@@ -113,6 +113,139 @@ describe('copyTemplate', () => {
     }
   })
 
+  it('removes the final target and sibling temporary directories when the second template file write fails', async () => {
+    vi.resetModules()
+    let writeCount = 0
+    const writeFileMock = vi.fn(
+      async (...args: Parameters<typeof import('node:fs/promises')['writeFile']>) => {
+        writeCount += 1
+        if (writeCount === 2) {
+          throw new Error('sabotaged second write')
+        }
+        const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+        return actual.writeFile(...args)
+      },
+    )
+    vi.doMock('node:fs/promises', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:fs/promises')>()
+      return {
+        ...actual,
+        writeFile: writeFileMock,
+      }
+    })
+    const { copyTemplate: copyTemplateWithMockedWrite } = await import('./copy.js')
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), 'src-'))
+    const dst = fs.mkdtempSync(path.join(os.tmpdir(), 'dst-'))
+    const target = path.join(dst, 'out')
+    fs.writeFileSync(path.join(src, '01-first.txt'), 'first')
+    fs.writeFileSync(path.join(src, '02-second.txt'), 'second')
+    try {
+      await expect(
+        copyTemplateWithMockedWrite({ sourceDir: src, targetDir: target, replacements: {} }),
+      ).rejects.toThrow(/sabotaged second write/)
+
+      expect(fs.existsSync(target)).toBe(false)
+      const tempSiblingPrefix = `.${path.basename(target)}-`
+      const remainingTempSiblings = fs
+        .readdirSync(path.dirname(target))
+        .filter((entry) => entry.startsWith(tempSiblingPrefix))
+      expect(remainingTempSiblings).toEqual([])
+    } finally {
+      vi.doUnmock('node:fs/promises')
+      vi.resetModules()
+      fs.rmSync(src, { recursive: true, force: true })
+      fs.rmSync(dst, { recursive: true, force: true })
+    }
+  })
+
+  it('does not copy or dereference source-template symlinks that point outside the template directory', async () => {
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), 'src-'))
+    const dst = fs.mkdtempSync(path.join(os.tmpdir(), 'dst-'))
+    const external = fs.mkdtempSync(path.join(os.tmpdir(), 'external-'))
+    const target = path.join(dst, 'out')
+    const secret = 'external-secret-content'
+    fs.writeFileSync(path.join(src, 'safe.txt'), 'safe content')
+    fs.writeFileSync(path.join(external, 'secret.txt'), secret)
+    fs.symlinkSync(path.join(external, 'secret.txt'), path.join(src, 'leak.txt'), 'file')
+    try {
+      await copyTemplate({ sourceDir: src, targetDir: target, replacements: {} })
+
+      expect(fs.existsSync(path.join(target, 'leak.txt'))).toBe(false)
+      const generatedFiles = fs.readdirSync(target, { recursive: true, withFileTypes: true })
+      const generatedContent = generatedFiles
+        .filter((entry) => entry.isFile())
+        .map((entry) => fs.readFileSync(path.join(entry.parentPath, entry.name), 'utf8'))
+        .join('\n')
+      expect(generatedContent).not.toContain(secret)
+    } finally {
+      fs.rmSync(src, { recursive: true, force: true })
+      fs.rmSync(dst, { recursive: true, force: true })
+      fs.rmSync(external, { recursive: true, force: true })
+    }
+  })
+
+  it('does not copy, dereference, or read source-template special files', async () => {
+    vi.resetModules()
+    const realSourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'src-'))
+    const dst = fs.mkdtempSync(path.join(os.tmpdir(), 'dst-'))
+    const target = path.join(dst, 'out')
+    const specialFileName = 'socket-like-special'
+    const specialFilePath = path.join(realSourceDir, specialFileName)
+    const specialDirent = {
+      name: specialFileName,
+      parentPath: realSourceDir,
+      isDirectory: () => false,
+      isFile: () => false,
+      isSymbolicLink: () => false,
+      isBlockDevice: () => false,
+      isCharacterDevice: () => false,
+      isFIFO: () => false,
+      isSocket: () => true,
+    }
+    const readFileMock = vi.fn(
+      async (...args: Parameters<typeof import('node:fs/promises')['readFile']>) => {
+        const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+        return actual.readFile(...args)
+      },
+    )
+    const copyFileMock = vi.fn(
+      async (...args: Parameters<typeof import('node:fs/promises')['copyFile']>) => {
+        const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+        return actual.copyFile(...args)
+      },
+    )
+    vi.doMock('node:fs/promises', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:fs/promises')>()
+      return {
+        ...actual,
+        copyFile: copyFileMock,
+        readFile: readFileMock,
+        readdir: vi.fn(
+          async (...args: Parameters<typeof import('node:fs/promises')['readdir']>) => {
+            const [dir, options] = args
+            if (dir === realSourceDir && options && typeof options === 'object' && 'withFileTypes' in options) {
+              return [specialDirent]
+            }
+            return actual.readdir(...args)
+          },
+        ),
+      }
+    })
+    const { copyTemplate: copyTemplateWithSpecialFile } = await import('./copy.js')
+    try {
+      await copyTemplateWithSpecialFile({ sourceDir: realSourceDir, targetDir: target, replacements: {} })
+
+      expect(fs.existsSync(path.join(target, specialFileName))).toBe(false)
+      expect(readFileMock).not.toHaveBeenCalledWith(specialFilePath, expect.anything())
+      expect(copyFileMock).not.toHaveBeenCalledWith(specialFilePath, expect.anything())
+    } finally {
+      vi.doUnmock('node:fs/promises')
+      vi.resetModules()
+      fs.rmSync(realSourceDir, { recursive: true, force: true })
+      fs.rmSync(dst, { recursive: true, force: true })
+    }
+  })
+
   it('refuses to scaffold into a symlink target', async () => {
     const src = fs.mkdtempSync(path.join(os.tmpdir(), 'src-'))
     const realTarget = fs.mkdtempSync(path.join(os.tmpdir(), 'real-target-'))
