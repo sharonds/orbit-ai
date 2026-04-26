@@ -82,6 +82,26 @@ describe('schema migration domain contracts', () => {
     })).not.toBe(checksum)
   })
 
+  it('canonicalizes checksum keys without locale-sensitive sorting', () => {
+    const originalLocaleCompare = String.prototype.localeCompare
+    String.prototype.localeCompare = () => {
+      throw new Error('localeCompare must not be used for checksum canonicalization')
+    }
+
+    try {
+      expect(computeSchemaMigrationChecksum({
+        adapter: { name: 'sqlite', dialect: 'sqlite' },
+        orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
+        operations: [{
+          ...addFieldOperation,
+          defaultValue: { b: 1, a: 2 },
+        }],
+      })).toMatch(/^[a-f0-9]{64}$/)
+    } finally {
+      String.prototype.localeCompare = originalLocaleCompare
+    }
+  })
+
   it.each(['sql', 'ddl', 'script', 'statements'])(
     'rejects public raw %s payloads on semantic operations',
     (rawKey) => {
@@ -149,6 +169,12 @@ describe('schema migration domain contracts', () => {
       { script: '<script>alert(1)</script>' },
       { statements: ['drop table contacts'] },
       'alter table contacts add column tier text',
+      'create extension pgcrypto',
+      'drop database orbit',
+      'grant all on schema public to public',
+      'delete from contacts',
+      'insert into contacts values (1)',
+      'pragma table_info(contacts)',
       '<script>alert(1)</script>',
     ]) {
       expect(schemaMigrationPreviewInputSchema.safeParse({
@@ -158,5 +184,14 @@ describe('schema migration domain contracts', () => {
         }],
       }).success).toBe(false)
     }
+  })
+
+  it('allows ordinary semantic strings in public payload values', () => {
+    expect(schemaMigrationPreviewInputSchema.safeParse({
+      operations: [{
+        ...addFieldOperation,
+        defaultValue: 'Enterprise plan',
+      }],
+    }).success).toBe(true)
   })
 })

@@ -6,8 +6,19 @@ import type { AdapterDialect, AdapterName } from '../adapters/interface.js'
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9_]{0,62}$/
 const CHECKSUM_PATTERN = /^[a-f0-9]{64}$/
 const RAW_PAYLOAD_KEYS = new Set(['sql', 'ddl', 'script', 'statement', 'statements'])
-const RAW_SQL_TEXT_PATTERN = /^(alter|create|drop|truncate)\s+(table|index|schema|column|view)\b/i
-const RAW_DML_TEXT_PATTERN = /^(select|insert|update|delete)\s+.+\b(from|into|set)\b/i
+const RAW_SQL_TEXT_PATTERNS = [
+  /^(alter|create|drop)\s+(table|index|schema|column|view|extension|database|trigger|function|procedure|role|user)\b/i,
+  /^truncate\s+(table\s+)?[\w".]+\b/i,
+  /^grant\s+.+\s+on\s+.+\s+to\s+/i,
+  /^revoke\s+.+\s+on\s+.+\s+from\s+/i,
+  /^pragma\s+[a-z_][a-z0-9_]*\s*(\(|=|\b)/i,
+]
+const RAW_DML_TEXT_PATTERNS = [
+  /^select\s+.+\s+from\s+/i,
+  /^insert\s+into\s+/i,
+  /^update\s+[\w".]+\s+set\s+/i,
+  /^delete\s+from\s+/i,
+]
 const RAW_SCRIPT_TEXT_PATTERN = /<script\b/i
 
 const adapterNameSchema = z.enum(['supabase', 'neon', 'postgres', 'sqlite'])
@@ -353,9 +364,13 @@ function isSchemaMigrationSemanticValue(value: unknown, seen = new WeakSet<objec
 
 function isRawPayloadString(value: string): boolean {
   const trimmed = value.trim()
-  return RAW_SQL_TEXT_PATTERN.test(trimmed) ||
-    RAW_DML_TEXT_PATTERN.test(trimmed) ||
+  return RAW_SQL_TEXT_PATTERNS.some((pattern) => pattern.test(trimmed)) ||
+    RAW_DML_TEXT_PATTERNS.some((pattern) => pattern.test(trimmed)) ||
     RAW_SCRIPT_TEXT_PATTERN.test(trimmed)
+}
+
+function compareCodeUnits(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
 }
 
 function toStableValue(value: unknown): unknown {
@@ -369,7 +384,7 @@ function toStableValue(value: unknown): unknown {
   if (typeof value === 'object') {
     const entries = Object.entries(value as Record<string, unknown>)
       .filter(([, entryValue]) => entryValue !== undefined)
-      .sort(([a], [b]) => a.localeCompare(b))
+      .sort(([a], [b]) => compareCodeUnits(a, b))
 
     const out: Record<string, unknown> = {}
     for (const [key, entryValue] of entries) {
