@@ -108,6 +108,43 @@ function trackingLedger(records: SchemaMigrationRecord[] = []) {
   return repository
 }
 
+function pagedTrackingLedger(pages: Array<{ data: SchemaMigrationRecord[], nextCursor: string | null }>) {
+  let index = 0
+  const repository: SchemaMigrationRepository = {
+    create: vi.fn(async (_ctx, record) => record),
+    get: vi.fn(async () => null),
+    list: vi.fn(async () => {
+      const page = pages[index] ?? { data: [], nextCursor: null }
+      index += 1
+      return {
+        data: page.data,
+        hasMore: page.nextCursor !== null,
+        nextCursor: page.nextCursor,
+      }
+    }),
+    updateStatus: vi.fn(async () => null),
+    assertRollbackPreconditions: vi.fn(async () => {
+      throw new Error('not needed in schema engine preview tests')
+    }),
+    withMigrationLock: vi.fn(async (_ctx, scope, fn) => ({
+      result: await fn(),
+      lock: {
+        key: 'test-lock',
+        orgId: ctx.orgId,
+        adapter: scope.adapter,
+        target: scope.target,
+        acquired: true,
+        contended: false,
+        released: true,
+        acquiredAt: new Date('2026-04-24T00:00:00.000Z'),
+        releasedAt: new Date('2026-04-24T00:00:00.000Z'),
+      },
+    })),
+  }
+
+  return repository
+}
+
 function migrationRecord(overrides: {
   forwardOperations: SchemaMigrationForwardOperation[]
   status?: SchemaMigrationRecord['status']
@@ -525,6 +562,69 @@ describe('OrbitSchemaEngine', () => {
     expect(result.warnings).toContain(
       'Applied migration history already includes custom field contacts.tier; adding it again is redundant or conflicting.',
     )
+    expect(migrationLedger.create).not.toHaveBeenCalled()
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalled()
+  })
+
+  it('uses applied ledger history from page 2 to classify duplicate custom field adds as destructive', async () => {
+    const relevantMigration = migrationRecord({
+      id: 'migration_01J00000000000000000000002',
+      forwardOperations: [{
+        type: 'custom_field.add',
+        entityType: 'contacts',
+        fieldName: 'tier',
+        fieldType: 'text',
+      }],
+    })
+    const migrationLedger = pagedTrackingLedger([
+      {
+        data: [
+          migrationRecord({
+            id: 'migration_01J00000000000000000000001',
+            forwardOperations: [{
+              type: 'custom_field.add',
+              entityType: 'contacts',
+              fieldName: 'unrelated',
+              fieldType: 'text',
+            }],
+          }),
+        ],
+        nextCursor: 'cursor_2',
+      },
+      {
+        data: [relevantMigration],
+        nextCursor: null,
+      },
+    ])
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+
+    const result = await makeEngine(repo, undefined, migrationLedger).preview(ctx, {
+      operations: [{
+        type: 'custom_field.add',
+        entityType: 'contacts',
+        fieldName: 'tier',
+        fieldType: 'text',
+      }],
+    })
+
+    expect(result.destructive).toBe(true)
+    expect(result.confirmationRequired).toBe(true)
+    expect(result.warnings).toContain(
+      'Applied migration history already includes custom field contacts.tier; adding it again is redundant or conflicting.',
+    )
+    expect(migrationLedger.list).toHaveBeenCalledTimes(2)
+    expect(migrationLedger.list).toHaveBeenNthCalledWith(1, ctx, { limit: 100 })
+    expect(migrationLedger.list).toHaveBeenNthCalledWith(2, ctx, { limit: 100, cursor: 'cursor_2' })
     expect(migrationLedger.create).not.toHaveBeenCalled()
     expect(migrationLedger.updateStatus).not.toHaveBeenCalled()
   })

@@ -160,6 +160,22 @@ export class OrbitSchemaEngine {
     return fields
   }
 
+  private async listAllSchemaMigrations(ctx: OrbitAuthContext): Promise<SchemaMigrationRecord[]> {
+    const records: SchemaMigrationRecord[] = []
+    let cursor: string | undefined
+
+    do {
+      const result = await this.ledger.list(ctx, {
+        limit: 100,
+        ...(cursor ? { cursor } : {}),
+      })
+      records.push(...result.data)
+      cursor = result.nextCursor ?? undefined
+    } while (cursor)
+
+    return records
+  }
+
   private validationFailed(message: string, field: string): never {
     throw createOrbitError({
       code: 'VALIDATION_FAILED',
@@ -276,10 +292,10 @@ export class OrbitSchemaEngine {
     const [repositoryFields, snapshot, ledgerState] = await Promise.all([
       this.listAllCustomFields(ctx),
       adapter.getSchemaSnapshot(),
-      this.ledger.list(ctx, { limit: 100 }),
+      this.listAllSchemaMigrations(ctx),
     ])
     const customFields = mergeCustomFieldSources(orgId, snapshot.customFields, repositoryFields)
-    const ledgerClassification = buildPreviewLedgerState(ledgerState.data, adapterScope)
+    const ledgerClassification = buildPreviewLedgerState(ledgerState, adapterScope)
     const warnings = createLedgerWarnings(ledgerClassification.runningMigrationCount)
     const operations = input.operations.map((operation) => operation as SchemaMigrationForwardOperation)
     const destructiveOperations = input.operations
