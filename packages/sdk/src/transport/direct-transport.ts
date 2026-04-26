@@ -2,6 +2,7 @@ import {
   createCoreServices,
   computeSchemaMigrationChecksum,
   ORBIT_ERROR_CODES,
+  OrbitError,
   orbitErrorCodeToStatus,
   resolvePublicEntityServiceKey,
   schemaMigrationApplyInputSchema,
@@ -111,6 +112,32 @@ export class DirectTransport implements OrbitTransport {
           400,
         )
       }
+      if (err instanceof OrbitError) {
+        throw new OrbitApiError(
+          enrichDirectErrorShape({
+            code: err.code,
+            message: err.message,
+            field: err.field,
+            request_id: createDirectRequestId(),
+            doc_url: directErrorDocUrl(err.code),
+            hint: err.hint,
+            recovery: err.recovery,
+            retryable: err.retryable,
+            details: err.details,
+          }),
+          orbitErrorCodeToStatus(err.code),
+        )
+      }
+      if (isSchemaMutationPath(input.path)) {
+        throw new OrbitApiError(
+          enrichDirectErrorShape({
+            code: 'INTERNAL_ERROR',
+            message: 'Schema migration request failed',
+            retryable: false,
+          }),
+          500,
+        )
+      }
       const orbitErr = err as { code?: string; message?: string; field?: string; retryable?: boolean; request_id?: string; doc_url?: string; hint?: string; recovery?: string; details?: Record<string, unknown> }
       if (orbitErr.code && isOrbitErrorCode(orbitErr.code)) {
         const code = orbitErr.code
@@ -127,16 +154,6 @@ export class DirectTransport implements OrbitTransport {
             details: orbitErr.details,
           }),
           orbitErrorCodeToStatus(code),
-        )
-      }
-      if (isSchemaMutationPath(input.path)) {
-        throw new OrbitApiError(
-          enrichDirectErrorShape({
-            code: 'INTERNAL_ERROR',
-            message: 'Schema migration request failed',
-            retryable: false,
-          }),
-          500,
         )
       }
       throw err
@@ -199,19 +216,6 @@ export class DirectTransport implements OrbitTransport {
       if (method === 'PATCH' && action && subEntity === 'fields' && subAction) {
         if (typeof schema.updateField !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: updateField not implemented' }, 501)
         const updateInput = schemaMigrationUpdateFieldRequestInputSchema.parse(this.bodyObject(body, path))
-        if (updateInput.confirmation) {
-          const { confirmation, ...patch } = updateInput
-          this.assertDirectMigrationAuthorityAvailable(computeSchemaMigrationChecksum({
-            adapter: { name: this.options.adapter!.name, dialect: this.options.adapter!.dialect },
-            orgId: this.ctx.orgId,
-            operations: [{
-              type: 'custom_field.update',
-              entityType: action,
-              fieldName: subAction,
-              patch,
-            }],
-          }), confirmation)
-        }
         return sanitizeSchemaMetadataRead(await schema.updateField(
           this.ctx,
           action,

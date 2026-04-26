@@ -213,6 +213,30 @@ describe('DirectTransport', () => {
     )
   })
 
+  it('safe schema field updates can carry optional confirmation without migration authority', async () => {
+    const adapter = await createRealAdapter()
+    const client = new OrbitClient({
+      adapter,
+      context: { orgId: ORG_ID },
+      version: '2026-04-01',
+    })
+    await client.schema.addField('contacts', { name: 'safe_label', type: 'text' })
+
+    const result = await client.schema.updateField('contacts', 'safe_label', {
+      label: 'Safe Label',
+      confirmation: {
+        destructive: true,
+        checksum: 'a'.repeat(64),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })
+
+    expect(result).toMatchObject({
+      fieldName: 'safe_label',
+      label: 'Safe Label',
+    })
+  })
+
   it('confirmed destructive field delete without explicit authority returns a structured Orbit error', async () => {
     const adapter = await createRealAdapter()
     const runWithMigrationAuthority = vi.spyOn(adapter, 'runWithMigrationAuthority')
@@ -310,7 +334,7 @@ describe('DirectTransport', () => {
     })
     ;(transport as any).services.schema.apply = vi.fn(async () => {
       const err = Object.assign(new Error('raw internal migration failure'), {
-        code: 'ERR_SECRET_INTERNAL',
+        code: 'INTERNAL_ERROR',
       })
       err.stack = 'Error: raw internal migration failure\n    at secret-stack-frame'
       throw err
