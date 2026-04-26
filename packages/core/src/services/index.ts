@@ -169,12 +169,14 @@ import {
   type IdempotencyKeyRepository,
 } from '../entities/idempotency-keys/repository.js'
 import { createIdempotencyKeyAdminService } from '../entities/idempotency-keys/service.js'
-import { OrbitSchemaEngine } from '../schema-engine/engine.js'
+import { OrbitSchemaEngine, type SchemaMigrationAuthority } from '../schema-engine/engine.js'
 import { createOrbitError } from '../types/errors.js'
 import { createContactContextService } from './contact-context.js'
 import { createSearchService } from './search-service.js'
 
-interface CoreRepositoryOverrides {
+export type CoreRuntimeAdapter = Omit<StorageAdapter, 'migrate' | 'runWithMigrationAuthority'>
+
+export interface CoreServiceOptions {
   companies?: CompanyRepository
   contacts?: ContactRepository
   pipelines?: PipelineRepository
@@ -203,6 +205,7 @@ interface CoreRepositoryOverrides {
   auditLogs?: AuditLogRepository
   schemaMigrations?: SchemaMigrationRepository
   idempotencyKeys?: IdempotencyKeyRepository
+  migrationAuthority?: SchemaMigrationAuthority
 }
 
 function resolveOptionalCoreRepository<T>({
@@ -265,7 +268,7 @@ function resolveCoreRepository<T>({
 
 export function createCoreServices(
   adapter: StorageAdapter,
-  overrides: CoreRepositoryOverrides = {},
+  overrides: CoreServiceOptions = {},
 ) {
   // One transaction scope per service container — services capture this in
   // their deps and use it for any operation that must wrap a read-then-write
@@ -899,7 +902,11 @@ export function createCoreServices(
 
       return searchService
     },
-    schema: new OrbitSchemaEngine(() => getCustomFieldDefinitionsRepository()),
+    schema: new OrbitSchemaEngine({
+      customFields: () => getCustomFieldDefinitionsRepository(),
+      ledger: () => getSchemaMigrationsRepository(),
+      ...(overrides.migrationAuthority ? { migrationAuthority: overrides.migrationAuthority } : {}),
+    }),
     get contactContext() {
       const optionalActivities = getOptionalActivitiesRepository()
       const optionalTasks = getOptionalTasksRepository()
@@ -949,6 +956,13 @@ export function createCoreServices(
       },
     },
   }
+}
+
+export function createCoreServicesForRuntimeAdapter(
+  adapter: CoreRuntimeAdapter,
+  overrides: CoreServiceOptions = {},
+) {
+  return createCoreServices(adapter as StorageAdapter, overrides)
 }
 
 export type CoreServices = ReturnType<typeof createCoreServices>

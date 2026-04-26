@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
-import { createCoreServices, type StorageAdapter } from '@orbit-ai/core'
+import { createCoreServicesForRuntimeAdapter } from '@orbit-ai/core'
 import type { CreateApiOptions } from './config.js'
 import { requestIdMiddleware } from './middleware/request-id.js'
 import { versionMiddleware } from './middleware/version.js'
@@ -82,11 +82,12 @@ export function createApi(options: CreateApiOptions) {
   app.use('/v1/*', idempotencyMiddleware(options.idempotencyStore ? { store: options.idempotencyStore } : {}))
 
   // Core services — use pre-built services if provided, otherwise create
-  // from adapter. RuntimeApiAdapter is a subset of StorageAdapter;
-  // createCoreServices only uses query/runtime methods at request time,
-  // never migrate/runWithMigrationAuthority, so the cast is safe.
+  // from the runtime adapter. Schema migrations require an explicit
+  // migrationAuthority option; request paths never recover it from the adapter.
   const services = options.services
-    ?? createCoreServices(options.adapter as unknown as StorageAdapter)
+    ?? createCoreServicesForRuntimeAdapter(options.adapter, {
+      ...(options.migrationAuthority ? { migrationAuthority: options.migrationAuthority } : {}),
+    })
 
   // Authenticated routes (registered after auth middleware)
   registerStatusRoute(app)

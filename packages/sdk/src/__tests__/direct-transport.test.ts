@@ -77,6 +77,35 @@ describe('DirectTransport', () => {
 
     expect(mockAdapter.runWithMigrationAuthority).not.toHaveBeenCalled()
   })
+
+  it('schema migration apply reports unavailable authority without using the adapter authority', async () => {
+    const adapter = createTestAdapter()
+    const runWithMigrationAuthority = vi.spyOn(adapter, 'runWithMigrationAuthority')
+    const transport = new DirectTransport({
+      adapter,
+      context: { orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY' },
+      version: '2026-04-01',
+    })
+
+    await expect(transport.request({
+      method: 'POST',
+      path: '/v1/schema/migrations/apply',
+      body: {
+        operations: [
+          {
+            type: 'custom_field.promote',
+            entityType: 'contacts',
+            fieldName: 'linkedin_url',
+          },
+        ],
+        checksum: 'a'.repeat(64),
+      },
+    })).rejects.toMatchObject({
+      error: { code: 'MIGRATION_AUTHORITY_UNAVAILABLE' },
+      status: 503,
+    })
+    expect(runWithMigrationAuthority).not.toHaveBeenCalled()
+  })
 })
 
 function createTestAdapter(): StorageAdapter {
@@ -455,21 +484,21 @@ describe('DirectTransport workflow sub-routes', () => {
     })
   })
 
-  it('dispatches schema field update/delete routes to typed not-implemented errors', async () => {
+  it('dispatches destructive schema field routes to unavailable migration authority errors', async () => {
     const { client } = await createWorkflowClient()
 
     await expect(
       client.schema.updateField('contacts', 'linkedin', { label: 'LinkedIn' }),
     ).rejects.toMatchObject<Partial<OrbitApiError>>({
-      error: expect.objectContaining({ code: 'INTERNAL_ERROR' }),
-      status: 501,
+      error: expect.objectContaining({ code: 'MIGRATION_AUTHORITY_UNAVAILABLE' }),
+      status: 503,
     })
 
     await expect(
       client.schema.deleteField('contacts', 'linkedin'),
     ).rejects.toMatchObject<Partial<OrbitApiError>>({
-      error: expect.objectContaining({ code: 'INTERNAL_ERROR' }),
-      status: 501,
+      error: expect.objectContaining({ code: 'MIGRATION_AUTHORITY_UNAVAILABLE' }),
+      status: 503,
     })
   })
 })

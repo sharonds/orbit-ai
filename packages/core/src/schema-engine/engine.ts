@@ -1,9 +1,16 @@
 import { generateId } from '../ids/generate-id.js'
 import { assertOrgContext } from '../services/service-helpers.js'
 import { createOrbitError } from '../types/errors.js'
-import type { OrbitAuthContext } from '../adapters/interface.js'
+import type { MigrationDatabase, OrbitAuthContext } from '../adapters/interface.js'
 import type { CustomFieldDefinitionRepository } from '../entities/custom-field-definitions/repository.js'
 import type { CustomFieldDefinitionRecord } from '../entities/custom-field-definitions/validators.js'
+import type { SchemaMigrationRepository } from '../entities/schema-migrations/repository.js'
+import {
+  schemaMigrationApplyInputSchema,
+  schemaMigrationDeleteFieldInputSchema,
+  schemaMigrationRollbackInputSchema,
+  schemaMigrationUpdateFieldInputSchema,
+} from './migrations.js'
 
 /** CRM entity types that appear in the public schema listing. */
 const PUBLIC_CRM_ENTITY_TYPES = [
@@ -30,20 +37,48 @@ export interface SchemaObjectSummary {
   customFields: CustomFieldDefinitionRecord[]
 }
 
+export interface SchemaMigrationAuthority {
+  run<T>(fn: (db: MigrationDatabase) => Promise<T>): Promise<T>
+}
+
+export interface OrbitSchemaEngineDependencies {
+  customFields: () => CustomFieldDefinitionRepository
+  ledger: () => SchemaMigrationRepository
+  migrationAuthority?: SchemaMigrationAuthority
+}
+
 const ALLOWED_FIELD_TYPES = ['text', 'number', 'boolean', 'date', 'datetime', 'select', 'multi_select', 'url', 'email', 'phone', 'currency', 'relation'] as const
+const PLACEHOLDER_ROLLBACK_CHECKSUM = '0'.repeat(64)
 
 export class OrbitSchemaEngine {
-  private readonly getRepository: (() => CustomFieldDefinitionRepository) | null
+  private readonly getCustomFields: () => CustomFieldDefinitionRepository
+  private readonly getLedger: () => SchemaMigrationRepository
+  private readonly migrationAuthority: SchemaMigrationAuthority | undefined
 
-  constructor(getRepository?: () => CustomFieldDefinitionRepository) {
-    this.getRepository = getRepository ?? null
+  constructor(deps: OrbitSchemaEngineDependencies) {
+    this.getCustomFields = deps.customFields
+    this.getLedger = deps.ledger
+    this.migrationAuthority = deps.migrationAuthority
   }
 
   private get repository(): CustomFieldDefinitionRepository {
-    if (!this.getRepository) {
-      throw new Error('OrbitSchemaEngine: no CustomFieldDefinitionRepository provided')
+    return this.getCustomFields()
+  }
+
+  private get ledger(): SchemaMigrationRepository {
+    return this.getLedger()
+  }
+
+  private requireMigrationAuthority(): SchemaMigrationAuthority {
+    if (!this.migrationAuthority) {
+      throw createOrbitError({
+        code: 'MIGRATION_AUTHORITY_UNAVAILABLE',
+        message: 'Schema migration authority is not configured for this service container',
+        hint: 'Pass an explicit migrationAuthority to createCoreServices when this process is allowed to run schema migrations.',
+        retryable: false,
+      })
     }
-    return this.getRepository()
+    return this.migrationAuthority
   }
 
   private async listAllCustomFields(
@@ -71,6 +106,14 @@ export class OrbitSchemaEngine {
       code: 'VALIDATION_FAILED',
       message,
       field,
+    })
+  }
+
+  private unsupportedMigrationOperation(operation: string): never {
+    throw createOrbitError({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+      message: `${operation} is not implemented by OrbitSchemaEngine yet`,
+      details: { operation },
     })
   }
 
@@ -148,9 +191,63 @@ export class OrbitSchemaEngine {
 
   async apply(
     ctx: OrbitAuthContext,
-    _data: Record<string, unknown>,
+    data: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
     assertOrgContext(ctx)
-    return { applied: [], status: 'ok' }
+    const input = schemaMigrationApplyInputSchema.parse(data)
+    void this.ledger
+    await this.requireMigrationAuthority().run(async () => undefined)
+    return {
+      migrationId: generateId('migration'),
+      checksum: input.checksum,
+      status: 'noop',
+      appliedOperations: [],
+      ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+    }
+  }
+
+  async rollback(
+    ctx: OrbitAuthContext,
+    migration: string | Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    assertOrgContext(ctx)
+    const input = typeof migration === 'string'
+      ? schemaMigrationRollbackInputSchema.parse({ migrationId: migration })
+      : schemaMigrationRollbackInputSchema.parse(migration)
+    void this.ledger
+    await this.requireMigrationAuthority().run(async () => undefined)
+    return {
+      migrationId: generateId('migration'),
+      rolledBackMigrationId: input.migrationId,
+      checksum: input.checksum ?? PLACEHOLDER_ROLLBACK_CHECKSUM,
+      status: 'rolled_back',
+      operations: [],
+    }
+  }
+
+  async updateField(
+    ctx: OrbitAuthContext,
+    entityType: string,
+    fieldName: string,
+    data: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    assertOrgContext(ctx)
+    if (!PUBLIC_CRM_ENTITY_TYPES.includes(entityType as PublicCrmEntityType)) {
+      this.validationFailed(`Unknown entity type: ${entityType}`, 'entityType')
+    }
+    schemaMigrationUpdateFieldInputSchema.parse(data)
+    await this.requireMigrationAuthority().run(async () => undefined)
+    this.unsupportedMigrationOperation(`custom_field.update:${entityType}.${fieldName}`)
+  }
+
+  async deleteField(
+    ctx: OrbitAuthContext,
+    entityType: string,
+    fieldName: string,
+  ): Promise<void> {
+    assertOrgContext(ctx)
+    schemaMigrationDeleteFieldInputSchema.parse({ entityType, fieldName })
+    await this.requireMigrationAuthority().run(async () => undefined)
+    this.unsupportedMigrationOperation(`custom_field.delete:${entityType}.${fieldName}`)
   }
 }
