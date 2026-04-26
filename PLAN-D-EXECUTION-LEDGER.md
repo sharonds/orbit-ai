@@ -58,7 +58,7 @@ Note: the Plan D execution contract was supplied from the parent workspace path 
 | 5. Prove Atomic Rollback And Template Symlink Safety | Complete | `75e3075`, `156adac` | This commit | Implementation subagent `019dc991-43af-7d63-bb95-4762c2d22a20`; reviews `019dc993-1692-7562-b9f7-c0d68ea220fa`, `019dc993-172e-7a42-a726-efb33745558c`, re-reviews `019dc994-bfba-7793-a15a-ad4129d4ca3d`, `019dc994-c014-7091-a0bb-55bad16a40f7` |
 | 6. Document And Test Exact Alpha Version Pinning | Complete | `36cabb4` | This commit | Implementation subagent `019dc996-8301-7eb0-b5ef-3ed4abe980d4`; package/release review `019dc998-5f81-7e93-9c91-8d40ee7cac4a` |
 | 7. Strengthen Package Manager Detection Coverage | Complete | `993a810` | This commit | Implementation subagent `019dc999-9964-7882-aae8-e7225a640842`; code review `019dc99b-34bd-78c2-bae6-b971896cc4ee` |
-| 8. Add Packed Tarball Smoke Coverage | Pending | Pending | Pending | Pending |
+| 8. Add Packed Tarball Smoke Coverage | Complete | `4667ef7`, `2f260b6`, `aa578a6` | This commit | Implementation subagent `019dc99d-00d0-7df1-9c89-405f30078d93`; reviews `019dc9a2-abff-7732-9dab-bc16658738ca`, `019dc9a2-acb6-7690-b68a-b269b4f1cd24`, re-review `019dc9a5-0203-7903-9e53-dd6e7ad7c768` |
 | 9. Update Create-Orbit-App User Documentation | Pending | Pending | Pending | Pending |
 | 10. Align Release And Repo Documentation With Scoped Package Reality | Pending | Pending | Pending | Pending |
 | 11. Changeset And Package Artifact Readiness | Pending | Pending | Pending | Pending |
@@ -408,9 +408,89 @@ Deferred finding resolution:
 
 Result: no unresolved Critical/High/Medium Task 7 findings remain.
 
+### Task 8 Reviews
+
+Implementation subagent: `019dc99d-00d0-7df1-9c89-405f30078d93`
+
+Implementation commits:
+
+- `4667ef7 test(create-orbit-app): smoke packed scaffolder tarball`
+- `2f260b6 test(create-orbit-app): record starter runtime proof gate`
+- `aa578a6 test(create-orbit-app): remove fake starter runtime proof`
+
+Changed files:
+
+- `packages/create-orbit-app/src/__tests__/smoke.test.ts`
+- `packages/create-orbit-app/src/index.ts`
+- `packages/create-orbit-app/src/install.ts`
+- `packages/create-orbit-app/src/packageManager.ts`
+
+Focused validation:
+
+```text
+$ corepack pnpm -F @orbit-ai/create-orbit-app build
+rm -rf dist && tsc
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app test -- src/__tests__/smoke.test.ts
+Test Files  1 passed (1)
+Tests       3 passed (3)
+Packed tarball smoke test passed.
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app typecheck
+tsc -p tsconfig.json --noEmit
+exit 0
+
+$ node scripts/verify-package-artifacts.mjs
+Package artifact verification passed.
+exit 0
+```
+
+Pack validation:
+
+```text
+$ corepack pnpm --filter @orbit-ai/create-orbit-app pack --pack-destination "$(mktemp -d)"
+ERROR Unknown option: 'recursive'
+exit 1
+
+$ PATH="<corepack-pnpm-shim>:$PATH" corepack pnpm --dir packages/create-orbit-app pack --pack-destination "$pack_dir"
+prepack: pnpm run build
+build: rm -rf dist && tsc
+created orbit-ai-create-orbit-app-0.1.0-alpha.0.tgz
+exit 0
+```
+
+Plan D E2E coverage:
+
+- Implemented as a Vitest test in `packages/create-orbit-app/src/__tests__/smoke.test.ts`, because this package already uses Vitest and Task 8 validation targets that test file directly.
+- This packed scaffolder smoke is Plan D's E2E coverage. It packs the package, inspects tarball contents/exclusions, extracts the tarball, runs packed `--version`, runs packed `my-app --yes --no-install`, and asserts generated exact `@orbit-ai/*` versions with no placeholders.
+- Full Orbit journey E2E remains N/A for Task 8 because no shared runtime packages were changed.
+
+Skipped validation:
+
+- Exact filtered pack command is skipped as an environment/tooling limitation: Corepack pnpm `9.12.3` fails `corepack pnpm --filter @orbit-ai/create-orbit-app pack --pack-destination ...` with `Unknown option: 'recursive'` before lifecycle execution. Replacement evidence is the package-dir pack command above plus the packed smoke test, which both run real `prepack` build and inspect/execute the produced tarball.
+- Generated starter runtime proof with dependency install is skipped because exact alpha dependencies are not published: implementation subagent checked `npm view @orbit-ai/core@0.1.0-alpha.0 version --json` and received `E404`; no local registry/tarball install path is available. Required post-publish release gate for Task 10:
+
+```bash
+npx @orbit-ai/create-orbit-app@alpha my-app --yes
+cd my-app
+npm start
+```
+
+Named review lenses:
+
+- Package/release review subagent `019dc9a2-abff-7732-9dab-bc16658738ca`: Medium finding that generated starter runtime proof needed an explicit skip/post-publish gate; Low finding that Vitest choice was not recorded. Follow-up `2f260b6` attempted to record the gate in test code.
+- Security review subagent `019dc9a2-acb6-7690-b68a-b269b4f1cd24`: no Critical/High/Medium/Low findings. Reviewer also ran full create-orbit-app tests successfully.
+- Package/release re-review subagent `019dc9a5-0203-7903-9e53-dd6e7ad7c768`: Medium finding remained because the post-publish runtime proof was a tautological string assertion. Fixed in `aa578a6` by removing the fake assertion and recording the legitimate skip/post-publish gate in this ledger.
+
+Result: no unresolved Critical/High/Medium Task 8 findings remain; generated starter runtime proof is plan-approved skipped validation with Task 10 post-publish gate.
+
 ## Deferred Items And Skipped Validation
 
 - Task 3 Low security review finding about malformed known-prefix package-manager user agents was deferred to Task 7 and resolved in `993a810`.
+- Task 8 exact filtered pack command skipped because Corepack pnpm `9.12.3` fails with `Unknown option: 'recursive'`; replacement evidence is package-dir pack plus packed smoke test.
+- Task 8 generated starter runtime proof skipped because exact alpha runtime packages are not published (`npm view @orbit-ai/core@0.1.0-alpha.0` returned `E404`); Task 10 must retain the post-publish sanity command.
 
 ## Plan Drift Log
 
