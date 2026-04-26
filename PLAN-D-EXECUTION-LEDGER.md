@@ -53,7 +53,7 @@ Note: the Plan D execution contract was supplied from the parent workspace path 
 |---|---|---|---|---|
 | 1. Create Worktree And Execution Ledger | Complete | N/A | This commit | Process review subagent `019dc980-596f-7a31-9103-72caae6a37e0`; Critical/High findings fixed before commit |
 | 2. Add `--version` And Tighten Option Validation | Complete | `def8680` | This commit | Implementation subagent `019dc982-58e2-7b23-a3e9-5e7d7992869e`; reviews `019dc985-1d85-7bf3-9782-8a11d862367d`, `019dc985-1e03-7881-9917-abc363198cc4`, `019dc985-1ebf-7513-982f-a1bc9bc6be20` |
-| 3. Bound Install Execution And Harden Command Parsing | Pending | Pending | Pending | Pending |
+| 3. Bound Install Execution And Harden Command Parsing | Complete | `78fcf20` | This commit | Implementation subagent `019dc987-6ff5-73e2-8ce7-b76f62d3e99f`; reviews `019dc98a-3c01-76d2-9f67-c8b0c69b0903`, `019dc98a-3c62-7dd1-ad5e-70183958509f` |
 | 4. Make Cleanup Failures Observable | Pending | Pending | Pending | Pending |
 | 5. Prove Atomic Rollback And Template Symlink Safety | Pending | Pending | Pending | Pending |
 | 6. Document And Test Exact Alpha Version Pinning | Pending | Pending | Pending | Pending |
@@ -225,9 +225,41 @@ Named review lenses:
 
 Result: no unresolved Critical/High/Medium Task 2 findings remain.
 
+### Task 3 Reviews
+
+Implementation subagent: `019dc987-6ff5-73e2-8ce7-b76f62d3e99f`
+
+Implementation commit: `78fcf20 fix(create-orbit-app): bound install execution and command parsing`
+
+Changed files:
+
+- `packages/create-orbit-app/src/install.ts`
+- `packages/create-orbit-app/src/install.test.ts`
+- `packages/create-orbit-app/src/install.timeout.test.ts`
+
+Focused validation:
+
+```text
+$ corepack pnpm -F @orbit-ai/create-orbit-app test -- src/install.test.ts src/install.timeout.test.ts
+Test Files  2 passed (2)
+Tests       16 passed (16)
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app typecheck
+tsc -p tsconfig.json --noEmit
+exit 0
+```
+
+Named review lenses:
+
+- Security review subagent `019dc98a-3c01-76d2-9f67-c8b0c69b0903`: no Critical/High/Medium findings. Low finding: malformed known-prefix user agents such as `pnpm/` still resolve to that package manager. Decision: defer to Task 7, which explicitly owns stronger package-manager detection coverage.
+- Code review subagent `019dc98a-3c62-7dd1-ad5e-70183958509f`: no Critical/High/Medium/Low findings. Reviewer also ran full create-orbit-app tests and typecheck successfully.
+
+Result: no unresolved Critical/High/Medium Task 3 findings remain.
+
 ## Deferred Items And Skipped Validation
 
-None yet.
+- Task 3 Low security review finding about malformed known-prefix package-manager user agents is deferred to Task 7, which owns package-manager detection coverage.
 
 ## Plan Drift Log
 
