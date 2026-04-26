@@ -325,6 +325,65 @@ describe('DirectTransport', () => {
     )
   })
 
+  it('direct rollback uses the path migration id over a body-supplied id', async () => {
+    const adapter = await createRealAdapter()
+    const migrationAuthority: SchemaMigrationAuthority = {
+      run: vi.fn(async (_context, fn) => fn(createNoopMigrationDatabase())),
+    }
+    const transport = new DirectTransport({
+      adapter,
+      context: { orgId: ORG_ID },
+      migrationAuthority,
+      destructiveMigrationEnvironment: 'test',
+    })
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.add',
+      entityType: 'contacts',
+      fieldName: 'rollback_path_probe',
+      fieldType: 'text',
+    }]
+    const checksum = computeSchemaMigrationChecksum({
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      orgId: ORG_ID,
+      operations,
+    })
+    const applied = await transport.request<{ migrationId: string }>({
+      method: 'POST',
+      path: '/v1/schema/migrations/apply',
+      body: { operations, checksum },
+    })
+    const rollbackOperations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: 'contacts',
+      fieldName: 'rollback_path_probe',
+    }]
+    const rollbackChecksum = computeSchemaMigrationChecksum({
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      orgId: ORG_ID,
+      operations: rollbackOperations,
+    })
+
+    const result = await transport.request<{ migrationId: string }>({
+      method: 'POST',
+      path: `/v1/schema/migrations/${applied.data.migrationId}/rollback`,
+      body: {
+        migrationId: 'migration_body_supplied',
+        checksum: rollbackChecksum,
+        confirmation: {
+          destructive: true,
+          checksum: rollbackChecksum,
+          confirmedAt: '2026-04-26T12:00:00.000Z',
+        },
+      },
+    })
+
+    expect(result.data).toMatchObject({
+      migrationId: applied.data.migrationId,
+      checksum: rollbackChecksum,
+      status: 'rolled_back',
+    })
+  })
+
   it('schema migration paths wrap unknown direct failures without leaking raw stacks', async () => {
     const adapter = await createRealAdapter()
     const transport = new DirectTransport({

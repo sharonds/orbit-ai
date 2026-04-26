@@ -969,6 +969,7 @@ describe('Object / Schema routes', () => {
   it('PATCH /v1/objects/:type/fields/:fieldName parses strict update bodies and forwards confirmation', async () => {
     const services = mockWave2CoreServices()
     ;(services as any).schema = {
+      preview: vi.fn(async () => ({ destructive: false })),
       updateField: vi.fn(async () => ({ fieldName: 'status_code' })),
     }
     const app = createRouteTestApp(['schema:write'])
@@ -984,6 +985,17 @@ describe('Object / Schema routes', () => {
       }),
     })
     expect(res.status).toBe(200)
+    expect((services as any).schema.preview).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_test' }),
+      {
+        operations: [{
+          type: 'custom_field.update',
+          entityType: 'contacts',
+          fieldName: 'status_code',
+          patch: { fieldType: 'text' },
+        }],
+      },
+    )
     expect((services as any).schema.updateField).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: 'org_test' }),
       'contacts',
@@ -995,6 +1007,7 @@ describe('Object / Schema routes', () => {
   it('PATCH /v1/objects/:type/fields/:fieldName rejects unknown update body keys', async () => {
     const services = mockWave2CoreServices()
     ;(services as any).schema = {
+      preview: vi.fn(async () => ({ destructive: false })),
       updateField: vi.fn(async () => ({ fieldName: 'status_code' })),
     }
     const app = createRouteTestApp(['schema:write'])
@@ -1010,12 +1023,59 @@ describe('Object / Schema routes', () => {
     expect((services as any).schema.updateField).not.toHaveBeenCalled()
   })
 
+  it('PATCH /v1/objects/:type/fields/:fieldName requires schema:apply for destructive updates', async () => {
+    const services = mockWave2CoreServices()
+    ;(services as any).schema = {
+      preview: vi.fn(async () => ({ destructive: true })),
+      updateField: vi.fn(async () => ({ fieldName: 'status_code' })),
+    }
+    const app = createRouteTestApp(['schema:write'])
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/objects/contacts/fields/status_code', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fieldType: 'number', confirmation: TEST_DESTRUCTIVE_CONFIRMATION }),
+    })
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('AUTH_INSUFFICIENT_SCOPE')
+    expect((services as any).schema.updateField).not.toHaveBeenCalled()
+  })
+
+  it('PATCH /v1/objects/:type/fields/:fieldName allows destructive updates with schema:apply', async () => {
+    const services = mockWave2CoreServices()
+    ;(services as any).schema = {
+      preview: vi.fn(async () => ({ destructive: true })),
+      updateField: vi.fn(async () => ({ migrationId: 'migration_patch', status: 'applied' })),
+    }
+    const app = createRouteTestApp(['schema:apply'])
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/objects/contacts/fields/status_code', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fieldType: 'number', confirmation: TEST_DESTRUCTIVE_CONFIRMATION }),
+    })
+
+    expect(res.status).toBe(200)
+    expect((services as any).schema.updateField).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_test' }),
+      'contacts',
+      'status_code',
+      { fieldType: 'number', confirmation: TEST_DESTRUCTIVE_CONFIRMATION },
+    )
+  })
+
   it('DELETE /v1/objects/:type/fields/:fieldName parses strict confirmation body', async () => {
     const services = mockWave2CoreServices()
     ;(services as any).schema = {
       deleteField: vi.fn(async () => {}),
     }
-    const app = createRouteTestApp(['schema:write'])
+    const app = createRouteTestApp(['schema:apply'])
     app.onError(orbitErrorHandler)
     registerObjectRoutes(app, services)
 
@@ -1031,6 +1091,27 @@ describe('Object / Schema routes', () => {
       'legacy_code',
       { confirmation: TEST_DESTRUCTIVE_CONFIRMATION },
     )
+  })
+
+  it('DELETE /v1/objects/:type/fields/:fieldName requires schema:apply', async () => {
+    const services = mockWave2CoreServices()
+    ;(services as any).schema = {
+      deleteField: vi.fn(async () => {}),
+    }
+    const app = createRouteTestApp(['schema:write'])
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/objects/contacts/fields/legacy_code', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ confirmation: TEST_DESTRUCTIVE_CONFIRMATION }),
+    })
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('AUTH_INSUFFICIENT_SCOPE')
+    expect((services as any).schema.deleteField).not.toHaveBeenCalled()
   })
 
   it('POST /v1/schema/migrations/:id/rollback parses strict confirmation bodies', async () => {
@@ -1057,6 +1138,34 @@ describe('Object / Schema routes', () => {
         migrationId: 'migration_01',
         checksum: TEST_CHECKSUM,
         confirmation: TEST_DESTRUCTIVE_CONFIRMATION,
+      },
+    )
+  })
+
+  it('POST /v1/schema/migrations/:id/rollback does not let the body override the path id', async () => {
+    const services = mockWave2CoreServices()
+    ;(services as any).schema = {
+      rollback: vi.fn(async () => ({ migrationId: 'migration_path', status: 'rolled_back' })),
+    }
+    const app = createRouteTestApp(['schema:apply'])
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/schema/migrations/migration_path/rollback', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        migrationId: 'migration_body',
+        checksum: TEST_CHECKSUM,
+      }),
+    })
+
+    expect(res.status).toBe(200)
+    expect((services as any).schema.rollback).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_test' }),
+      {
+        migrationId: 'migration_path',
+        checksum: TEST_CHECKSUM,
       },
     )
   })

@@ -159,7 +159,6 @@ const customFieldDeleteOperationSchema = z.object({
   type: z.literal('custom_field.delete'),
   entityType: entityTypeSchema,
   fieldName: fieldNameSchema,
-  confirmation: destructiveConfirmationSchema.optional(),
 }).strict()
 
 const customFieldRenameOperationSchema = z.object({
@@ -167,7 +166,6 @@ const customFieldRenameOperationSchema = z.object({
   entityType: entityTypeSchema,
   fieldName: fieldNameSchema,
   newFieldName: fieldNameSchema,
-  confirmation: destructiveConfirmationSchema.optional(),
 }).strict()
 
 const customFieldPromoteOperationSchema = z.object({
@@ -191,7 +189,6 @@ const columnDropOperationSchema = z.object({
   type: z.literal('column.drop'),
   tableName: tableNameSchema,
   columnName: columnNameSchema,
-  confirmation: destructiveConfirmationSchema.optional(),
 }).strict()
 
 const columnRenameOperationSchema = z.object({
@@ -199,7 +196,6 @@ const columnRenameOperationSchema = z.object({
   tableName: tableNameSchema,
   columnName: columnNameSchema,
   newColumnName: columnNameSchema,
-  confirmation: destructiveConfirmationSchema.optional(),
 }).strict()
 
 const indexAddOperationSchema = z.object({

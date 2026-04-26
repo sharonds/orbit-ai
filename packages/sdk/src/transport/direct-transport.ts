@@ -278,8 +278,8 @@ export class DirectTransport implements OrbitTransport {
         return sanitizeSchemaMetadataRead(await schema.rollback(
           this.ctx,
           schemaMigrationRollbackInputSchema.parse({
-            migrationId: operation,
             ...this.bodyObject(body, path),
+            migrationId: operation,
           }),
         ))
       }

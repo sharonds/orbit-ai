@@ -1052,6 +1052,17 @@ function classifyLedgerRisk(
     return { destructive: true }
   }
 
+  if (operation.type === 'custom_field.update' && context.ledger.appliedCustomFieldDependencies.has(key)) {
+    const updateRisk = classifyCustomFieldUpdate(operation, context)
+    if (!updateRisk.destructive) {
+      return { destructive: false }
+    }
+    context.warnings.push(
+      `Applied migration history includes prior changes for custom field ${key}; this operation depends on migration history.`,
+    )
+    return { destructive: true }
+  }
+
   if (operation.type !== 'custom_field.add' && context.ledger.appliedCustomFieldDependencies.has(key)) {
     context.warnings.push(
       `Applied migration history includes prior changes for custom field ${key}; this operation depends on migration history.`,

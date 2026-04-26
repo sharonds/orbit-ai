@@ -75,6 +75,7 @@ const STANDARD_GET_ERRORS = {
 const STANDARD_MIGRATION_ERRORS = {
   '400': errorResponse('Validation error — request body failed strict schema validation'),
   '409': errorResponse('Conflict — confirmation, checksum, idempotency, or migration precondition failure'),
+  '412': errorResponse('Rollback precondition failed'),
   '503': errorResponse('Migration authority unavailable in this API process'),
   ...STANDARD_AUTH_ERRORS,
 }
@@ -163,7 +164,6 @@ const schemaMigrationPublicOperationSchema = {
       properties: {
         type: { const: 'custom_field.delete' },
         ...operationBaseProperties,
-        confirmation: { $ref: '#/components/schemas/DestructiveConfirmation' },
       },
     },
     {
@@ -174,7 +174,6 @@ const schemaMigrationPublicOperationSchema = {
         type: { const: 'custom_field.rename' },
         ...operationBaseProperties,
         newFieldName: { type: 'string' },
-        confirmation: { $ref: '#/components/schemas/DestructiveConfirmation' },
       },
     },
     {
@@ -209,7 +208,6 @@ const schemaMigrationPublicOperationSchema = {
         type: { const: 'column.drop' },
         tableName: { type: 'string' },
         columnName: { type: 'string' },
-        confirmation: { $ref: '#/components/schemas/DestructiveConfirmation' },
       },
     },
     {
@@ -221,7 +219,6 @@ const schemaMigrationPublicOperationSchema = {
         tableName: { type: 'string' },
         columnName: { type: 'string' },
         newColumnName: { type: 'string' },
-        confirmation: { $ref: '#/components/schemas/DestructiveConfirmation' },
       },
     },
     {
@@ -496,6 +493,52 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
   }
 
   // Schema object and migration routes
+  paths['/v1/objects'] = {
+    get: {
+      summary: 'List object schemas',
+      operationId: 'listObjects',
+      tags: ['Schema'],
+      responses: {
+        '200': envelopeDataResponse('Schema object list', { type: 'array', items: { type: 'object' } }),
+        ...STANDARD_AUTH_ERRORS,
+      },
+    },
+  }
+
+  paths['/v1/objects/{type}'] = {
+    get: {
+      summary: 'Describe an object schema',
+      operationId: 'describeObject',
+      tags: ['Schema'],
+      parameters: [
+        { name: 'type', in: 'path', required: true, schema: { type: 'string' } },
+      ],
+      responses: {
+        '200': envelopeDataResponse('Schema object definition', { type: 'object' }),
+        ...STANDARD_GET_ERRORS,
+      },
+    },
+  }
+
+  paths['/v1/objects/{type}/fields'] = {
+    post: {
+      summary: 'Add a custom field',
+      operationId: 'addObjectField',
+      tags: ['Schema'],
+      parameters: [
+        { name: 'type', in: 'path', required: true, schema: { type: 'string' } },
+      ],
+      requestBody: {
+        required: true,
+        content: jsonContent({ type: 'object', additionalProperties: true }),
+      },
+      responses: {
+        '201': envelopeDataResponse('Created custom field', { type: 'object' }),
+        ...STANDARD_WRITE_ERRORS,
+      },
+    },
+  }
+
   paths['/v1/objects/{type}/fields/{fieldName}'] = {
     patch: {
       summary: 'Update a custom field',

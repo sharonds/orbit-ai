@@ -62,10 +62,12 @@ function createFakePostgresAdapterForLocks() {
   const runWithMigrationAuthority = vi.fn(async <T>(fn: (db: ReturnType<typeof asMigrationDatabase>) => Promise<T>) =>
     fn(asMigrationDatabase(tx)),
   )
+  const withTenantContext = vi.fn(async (_ctx, fn) => fn(tx))
 
   return {
     statements,
     runWithMigrationAuthority,
+    withTenantContext,
     adapter: {
       name: 'postgres',
       dialect: 'postgres',
@@ -94,7 +96,7 @@ function createFakePostgresAdapterForLocks() {
       }),
       execute: tx.execute,
       query: tx.query,
-      withTenantContext: async (_ctx, fn) => fn(tx),
+      withTenantContext,
       getSchemaSnapshot: async () => ({ customFields: [], tables: [] }),
     } satisfies StorageAdapter,
   }
@@ -409,8 +411,8 @@ describe('schemaMigration admin service', () => {
     expect(differentTarget.result).toBe('different-target')
   })
 
-  it('uses Postgres migration authority and advisory transaction locks for Postgres locks', async () => {
-    const { adapter: fakeAdapter, runWithMigrationAuthority, statements } = createFakePostgresAdapterForLocks()
+  it('uses tenant-scoped runtime context and advisory transaction locks for Postgres locks', async () => {
+    const { adapter: fakeAdapter, runWithMigrationAuthority, withTenantContext, statements } = createFakePostgresAdapterForLocks()
     const repository = createPostgresSchemaMigrationRepository(fakeAdapter)
 
     await expect(repository.withMigrationLock(ctx, {
@@ -424,7 +426,9 @@ describe('schemaMigration admin service', () => {
       }),
     })
 
-    expect(runWithMigrationAuthority).toHaveBeenCalledTimes(1)
+    expect(withTenantContext).toHaveBeenCalledTimes(1)
+    expect(withTenantContext).toHaveBeenCalledWith(ctx, expect.any(Function))
+    expect(runWithMigrationAuthority).not.toHaveBeenCalled()
     expect(statements.some((statement) => statement.includes('pg_try_advisory_xact_lock'))).toBe(true)
   })
 })

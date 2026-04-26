@@ -172,42 +172,40 @@ async function withAdapterMigrationLock<T>(
   const lockRef: { current?: SchemaMigrationLockState } = {}
 
   try {
-    return await adapter.runWithMigrationAuthority(async (db) =>
-      db.transaction(async (tx) => {
-        const rows = await tx.query<{ acquired: boolean | 't' | 'f' }>(
-          sql`select pg_try_advisory_xact_lock(hashtextextended(${key}, 0)) as acquired`,
-        )
-        const acquired = rows[0]?.acquired === true || rows[0]?.acquired === 't'
-        if (!acquired) {
-          throw createLockConflictError({
-            key,
-            orgId,
-            adapter: scope.adapter,
-            target: scope.target,
-            acquired: false,
-            contended: true,
-            released: false,
-            acquiredAt: new Date(),
-            releasedAt: null,
-          })
-        }
-
-        const lock: SchemaMigrationLockState = {
+    return await adapter.withTenantContext(ctx, async (tx) => {
+      const rows = await tx.query<{ acquired: boolean | 't' | 'f' }>(
+        sql`select pg_try_advisory_xact_lock(hashtextextended(${key}, 0)) as acquired`,
+      )
+      const acquired = rows[0]?.acquired === true || rows[0]?.acquired === 't'
+      if (!acquired) {
+        throw createLockConflictError({
           key,
           orgId,
           adapter: scope.adapter,
           target: scope.target,
-          acquired: true,
-          contended: false,
+          acquired: false,
+          contended: true,
           released: false,
           acquiredAt: new Date(),
           releasedAt: null,
-        }
-        lockRef.current = lock
-        const result = await fn()
-        return { result, lock }
-      }),
-    )
+        })
+      }
+
+      const lock: SchemaMigrationLockState = {
+        key,
+        orgId,
+        adapter: scope.adapter,
+        target: scope.target,
+        acquired: true,
+        contended: false,
+        released: false,
+        acquiredAt: new Date(),
+        releasedAt: null,
+      }
+      lockRef.current = lock
+      const result = await fn()
+      return { result, lock }
+    })
   } finally {
     if (lockRef.current) {
       lockRef.current.released = true

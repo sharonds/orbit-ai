@@ -116,6 +116,26 @@ describe('schema migration domain contracts', () => {
     },
   )
 
+  it('rejects operation-level confirmations in public migration operations', () => {
+    for (const operation of [
+      { type: 'custom_field.delete', entityType: 'contacts', fieldName: 'legacy_code' },
+      { type: 'custom_field.rename', entityType: 'contacts', fieldName: 'legacy_code', newFieldName: 'legacy_code_new' },
+      { type: 'column.drop', tableName: 'contacts', columnName: 'legacy_code' },
+      { type: 'column.rename', tableName: 'contacts', columnName: 'legacy_code', newColumnName: 'legacy_code_new' },
+    ]) {
+      expect(schemaMigrationPreviewInputSchema.safeParse({
+        operations: [{
+          ...operation,
+          confirmation: {
+            destructive: true,
+            checksum: '0'.repeat(64),
+            confirmedAt: '2026-04-26T00:00:00.000Z',
+          },
+        }],
+      }).success).toBe(false)
+    }
+  })
+
   it('requires preview output plan metadata', () => {
     const checksum = '0'.repeat(64)
 

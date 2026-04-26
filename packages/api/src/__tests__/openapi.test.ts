@@ -62,6 +62,9 @@ describe('OpenAPI spec', () => {
   })
 
   it('documents schema migration and field confirmation DTOs', () => {
+    expect(spec.paths['/v1/objects']?.get).toBeDefined()
+    expect(spec.paths['/v1/objects/{type}']?.get).toBeDefined()
+    expect(spec.paths['/v1/objects/{type}/fields']?.post).toBeDefined()
     expect(spec.paths['/v1/schema/migrations/preview']?.post.requestBody.content['application/json'].schema).toEqual({
       $ref: '#/components/schemas/SchemaMigrationPreviewRequest',
     })
@@ -82,6 +85,12 @@ describe('OpenAPI spec', () => {
     expect(applyRequest.required).toEqual(expect.arrayContaining(['operations', 'checksum']))
     expect(applyRequest.properties.confirmation.$ref).toBe('#/components/schemas/DestructiveConfirmation')
     expect(applyRequest.additionalProperties).toBe(false)
+    expect(spec.paths['/v1/schema/migrations/{id}/rollback']?.post.responses['412']).toBeDefined()
+    const operationVariants = spec.components.schemas.SchemaMigrationPublicOperation.oneOf
+    for (const operationType of ['custom_field.delete', 'custom_field.rename', 'column.drop', 'column.rename']) {
+      const variant = operationVariants.find((operation: any) => operation.properties.type.const === operationType)
+      expect(variant.properties.confirmation).toBeUndefined()
+    }
 
     const previewResponse = spec.components.schemas.SchemaMigrationPreviewResponse
     expect(previewResponse.properties.confirmationInstructions.$ref).toBe('#/components/schemas/SchemaMigrationConfirmationInstructions')

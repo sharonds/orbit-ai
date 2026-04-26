@@ -752,7 +752,7 @@ describe('OrbitSchemaEngine', () => {
     expect(migrationLedger.updateStatus).not.toHaveBeenCalled()
   })
 
-  it('uses applied ledger history to classify dependent custom field updates as destructive', async () => {
+  it('keeps safe metadata updates non-destructive after applied custom field add history', async () => {
     const migrationLedger = trackingLedger([
       migrationRecord({
         forwardOperations: [{
@@ -788,12 +788,45 @@ describe('OrbitSchemaEngine', () => {
       }],
     })
 
+    expect(result.destructive).toBe(false)
+    expect(result.confirmationRequired).toBe(false)
+    expect(result.confirmationInstructions.destructiveOperations).toEqual([])
+    expect(result.warnings).not.toContain(
+      'Applied migration history includes prior changes for custom field contacts.tier; this operation depends on migration history.',
+    )
+  })
+
+  it('uses applied ledger history to classify destructive custom field updates as history-dependent', async () => {
+    const migrationLedger = trackingLedger([
+      migrationRecord({
+        forwardOperations: [{
+          type: 'custom_field.add',
+          entityType: 'contacts',
+          fieldName: 'tier',
+          fieldType: 'text',
+        }],
+      }),
+    ])
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000010', 'tier'),
+    ])
+
+    const result = await makeEngine(repo, undefined, migrationLedger).preview(ctx, {
+      operations: [{
+        type: 'custom_field.update',
+        entityType: 'contacts',
+        fieldName: 'tier',
+        patch: { fieldType: 'number' },
+      }],
+    })
+
     expect(result.destructive).toBe(true)
     expect(result.confirmationRequired).toBe(true)
     expect(result.confirmationInstructions.destructiveOperations).toEqual(['custom_field.update'])
-    expect(result.warnings).toContain(
+    expect(result.warnings).toEqual(expect.arrayContaining([
+      'Changing custom field contacts.tier from text to number can lose or reject existing data.',
       'Applied migration history includes prior changes for custom field contacts.tier; this operation depends on migration history.',
-    )
+    ]))
   })
 
   it('uses running ledger history to classify same-target operations as conflict-prone', async () => {
@@ -2174,6 +2207,38 @@ describe('OrbitSchemaEngine', () => {
     await expect(repo.get(ctx, 'field_01J00000000000000000000040')).resolves.toMatchObject({
       fieldName: 'linkedin_url',
       label: 'LinkedIn URL',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('updates safe custom field metadata after migration-created fields without migration authority', async () => {
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000042', 'tier', ctx.orgId, {
+        label: 'Tier',
+        description: 'Old description',
+      }),
+    ])
+    const migrationLedger = trackingLedger([
+      migrationRecord({
+        forwardOperations: [{
+          type: 'custom_field.add',
+          entityType: 'contacts',
+          fieldName: 'tier',
+          fieldType: 'text',
+        }],
+      }),
+    ])
+    const authority = makeAuthority()
+    const engine = makeEngine(repo, authority, migrationLedger)
+
+    await expect(engine.updateField(ctx, 'contacts', 'tier', {
+      label: 'Customer Tier',
+      description: 'New description',
+    })).resolves.toMatchObject({
+      id: 'field_01J00000000000000000000042',
+      fieldName: 'tier',
+      label: 'Customer Tier',
+      description: 'New description',
     })
     expect(authority.run).not.toHaveBeenCalled()
   })
