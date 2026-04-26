@@ -1,5 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
+import { existsSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
+import { sql, type SQL } from 'drizzle-orm'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { createSqliteOrbitDatabase, type SqliteOrbitDatabase } from './database.js'
 import type { OrbitDatabase } from '../interface.js'
 import { asMigrationDatabase } from '../interface.js'
 import { createSqliteStorageAdapter } from './adapter.js'
@@ -45,6 +51,90 @@ describe('SqliteStorageAdapter', () => {
     })
   })
 
+  const temporarySqliteFiles = new Set<string>()
+
+  afterEach(() => {
+    for (const filename of temporarySqliteFiles) {
+      rmSync(filename, { force: true })
+    }
+    temporarySqliteFiles.clear()
+  })
+
+  function createTemporarySqliteDatabase(name: string): { database: SqliteOrbitDatabase; filename: string } {
+    const filename = join(
+      tmpdir(),
+      `orbit-sqlite-adapter-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}-${name}.db`,
+    )
+    temporarySqliteFiles.add(filename)
+
+    return {
+      database: createSqliteOrbitDatabase({ filename }),
+      filename,
+    }
+  }
+
+  function closeAndRemoveTemporarySqliteDatabase(database: SqliteOrbitDatabase, filename: string): void {
+    database.client.close()
+    rmSync(filename, { force: true })
+    temporarySqliteFiles.delete(filename)
+  }
+
+  it('migrate() uses separate runtime/migration sqlite files only as a handle-selection regression sentinel', async () => {
+    const runtime = createTemporarySqliteDatabase('runtime')
+    const migration = createTemporarySqliteDatabase('migration')
+
+    const runtimeExecute = vi.spyOn(runtime.database, 'execute')
+    const migrationExecute = vi.spyOn(migration.database, 'execute')
+
+    try {
+      const adapter = createSqliteStorageAdapter({
+        database: runtime.database,
+        migrationDatabase: asMigrationDatabase(migration.database),
+      })
+
+      await adapter.migrate()
+
+      expect(migrationExecute).toHaveBeenCalled()
+      expect(runtimeExecute).not.toHaveBeenCalled()
+      await expect(
+        migration.database.query(sql`select name from sqlite_master where type = 'table' and name = 'schema_migrations'`),
+      ).resolves.toHaveLength(1)
+      await expect(
+        runtime.database.query(sql`select name from sqlite_master where type = 'table' and name = 'schema_migrations'`),
+      ).resolves.toHaveLength(0)
+    } finally {
+      closeAndRemoveTemporarySqliteDatabase(runtime.database, runtime.filename)
+      closeAndRemoveTemporarySqliteDatabase(migration.database, migration.filename)
+
+      expect(existsSync(runtime.filename)).toBe(false)
+      expect(existsSync(migration.filename)).toBe(false)
+    }
+  })
+
+  it('migrate() would fail the handle-selection regression sentinel if schema init used unsafeRawDatabase', async () => {
+    const runtimeDatabase = {
+      transaction: async (fn: (tx: OrbitDatabase) => Promise<unknown>) => fn(runtimeDatabase),
+      execute: vi.fn(async () => {
+        throw new Error('runtime database must not receive migration schema calls')
+      }),
+      query: async () => [],
+    } satisfies OrbitDatabase
+    const migrationDatabase = {
+      transaction: async (fn: (tx: OrbitDatabase) => Promise<unknown>) => fn(migrationDatabase),
+      execute: vi.fn(async () => undefined),
+      query: async () => [],
+    } satisfies OrbitDatabase
+
+    const adapter = createSqliteStorageAdapter({
+      database: runtimeDatabase,
+      migrationDatabase: asMigrationDatabase(migrationDatabase),
+    })
+
+    await expect(adapter.migrate()).resolves.toBeUndefined()
+    expect(runtimeDatabase.execute).not.toHaveBeenCalled()
+    expect(migrationDatabase.execute).toHaveBeenCalled()
+  })
+
   it('validates org ids before entering sqlite tenant context', async () => {
     const transaction = vi.fn(async (fn: (tx: OrbitDatabase) => Promise<string>) => fn(database))
     const database = {
@@ -60,16 +150,16 @@ describe('SqliteStorageAdapter', () => {
     expect(transaction).not.toHaveBeenCalled()
   })
 
-  it('migrate() with no custom config runs all wave init functions and creates tables', async () => {
+  it('migrate() with no migration DB configured runs all wave init functions and creates tables', async () => {
     // Track all SQL statements executed by the default migrateImpl.
     const executedStatements: string[] = []
     const database = {
       transaction: async (fn: (tx: OrbitDatabase) => Promise<unknown>) => fn(database),
-      execute: vi.fn(async (stmt: { queryChunks?: Array<{ value: unknown }> }) => {
+      execute: vi.fn(async (stmt: SQL) => {
         // sql.raw(statement) produces a SQL object whose first queryChunk
         // holds the raw SQL string. Capture it for assertion.
         const raw =
-          stmt?.queryChunks?.[0]?.value ??
+          (stmt as { queryChunks?: Array<{ value: unknown }> })?.queryChunks?.[0]?.value ??
           String(stmt)
         executedStatements.push(String(raw))
         return undefined
