@@ -54,7 +54,7 @@ Note: the Plan D execution contract was supplied from the parent workspace path 
 | 1. Create Worktree And Execution Ledger | Complete | N/A | This commit | Process review subagent `019dc980-596f-7a31-9103-72caae6a37e0`; Critical/High findings fixed before commit |
 | 2. Add `--version` And Tighten Option Validation | Complete | `def8680` | This commit | Implementation subagent `019dc982-58e2-7b23-a3e9-5e7d7992869e`; reviews `019dc985-1d85-7bf3-9782-8a11d862367d`, `019dc985-1e03-7881-9917-abc363198cc4`, `019dc985-1ebf-7513-982f-a1bc9bc6be20` |
 | 3. Bound Install Execution And Harden Command Parsing | Complete | `78fcf20` | This commit | Implementation subagent `019dc987-6ff5-73e2-8ce7-b76f62d3e99f`; reviews `019dc98a-3c01-76d2-9f67-c8b0c69b0903`, `019dc98a-3c62-7dd1-ad5e-70183958509f` |
-| 4. Make Cleanup Failures Observable | Pending | Pending | Pending | Pending |
+| 4. Make Cleanup Failures Observable | Complete | `83ca615` | This commit | Implementation subagent `019dc98c-3d47-7f52-ac86-b7574499f9b4`; reviews `019dc98f-70ea-71d2-9faf-b5c77fa4b43d`, `019dc98f-7235-7313-8bc3-45b382e79f47` |
 | 5. Prove Atomic Rollback And Template Symlink Safety | Pending | Pending | Pending | Pending |
 | 6. Document And Test Exact Alpha Version Pinning | Pending | Pending | Pending | Pending |
 | 7. Strengthen Package Manager Detection Coverage | Pending | Pending | Pending | Pending |
@@ -256,6 +256,39 @@ Named review lenses:
 - Code review subagent `019dc98a-3c62-7dd1-ad5e-70183958509f`: no Critical/High/Medium/Low findings. Reviewer also ran full create-orbit-app tests and typecheck successfully.
 
 Result: no unresolved Critical/High/Medium Task 3 findings remain.
+
+### Task 4 Reviews
+
+Implementation subagent: `019dc98c-3d47-7f52-ac86-b7574499f9b4`
+
+Implementation commit: `83ca615 fix(create-orbit-app): log cleanup failures during scaffold rollback`
+
+Changed files:
+
+- `packages/create-orbit-app/src/copy.ts`
+- `packages/create-orbit-app/src/copy.test.ts`
+- `packages/create-orbit-app/src/index.ts`
+- `packages/create-orbit-app/src/__tests__/index.test.ts`
+
+Focused validation:
+
+```text
+$ corepack pnpm -F @orbit-ai/create-orbit-app test -- src/copy.test.ts src/__tests__/index.test.ts
+Test Files  2 passed (2)
+Tests       19 passed (19)
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app typecheck
+tsc -p tsconfig.json --noEmit
+exit 0
+```
+
+Named review lenses:
+
+- Security review subagent `019dc98f-70ea-71d2-9faf-b5c77fa4b43d`: no Critical/High/Medium/Low findings. Reviewer also ran focused tests and typecheck successfully.
+- Code review subagent `019dc98f-7235-7313-8bc3-45b382e79f47`: no Critical/High/Medium/Low findings. Reviewer also ran focused tests, typecheck, and `git diff --check 2100bbb..83ca615` successfully.
+
+Result: no unresolved Critical/High/Medium Task 4 findings remain.
 
 ## Deferred Items And Skipped Validation
 
