@@ -56,7 +56,7 @@ Note: the Plan D execution contract was supplied from the parent workspace path 
 | 3. Bound Install Execution And Harden Command Parsing | Complete | `78fcf20` | This commit | Implementation subagent `019dc987-6ff5-73e2-8ce7-b76f62d3e99f`; reviews `019dc98a-3c01-76d2-9f67-c8b0c69b0903`, `019dc98a-3c62-7dd1-ad5e-70183958509f` |
 | 4. Make Cleanup Failures Observable | Complete | `83ca615` | This commit | Implementation subagent `019dc98c-3d47-7f52-ac86-b7574499f9b4`; reviews `019dc98f-70ea-71d2-9faf-b5c77fa4b43d`, `019dc98f-7235-7313-8bc3-45b382e79f47` |
 | 5. Prove Atomic Rollback And Template Symlink Safety | Complete | `75e3075`, `156adac` | This commit | Implementation subagent `019dc991-43af-7d63-bb95-4762c2d22a20`; reviews `019dc993-1692-7562-b9f7-c0d68ea220fa`, `019dc993-172e-7a42-a726-efb33745558c`, re-reviews `019dc994-bfba-7793-a15a-ad4129d4ca3d`, `019dc994-c014-7091-a0bb-55bad16a40f7` |
-| 6. Document And Test Exact Alpha Version Pinning | Pending | Pending | Pending | Pending |
+| 6. Document And Test Exact Alpha Version Pinning | Complete | `36cabb4` | This commit | Implementation subagent `019dc996-8301-7eb0-b5ef-3ed4abe980d4`; package/release review `019dc998-5f81-7e93-9c91-8d40ee7cac4a` |
 | 7. Strengthen Package Manager Detection Coverage | Pending | Pending | Pending | Pending |
 | 8. Add Packed Tarball Smoke Coverage | Pending | Pending | Pending | Pending |
 | 9. Update Create-Orbit-App User Documentation | Pending | Pending | Pending | Pending |
@@ -336,6 +336,37 @@ Named review lenses:
 - Code re-review subagent `019dc994-c014-7091-a0bb-55bad16a40f7`: no Critical/High/Medium findings after fix. Reviewer also ran copy tests, typecheck, and `git diff --check f9e1d60..156adac -- packages/create-orbit-app/src/copy.test.ts` successfully.
 
 Result: no unresolved Critical/High/Medium Task 5 findings remain.
+
+### Task 6 Reviews
+
+Implementation subagent: `019dc996-8301-7eb0-b5ef-3ed4abe980d4`
+
+Implementation commit: `36cabb4 fix(create-orbit-app): document and test exact alpha version pinning`
+
+Changed files:
+
+- `packages/create-orbit-app/src/version.ts`
+- `packages/create-orbit-app/src/version.test.ts`
+- `packages/create-orbit-app/src/__tests__/smoke.test.ts`
+
+Focused validation:
+
+```text
+$ corepack pnpm -F @orbit-ai/create-orbit-app test -- src/version.test.ts src/__tests__/smoke.test.ts
+Test Files  2 passed (2)
+Tests       8 passed (8)
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app typecheck
+tsc -p tsconfig.json --noEmit
+exit 0
+```
+
+Named review lenses:
+
+- Package/release review subagent `019dc998-5f81-7e93-9c91-8d40ee7cac4a`: no Critical/High/Medium/Low findings. Reviewer could not run tests because direct `pnpm` was unavailable in its shell; parent validation used `corepack pnpm` and passed.
+
+Result: no unresolved Critical/High/Medium Task 6 findings remain.
 
 ## Deferred Items And Skipped Validation
 
