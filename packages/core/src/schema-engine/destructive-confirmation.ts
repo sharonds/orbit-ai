@@ -99,8 +99,7 @@ function missingProductionSafeguards(
   safeguards: DestructiveSafeguards | undefined,
   runtimeEnvironment: DestructiveMigrationEnvironment | undefined,
 ): string[] {
-  const environment = runtimeEnvironment ?? safeguards?.environment
-  if (!environment || !PRODUCTION_LIKE_ENVIRONMENTS.has(environment)) {
+  if (!runtimeEnvironment || !PRODUCTION_LIKE_ENVIRONMENTS.has(runtimeEnvironment)) {
     return []
   }
 

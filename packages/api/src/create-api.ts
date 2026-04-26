@@ -87,6 +87,9 @@ export function createApi(options: CreateApiOptions) {
   const services = options.services
     ?? createCoreServicesForRuntimeAdapter(options.adapter, {
       ...(options.migrationAuthority ? { migrationAuthority: options.migrationAuthority } : {}),
+      ...(options.destructiveMigrationEnvironment
+        ? { destructiveMigrationEnvironment: options.destructiveMigrationEnvironment }
+        : {}),
     })
 
   // Authenticated routes (registered after auth middleware)

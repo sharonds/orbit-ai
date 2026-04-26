@@ -1016,6 +1016,42 @@ describe('OrbitSchemaEngine', () => {
     expect(migrationLedger.withMigrationLock).not.toHaveBeenCalled()
   })
 
+  it('sequences tenant-scoped preview reads to avoid overlapping transaction scopes', async () => {
+    let customFieldReadInFlight = false
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        customFieldReadInFlight = true
+        await Promise.resolve()
+        customFieldReadInFlight = false
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const migrationLedger = trackingLedger()
+    vi.mocked(migrationLedger.list).mockImplementation(async () => {
+      if (customFieldReadInFlight) {
+        throw new Error('tenant-scoped reads overlapped')
+      }
+      return { data: [], hasMore: false, nextCursor: null }
+    })
+
+    await expect(makeEngine(repo, undefined, migrationLedger).preview(ctx, {
+      operations: [{
+        type: 'custom_field.add',
+        entityType: 'contacts',
+        fieldName: 'linkedin_url',
+        fieldType: 'url',
+      }],
+    })).resolves.toMatchObject({
+      destructive: false,
+    })
+  })
+
   it('throws structured unavailable errors when apply migration authority is missing', async () => {
     const repo: CustomFieldDefinitionRepository = {
       async create(_ctx, record) {
@@ -1117,7 +1153,7 @@ describe('OrbitSchemaEngine', () => {
     )
   })
 
-  it('rejects production-like destructive apply without required safeguard evidence before authority', async () => {
+  it('ignores caller production environment when runtime environment is omitted', async () => {
     const authority = makeAuthority()
     const repo: CustomFieldDefinitionRepository = {
       async create(_ctx, record) {
@@ -1135,13 +1171,11 @@ describe('OrbitSchemaEngine', () => {
     await expect(engine.apply(ctx, {
       ...DESTRUCTIVE_APPLY_INPUT,
       confirmation: PRODUCTION_DESTRUCTIVE_CONFIRMATION,
-    })).rejects.toMatchObject({
-      code: 'DESTRUCTIVE_SAFEGUARDS_REQUIRED',
-      details: {
-        missingSafeguards: ['backup', 'ledger', 'rollback'],
-      },
+    })).resolves.toMatchObject({
+      checksum: DESTRUCTIVE_APPLY_INPUT.checksum,
+      status: 'noop',
     })
-    expect(authority.run).not.toHaveBeenCalled()
+    expect(authority.run).toHaveBeenCalledTimes(1)
   })
 
   it('rejects runtime production destructive apply without safeguard evidence even when confirmation omits environment', async () => {
@@ -1166,6 +1200,39 @@ describe('OrbitSchemaEngine', () => {
       code: 'DESTRUCTIVE_SAFEGUARDS_REQUIRED',
       details: {
         missingSafeguards: ['environmentAcknowledged', 'backup', 'ledger', 'rollback'],
+      },
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('rejects runtime production destructive apply even when caller claims development environment', async () => {
+    const authority = makeAuthority()
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const engine = makeEngine(repo, authority, undefined, undefined, 'production')
+
+    await expect(engine.apply(ctx, {
+      ...DESTRUCTIVE_APPLY_INPUT,
+      confirmation: {
+        ...VALID_DESTRUCTIVE_CONFIRMATION,
+        safeguards: {
+          environment: 'development',
+          environmentAcknowledged: true,
+        },
+      },
+    })).rejects.toMatchObject({
+      code: 'DESTRUCTIVE_SAFEGUARDS_REQUIRED',
+      details: {
+        missingSafeguards: ['backup', 'ledger', 'rollback'],
       },
     })
     expect(authority.run).not.toHaveBeenCalled()

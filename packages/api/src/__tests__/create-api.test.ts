@@ -1,7 +1,16 @@
-import { describe, it, expect } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import type { CoreServices } from '@orbit-ai/core'
+import { createCoreServicesForRuntimeAdapter } from '@orbit-ai/core'
 import { createApi } from '../create-api.js'
 import type { RuntimeApiAdapter } from '../config.js'
+
+vi.mock('@orbit-ai/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@orbit-ai/core')>()
+  return {
+    ...actual,
+    createCoreServicesForRuntimeAdapter: vi.fn(() => stubServices()),
+  }
+})
 
 function stubAdapter(): RuntimeApiAdapter {
   return {
@@ -32,6 +41,10 @@ function stubServices(): CoreServices {
 }
 
 describe('createApi', () => {
+  beforeEach(() => {
+    vi.mocked(createCoreServicesForRuntimeAdapter).mockClear()
+  })
+
   it('returns a Hono app instance', () => {
     const app = createApi({ adapter: stubAdapter(), version: '2026-04-01', services: stubServices() })
     expect(app).toBeDefined()
@@ -42,5 +55,19 @@ describe('createApi', () => {
     const adapter = stubAdapter()
     const app = createApi({ adapter, version: '2026-04-01', services: stubServices() })
     expect(app).toBeDefined()
+  })
+
+  it('passes destructive migration environment into generated core services', () => {
+    const adapter = stubAdapter()
+    const app = createApi({
+      adapter,
+      version: '2026-04-01',
+      destructiveMigrationEnvironment: 'production',
+    })
+
+    expect(app).toBeDefined()
+    expect(createCoreServicesForRuntimeAdapter).toHaveBeenCalledWith(adapter, {
+      destructiveMigrationEnvironment: 'production',
+    })
   })
 })

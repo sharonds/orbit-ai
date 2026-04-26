@@ -490,21 +490,21 @@ describe('DirectTransport workflow sub-routes', () => {
     })
   })
 
-  it('dispatches destructive schema field routes to unavailable migration authority errors', async () => {
+  it('dispatches destructive schema field routes to confirmation errors before authority', async () => {
     const { client } = await createWorkflowClient()
 
     await expect(
       client.schema.updateField('contacts', 'linkedin', { label: 'LinkedIn' }),
     ).rejects.toMatchObject<Partial<OrbitApiError>>({
-      error: expect.objectContaining({ code: 'MIGRATION_AUTHORITY_UNAVAILABLE' }),
-      status: 503,
+      error: expect.objectContaining({ code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED' }),
+      status: 409,
     })
 
     await expect(
       client.schema.deleteField('contacts', 'linkedin'),
     ).rejects.toMatchObject<Partial<OrbitApiError>>({
-      error: expect.objectContaining({ code: 'MIGRATION_AUTHORITY_UNAVAILABLE' }),
-      status: 503,
+      error: expect.objectContaining({ code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED' }),
+      status: 409,
     })
   })
 })

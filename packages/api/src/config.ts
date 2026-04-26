@@ -1,4 +1,9 @@
-import type { CoreRuntimeAdapter, CoreServices, SchemaMigrationAuthority } from '@orbit-ai/core'
+import type {
+  CoreRuntimeAdapter,
+  CoreServices,
+  DestructiveMigrationEnvironment,
+  SchemaMigrationAuthority,
+} from '@orbit-ai/core'
 import type { IdempotencyStore } from './middleware/idempotency.js'
 
 export type RuntimeApiAdapter = CoreRuntimeAdapter
@@ -15,6 +20,11 @@ export interface CreateApiOptions {
    * migrations. Runtime adapters intentionally omit this capability.
    */
   migrationAuthority?: SchemaMigrationAuthority
+  /**
+   * Trusted runtime environment used by core destructive migration safeguards.
+   * Request bodies must not control production/staging enforcement.
+   */
+  destructiveMigrationEnvironment?: DestructiveMigrationEnvironment
   /**
    * Maximum HTTP request body size in bytes. Defaults to 1 MB (1_048_576).
    * Exceeding this returns 413 Payload Too Large before any parsing.

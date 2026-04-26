@@ -285,11 +285,9 @@ export class OrbitSchemaEngine {
       name: adapter.name,
       dialect: adapter.dialect,
     }
-    const [repositoryFields, snapshot, ledgerState] = await Promise.all([
-      this.listAllCustomFields(ctx),
-      adapter.getSchemaSnapshot(),
-      this.listAllSchemaMigrations(ctx),
-    ])
+    const repositoryFields = await this.listAllCustomFields(ctx)
+    const snapshot = await adapter.getSchemaSnapshot()
+    const ledgerState = await this.listAllSchemaMigrations(ctx)
     const customFields = mergeCustomFieldSources(orgId, snapshot.customFields, repositoryFields)
     const ledgerClassification = buildPreviewLedgerState(ledgerState, adapterScope)
     const warnings = createLedgerWarnings(ledgerClassification.runningMigrationCount)
@@ -408,7 +406,7 @@ export class OrbitSchemaEngine {
     fieldName: string,
     data: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    assertOrgContext(ctx)
+    const orgId = assertOrgContext(ctx)
     if (!PUBLIC_CRM_ENTITY_TYPES.includes(entityType as PublicCrmEntityType)) {
       this.validationFailed(`Unknown entity type: ${entityType}`, 'entityType')
     }
@@ -420,10 +418,18 @@ export class OrbitSchemaEngine {
       fieldName,
       patch,
     }]
-    const preview = await this.preview(ctx, { operations })
+    const adapter = this.schemaAdapter
+    const checksum = computeSchemaMigrationChecksum({
+      adapter: {
+        name: adapter.name,
+        dialect: adapter.dialect,
+      },
+      orgId,
+      operations,
+    })
     assertDestructiveConfirmation({
-      destructiveOperations: preview.confirmationInstructions.destructiveOperations,
-      checksum: preview.checksum,
+      destructiveOperations: operations.map((operation) => operation.type),
+      checksum,
       confirmation: _confirmation,
       runtimeEnvironment: this.destructiveMigrationEnvironment,
     })
@@ -436,7 +442,7 @@ export class OrbitSchemaEngine {
     fieldName: string,
     data: Record<string, unknown> = {},
   ): Promise<void> {
-    assertOrgContext(ctx)
+    const orgId = assertOrgContext(ctx)
     const input = schemaMigrationDeleteFieldInputSchema.parse({
       entityType,
       fieldName,
@@ -447,10 +453,18 @@ export class OrbitSchemaEngine {
       entityType: input.entityType,
       fieldName: input.fieldName,
     }]
-    const preview = await this.preview(ctx, { operations })
+    const adapter = this.schemaAdapter
+    const checksum = computeSchemaMigrationChecksum({
+      adapter: {
+        name: adapter.name,
+        dialect: adapter.dialect,
+      },
+      orgId,
+      operations,
+    })
     assertDestructiveConfirmation({
-      destructiveOperations: preview.confirmationInstructions.destructiveOperations,
-      checksum: preview.checksum,
+      destructiveOperations: operations.map((operation) => operation.type),
+      checksum,
       confirmation: input.confirmation,
       runtimeEnvironment: this.destructiveMigrationEnvironment,
     })
