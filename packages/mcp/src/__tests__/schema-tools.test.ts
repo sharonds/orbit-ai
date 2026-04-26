@@ -24,7 +24,7 @@ describe('schema tools', () => {
     expect(client.schema.addField).toHaveBeenCalledWith('contacts', { name: 'tier', type: 'text' })
   })
 
-  it('update_custom_field uses schema.updateField', async () => {
+  it('update_custom_field uses schema.updateField for safe metadata changes', async () => {
     const client = makeMockClient()
     await executeTool(client, 'update_custom_field', {
       object_type: 'contacts',
@@ -41,6 +41,52 @@ describe('schema tools', () => {
     } as never)
     expect(result.isError).toBe(true)
     expect(parseTextResult(result).error.code).toBe('VALIDATION_FAILED')
+  })
+
+  it.each([
+    ['type change', { fieldType: 'number' }],
+    ['legacy type change', { type: 'number' }],
+    ['rename', { name: 'customer_tier' }],
+    ['migration rename', { newFieldName: 'customer_tier' }],
+    ['delete intent', { deleted: true }],
+    ['promote intent', { isPromoted: true, promotedColumnName: 'tier' }],
+    ['validation narrowing', { validation: { min: 10 } }],
+    ['confirmation-backed destructive patch', { label: 'Tier', confirmation: { destructive: true } }],
+  ])('update_custom_field rejects %s through MCP', async (_caseName, field) => {
+    const client = makeMockClient()
+    const result = await executeTool(client, 'update_custom_field', {
+      object_type: 'contacts',
+      field_name: 'tier',
+      field,
+    })
+
+    expect(result.isError).toBe(true)
+    expect(parseTextResult(result).error).toMatchObject({
+      code: 'DEPENDENCY_NOT_AVAILABLE',
+    })
+    expect(client.schema.updateField).not.toHaveBeenCalled()
+  })
+
+  it('update_custom_field unsupported errors do not leak SQL, credentials, or stack traces', async () => {
+    const client = makeMockClient()
+    const result = await executeTool(client, 'update_custom_field', {
+      object_type: 'contacts',
+      field_name: 'tier',
+      field: {
+        fieldType: 'number',
+        sql: 'ALTER TABLE contacts DROP COLUMN custom_fields',
+        rollbackSql: 'DROP TABLE contacts',
+        api_key: 'sk_SECRET',
+        stack: 'Error: hidden\n    at secret.ts:1:1',
+      },
+    })
+
+    const text = getTextContent(result)
+    expect(text).not.toContain('ALTER TABLE')
+    expect(text).not.toContain('DROP TABLE')
+    expect(text).not.toContain('sk_SECRET')
+    expect(text).not.toContain('secret.ts')
+    expect(client.schema.updateField).not.toHaveBeenCalled()
   })
 
   it('get_schema sanitizes sensitive fields in response', async () => {

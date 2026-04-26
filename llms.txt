@@ -35,6 +35,11 @@ import_records, export_records,
 enroll_in_sequence, unenroll_from_sequence,
 run_report, get_dashboard_summary, assign_record
 
+MCP schema migration exclusion: destructive schema migration operations are alpha
+API/SDK/CLI-only. MCP intentionally has no preview/apply/rollback migration tools
+and no delete/rename/promote custom-field tools; update_custom_field is limited to
+safe metadata (label, description).
+
 ## API Error Codes
 
 RESOURCE_NOT_FOUND (404), VALIDATION_FAILED (422), AUTH_INVALID_API_KEY (401),

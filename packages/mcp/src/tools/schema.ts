@@ -14,6 +14,13 @@ const CustomFieldInput = z.object({
   field: z.record(z.string(), z.unknown()),
 })
 
+const SAFE_UPDATE_FIELD_KEYS = new Set(['label', 'description'])
+
+const UNSUPPORTED_DESTRUCTIVE_SCHEMA_MIGRATION = new McpNotImplementedError(
+  'Destructive schema migration operations are intentionally unavailable through MCP in the alpha.',
+  'Use the Orbit API, SDK, or CLI for custom-field rename, type-change, delete, promote, and migration preview/apply/rollback operations.',
+)
+
 export const getSchemaTool = defineTool({
   name: 'get_schema',
   title: 'Get Orbit schema',
@@ -53,7 +60,15 @@ export async function handleCreateCustomField(client: OrbitClient, rawArgs: unkn
 
 export async function handleUpdateCustomField(client: OrbitClient, rawArgs: unknown) {
   const args = CustomFieldInput.extend({ field_name: z.string() }).parse(rawArgs)
+  if (!isSafeCustomFieldMetadataPatch(args.field)) {
+    throw UNSUPPORTED_DESTRUCTIVE_SCHEMA_MIGRATION
+  }
+
   return toToolSuccess(
     sanitizeObjectDeep(await client.schema.updateField(args.object_type, args.field_name, args.field)),
   )
+}
+
+function isSafeCustomFieldMetadataPatch(field: Record<string, unknown>): boolean {
+  return Object.keys(field).every((key) => SAFE_UPDATE_FIELD_KEYS.has(key))
 }
