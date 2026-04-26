@@ -1,4 +1,19 @@
-import { createCoreServices, resolvePublicEntityServiceKey, type OrbitEnvelope, type OrbitAuthContext, type OrbitErrorCode } from '@orbit-ai/core'
+import {
+  createCoreServices,
+  computeSchemaMigrationChecksum,
+  ORBIT_ERROR_CODES,
+  OrbitError,
+  orbitErrorCodeToStatus,
+  resolvePublicEntityServiceKey,
+  schemaMigrationApplyInputSchema,
+  schemaMigrationDeleteFieldInputSchema,
+  schemaMigrationPreviewInputSchema,
+  schemaMigrationRollbackInputSchema,
+  schemaMigrationUpdateFieldRequestInputSchema,
+  type OrbitEnvelope,
+  type OrbitAuthContext,
+  type OrbitErrorCode,
+} from '@orbit-ai/core'
 import type { OrbitClientOptions } from '../config.js'
 import type { OrbitTransport, TransportRequest } from './index.js'
 import { OrbitApiError } from '../errors.js'
@@ -54,7 +69,12 @@ export class DirectTransport implements OrbitTransport {
     if (!options.adapter || !options.context?.orgId) {
       throw new Error('Direct transport requires adapter and context.orgId')
     }
-    this.services = createCoreServices(options.adapter)
+    this.services = createCoreServices(options.adapter, {
+      ...(options.migrationAuthority ? { migrationAuthority: options.migrationAuthority } : {}),
+      ...(options.destructiveMigrationEnvironment
+        ? { destructiveMigrationEnvironment: options.destructiveMigrationEnvironment }
+        : {}),
+    })
     const ctx: OrbitAuthContext = {
       orgId: options.context.orgId,
       scopes: ['*'],
@@ -92,9 +112,35 @@ export class DirectTransport implements OrbitTransport {
           400,
         )
       }
-      const orbitErr = err as { code?: string; message?: string; field?: string; retryable?: boolean; request_id?: string; doc_url?: string; hint?: string; recovery?: string }
-      if (orbitErr.code) {
-        const code = orbitErr.code as OrbitErrorCode
+      if (err instanceof OrbitError) {
+        throw new OrbitApiError(
+          enrichDirectErrorShape({
+            code: err.code,
+            message: err.message,
+            field: err.field,
+            request_id: createDirectRequestId(),
+            doc_url: directErrorDocUrl(err.code),
+            hint: err.hint,
+            recovery: err.recovery,
+            retryable: err.retryable,
+            details: err.details,
+          }),
+          orbitErrorCodeToStatus(err.code),
+        )
+      }
+      if (isSchemaMutationPath(input.path)) {
+        throw new OrbitApiError(
+          enrichDirectErrorShape({
+            code: 'INTERNAL_ERROR',
+            message: 'Schema migration request failed',
+            retryable: false,
+          }),
+          500,
+        )
+      }
+      const orbitErr = err as { code?: string; message?: string; field?: string; retryable?: boolean; request_id?: string; doc_url?: string; hint?: string; recovery?: string; details?: Record<string, unknown> }
+      if (orbitErr.code && isOrbitErrorCode(orbitErr.code)) {
+        const code = orbitErr.code
         throw new OrbitApiError(
           enrichDirectErrorShape({
             code,
@@ -105,8 +151,9 @@ export class DirectTransport implements OrbitTransport {
             hint: orbitErr.hint,
             recovery: orbitErr.recovery,
             retryable: orbitErr.retryable,
+            details: orbitErr.details,
           }),
-          this.errorCodeToStatus(code),
+          orbitErrorCodeToStatus(code),
         )
       }
       throw err
@@ -140,7 +187,12 @@ export class DirectTransport implements OrbitTransport {
         getObject?: (ctx: OrbitAuthContext, type: string) => Promise<unknown>
         addField?: (ctx: OrbitAuthContext, type: string, body: Record<string, unknown>) => Promise<unknown>
         updateField?: (ctx: OrbitAuthContext, type: string, fieldName: string, body: Record<string, unknown>) => Promise<unknown>
-        deleteField?: (ctx: OrbitAuthContext, type: string, fieldName: string) => Promise<unknown>
+        deleteField?: (
+          ctx: OrbitAuthContext,
+          type: string,
+          fieldName: string,
+          body?: Record<string, unknown>,
+        ) => Promise<unknown>
       }
       const subEntity = segments[startIdx + 2] // e.g. 'fields'
       const subAction = segments[startIdx + 3] // e.g. field name
@@ -163,11 +215,35 @@ export class DirectTransport implements OrbitTransport {
       }
       if (method === 'PATCH' && action && subEntity === 'fields' && subAction) {
         if (typeof schema.updateField !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: updateField not implemented' }, 501)
-        return sanitizeSchemaMetadataRead(await schema.updateField(this.ctx, action, subAction, this.bodyObject(body, path)))
+        const updateInput = schemaMigrationUpdateFieldRequestInputSchema.parse(this.bodyObject(body, path))
+        return sanitizeSchemaMetadataRead(await schema.updateField(
+          this.ctx,
+          action,
+          subAction,
+          updateInput,
+        ))
       }
       if (method === 'DELETE' && action && subEntity === 'fields' && subAction) {
         if (typeof schema.deleteField !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: deleteField not implemented' }, 501)
-        await schema.deleteField(this.ctx, action, subAction)
+        const input = schemaMigrationDeleteFieldInputSchema.parse({
+          entityType: action,
+          fieldName: subAction,
+          ...this.bodyObject(body, path),
+        })
+        if (input.confirmation) {
+          this.assertDirectMigrationAuthorityAvailable(computeSchemaMigrationChecksum({
+            adapter: { name: this.options.adapter!.name, dialect: this.options.adapter!.dialect },
+            orgId: this.ctx.orgId,
+            operations: [{
+              type: 'custom_field.delete',
+              entityType: action,
+              fieldName: subAction,
+            }],
+          }), input.confirmation)
+        }
+        await schema.deleteField(this.ctx, action, subAction, {
+          ...(input.confirmation ? { confirmation: input.confirmation } : {}),
+        })
         return { deleted: true, field: subAction }
       }
       throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unhandled schema route: ${method} ${path}` }, 404)
@@ -179,21 +255,33 @@ export class DirectTransport implements OrbitTransport {
       const schema = (this.services as any).schema as {
         preview?: (ctx: OrbitAuthContext, data: Record<string, unknown>) => Promise<unknown>
         apply?: (ctx: OrbitAuthContext, data: Record<string, unknown>) => Promise<unknown>
-        rollback?: (ctx: OrbitAuthContext, id: string) => Promise<unknown>
+        rollback?: (ctx: OrbitAuthContext, data: string | Record<string, unknown>) => Promise<unknown>
       }
       const operation = segments[startIdx + 2] // 'preview', 'apply', or migration id
       const subOp = segments[startIdx + 3] // 'rollback' when id is present
       if (method === 'POST' && operation === 'preview') {
         if (typeof schema.preview !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: preview not implemented' }, 501)
-        return sanitizeSchemaMetadataRead(await schema.preview(this.ctx, this.migrationBody(body, path)))
+        return sanitizeSchemaMetadataRead(await schema.preview(
+          this.ctx,
+          schemaMigrationPreviewInputSchema.parse(this.bodyObject(body, path)),
+        ))
       }
       if (method === 'POST' && operation === 'apply') {
         if (typeof schema.apply !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: apply not implemented' }, 501)
-        return sanitizeSchemaMetadataRead(await schema.apply(this.ctx, this.migrationBody(body, path)))
+        return sanitizeSchemaMetadataRead(await schema.apply(
+          this.ctx,
+          schemaMigrationApplyInputSchema.parse(this.bodyObject(body, path)),
+        ))
       }
       if (method === 'POST' && subOp === 'rollback' && operation) {
         if (typeof schema.rollback !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: rollback not implemented' }, 501)
-        return sanitizeSchemaMetadataRead(await schema.rollback(this.ctx, operation))
+        return sanitizeSchemaMetadataRead(await schema.rollback(
+          this.ctx,
+          schemaMigrationRollbackInputSchema.parse({
+            ...this.bodyObject(body, path),
+            migrationId: operation,
+          }),
+        ))
       }
       throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unhandled schema migration route: ${method} ${path}` }, 404)
     }
@@ -364,18 +452,6 @@ export class DirectTransport implements OrbitTransport {
     return body as Record<string, unknown>
   }
 
-  private migrationBody(body: unknown, path: string): Record<string, unknown> {
-    const data = this.bodyObject(body, path)
-    if (Object.keys(data).length === 0) {
-      throw new OrbitApiError({
-        code: 'VALIDATION_FAILED',
-        message: 'Invalid migration input',
-        hint: '(root): Migration input must include at least one field',
-      }, 400)
-    }
-    return data
-  }
-
   private camelizeBody(body: Record<string, unknown>): Record<string, unknown> {
     const result: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(body)) {
@@ -387,6 +463,30 @@ export class DirectTransport implements OrbitTransport {
       }
     }
     return result
+  }
+
+  private assertDirectMigrationAuthorityAvailable(
+    checksum: string,
+    confirmation: { checksum: string },
+  ): void {
+    if (confirmation.checksum !== checksum) {
+      throw new OrbitApiError({
+        code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+        message: 'Destructive schema migration confirmation checksum does not match the requested migration checksum',
+        details: {
+          checksum,
+          confirmationChecksum: confirmation.checksum,
+        },
+      }, 409)
+    }
+    if (!this.options.migrationAuthority) {
+      throw new OrbitApiError({
+        code: 'MIGRATION_AUTHORITY_UNAVAILABLE',
+        message: 'Schema migration authority is not configured for this direct transport',
+        hint: 'Pass an explicit migrationAuthority to OrbitClient when this process is allowed to run schema migrations.',
+        retryable: false,
+      }, 503)
+    }
   }
 
   private wrapEnvelope(
@@ -445,33 +545,6 @@ export class DirectTransport implements OrbitTransport {
     return segments[startIdx] === 'search' || segments[startIdx + 1] === 'search'
   }
 
-  private errorCodeToStatus(code: string): number {
-    const map: Record<string, number> = {
-      AUTH_INVALID_API_KEY: 401,
-      AUTH_INSUFFICIENT_SCOPE: 403,
-      AUTH_CONTEXT_REQUIRED: 401,
-      RATE_LIMITED: 429,
-      VALIDATION_FAILED: 400,
-      INVALID_CURSOR: 400,
-      RESOURCE_NOT_FOUND: 404,
-      RELATION_NOT_FOUND: 404,
-      CONFLICT: 409,
-      IDEMPOTENCY_CONFLICT: 409,
-      SCHEMA_INVALID_FIELD: 400,
-      SCHEMA_ENTITY_EXISTS: 409,
-      SCHEMA_DESTRUCTIVE_BLOCKED: 403,
-      SCHEMA_INCOMPATIBLE_PROMOTION: 400,
-      MIGRATION_FAILED: 500,
-      ADAPTER_UNAVAILABLE: 503,
-      ADAPTER_TRANSACTION_FAILED: 500,
-      RLS_GENERATION_FAILED: 500,
-      WEBHOOK_DELIVERY_FAILED: 502,
-      SEARCH_RESULT_TOO_LARGE: 400,
-      PAYLOAD_TOO_LARGE: 413,
-      INTERNAL_ERROR: 500,
-    }
-    return map[code] ?? 500
-  }
 }
 
 interface ZodIssueLike {
@@ -483,6 +556,12 @@ interface ZodValidationErrorLike extends Error {
   readonly issues: ZodIssueLike[]
 }
 
+const ORBIT_ERROR_CODE_SET = new Set<string>(ORBIT_ERROR_CODES)
+
+function isOrbitErrorCode(code: string): code is OrbitErrorCode {
+  return ORBIT_ERROR_CODE_SET.has(code)
+}
+
 function isZodValidationError(err: unknown): err is ZodValidationErrorLike {
   if (!(err instanceof Error) || err.name !== 'ZodError') return false
   const issues = (err as Error & { issues?: unknown }).issues
@@ -492,6 +571,19 @@ function isZodValidationError(err: unknown): err is ZodValidationErrorLike {
       const record = issue as Record<string, unknown>
       return Array.isArray(record.path) && typeof record.message === 'string'
     })
+}
+
+function isSchemaMutationPath(path: string): boolean {
+  const segments = path.split('/').filter(Boolean)
+  const startIdx = segments[0] === 'v1' ? 1 : 0
+  const entity = segments[startIdx]
+  const action = segments[startIdx + 1]
+  const subEntity = segments[startIdx + 2]
+
+  return (
+    (entity === 'schema' && action === 'migrations') ||
+    (entity === 'objects' && subEntity === 'fields')
+  )
 }
 
 function sanitizeSchemaMetadataRead(raw: unknown): unknown {

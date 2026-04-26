@@ -556,15 +556,51 @@ describe('SchemaResource', () => {
     })
   })
 
+  it('updateField() can return a migration apply result for destructive updates', async () => {
+    const body = { fieldType: 'number' }
+    transport.request.mockResolvedValue(makeEnvelope({
+      migrationId: 'migration_01',
+      checksum: 'a'.repeat(64),
+      status: 'applied',
+      appliedOperations: [],
+      rollbackable: false,
+      rollbackDecision: {
+        decision: 'non_rollbackable',
+        reason: 'No complete reverse operations are available for this migration.',
+      },
+    }))
+
+    const result = await schema.updateField('contacts', 'birthday', body)
+
+    expect(result).toMatchObject({
+      migrationId: 'migration_01',
+      status: 'applied',
+      rollbackable: false,
+    })
+    expect(transport.request).toHaveBeenCalledWith({
+      method: 'PATCH',
+      path: '/v1/objects/contacts/fields/birthday',
+      body,
+    })
+  })
+
   it('deleteField() calls DELETE /v1/objects/:type/fields/:fieldName', async () => {
+    const body = {
+      confirmation: {
+        destructive: true,
+        checksum: 'a'.repeat(64),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    }
     transport.request.mockResolvedValue(makeEnvelope({ deleted: true }))
 
-    const result = await schema.deleteField('contacts', 'birthday')
+    const result = await schema.deleteField('contacts', 'birthday', body)
 
     expect(result).toEqual({ deleted: true })
     expect(transport.request).toHaveBeenCalledWith({
       method: 'DELETE',
       path: '/v1/objects/contacts/fields/birthday',
+      body,
     })
   })
 
@@ -597,14 +633,66 @@ describe('SchemaResource', () => {
   })
 
   it('rollbackMigration() calls POST /v1/schema/migrations/:id/rollback', async () => {
+    const body = {
+      checksum: 'b'.repeat(64),
+      confirmation: {
+        destructive: true,
+        checksum: 'b'.repeat(64),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    }
     transport.request.mockResolvedValue(makeEnvelope({ rolled_back: true }))
 
-    const result = await schema.rollbackMigration('mig_1')
+    const result = await schema.rollbackMigration('mig_1', body)
 
     expect(result).toEqual({ rolled_back: true })
     expect(transport.request).toHaveBeenCalledWith({
       method: 'POST',
       path: '/v1/schema/migrations/mig_1/rollback',
+      body,
+    })
+  })
+
+  it('response().deleteField() sends confirmation body and returns raw envelope', async () => {
+    const body = {
+      confirmation: {
+        destructive: true,
+        checksum: 'c'.repeat(64),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    }
+    const envelope = makeEnvelope({ deleted: true, field: 'birthday' })
+    transport.rawRequest.mockResolvedValue(envelope)
+
+    const result = await schema.response().deleteField('contacts', 'birthday', body)
+
+    expect(result).toBe(envelope)
+    expect(transport.rawRequest).toHaveBeenCalledWith({
+      method: 'DELETE',
+      path: '/v1/objects/contacts/fields/birthday',
+      body,
+    })
+  })
+
+  it('response().rollbackMigration() sends confirmation body and returns raw envelope', async () => {
+    const body = {
+      checksum: 'd'.repeat(64),
+      confirmation: {
+        destructive: true,
+        checksum: 'd'.repeat(64),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    }
+    const envelope = makeEnvelope({ status: 'rolled_back' })
+    transport.rawRequest.mockResolvedValue(envelope)
+
+    const result = await schema.response().rollbackMigration('mig_1', body)
+
+    expect(result).toBe(envelope)
+    expect(transport.rawRequest).toHaveBeenCalledWith({
+      method: 'POST',
+      path: '/v1/schema/migrations/mig_1/rollback',
+      body,
     })
   })
 

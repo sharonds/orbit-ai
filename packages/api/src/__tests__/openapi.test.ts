@@ -61,6 +61,54 @@ describe('OpenAPI spec', () => {
     expect(spec.paths['/v1/webhooks/{id}/redeliver']?.post).toBeDefined()
   })
 
+  it('documents schema migration and field confirmation DTOs', () => {
+    expect(spec.paths['/v1/objects']?.get).toBeDefined()
+    expect(spec.paths['/v1/objects/{type}']?.get).toBeDefined()
+    expect(spec.paths['/v1/objects/{type}/fields']?.post).toBeDefined()
+    expect(spec.paths['/v1/schema/migrations/preview']?.post.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/SchemaMigrationPreviewRequest',
+    })
+    expect(spec.paths['/v1/schema/migrations/apply']?.post.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/SchemaMigrationApplyRequest',
+    })
+    expect(spec.paths['/v1/schema/migrations/{id}/rollback']?.post.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/SchemaMigrationRollbackRequest',
+    })
+    expect(spec.paths['/v1/objects/{type}/fields/{fieldName}']?.patch.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/SchemaMigrationUpdateFieldRequest',
+    })
+    expect(spec.paths['/v1/objects/{type}/fields/{fieldName}']?.delete.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/SchemaMigrationDeleteFieldRequest',
+    })
+
+    const applyRequest = spec.components.schemas.SchemaMigrationApplyRequest
+    expect(applyRequest.required).toEqual(expect.arrayContaining(['operations', 'checksum']))
+    expect(applyRequest.properties.confirmation.$ref).toBe('#/components/schemas/DestructiveConfirmation')
+    expect(applyRequest.additionalProperties).toBe(false)
+    expect(spec.paths['/v1/schema/migrations/{id}/rollback']?.post.responses['412']).toBeDefined()
+    const operationVariants = spec.components.schemas.SchemaMigrationPublicOperation.oneOf
+    for (const operationType of ['custom_field.delete', 'custom_field.rename', 'column.drop', 'column.rename']) {
+      const variant = operationVariants.find((operation: any) => operation.properties.type.const === operationType)
+      expect(variant.properties.confirmation).toBeUndefined()
+    }
+
+    const previewResponse = spec.components.schemas.SchemaMigrationPreviewResponse
+    expect(previewResponse.properties.confirmationInstructions.$ref).toBe('#/components/schemas/SchemaMigrationConfirmationInstructions')
+    expect(previewResponse.properties.scope.$ref).toBe('#/components/schemas/SchemaMigrationTrustedScope')
+    expect(previewResponse.properties.operations.items.$ref).toBe('#/components/schemas/SchemaMigrationForwardOperation')
+
+    const applyResponse = spec.components.schemas.SchemaMigrationApplyResponse
+    expect(applyResponse.required).toEqual(expect.arrayContaining(['rollbackable', 'rollbackDecision']))
+    expect(applyResponse.properties.rollbackable).toEqual({ type: 'boolean' })
+    expect(applyResponse.properties.rollbackDecision.$ref).toBe('#/components/schemas/DestructiveRollbackDecision')
+    expect(applyResponse.properties.appliedOperations.items.$ref).toBe('#/components/schemas/SchemaMigrationForwardOperation')
+    expect(spec.components.schemas.DestructiveRollbackDecision.oneOf).toHaveLength(2)
+    const forwardOperationVariants = spec.components.schemas.SchemaMigrationForwardOperation.oneOf
+    expect(forwardOperationVariants.some((operation: any) => operation.properties.type.const === 'adapter.semantic')).toBe(true)
+    const rollbackResponse = spec.components.schemas.SchemaMigrationRollbackResponse
+    expect(rollbackResponse.properties.operations.items.$ref).toBe('#/components/schemas/SchemaMigrationForwardOperation')
+  })
+
   it('contacts emits full CRUD (proves gating does not over-restrict)', () => {
     const contactsList = spec.paths['/v1/contacts']
     expect(contactsList?.get).toBeDefined()

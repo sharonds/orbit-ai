@@ -3,11 +3,14 @@ import { OrbitClient } from '../client.js'
 import { OrbitApiError } from '../errors.js'
 import { DirectTransport, resolveServiceKey } from '../transport/direct-transport.js'
 import {
+  computeSchemaMigrationChecksum,
   SqliteStorageAdapter,
   createSqliteOrbitDatabase,
   createSqliteStorageAdapter,
   initializeSqliteWave2SliceESchema,
   createSqliteOrganizationRepository,
+  type SchemaMigrationAuthority,
+  type SchemaMigrationPublicForwardOperation,
 } from '@orbit-ai/core'
 import type { StorageAdapter } from '@orbit-ai/core'
 import type { OrbitClientOptions } from '../config.js'
@@ -77,6 +80,349 @@ describe('DirectTransport', () => {
 
     expect(mockAdapter.runWithMigrationAuthority).not.toHaveBeenCalled()
   })
+
+  it('constructor and read requests do not call explicit migration authority', async () => {
+    const migrationAuthority: SchemaMigrationAuthority = {
+      run: vi.fn(async (_context, fn) => fn(createNoopMigrationDatabase())),
+    }
+    const transport = new DirectTransport({
+      adapter: createTestAdapter(),
+      context: { orgId: ORG_ID },
+      migrationAuthority,
+    })
+
+    expect(migrationAuthority.run).not.toHaveBeenCalled()
+
+    try {
+      await transport.request({ method: 'GET', path: '/v1/contacts' })
+    } catch {
+      // The read may fail with the minimal adapter; authority use is the contract here.
+    }
+
+    expect(migrationAuthority.run).not.toHaveBeenCalled()
+  })
+
+  it('schema migration apply reports unavailable authority without using the adapter authority', async () => {
+    const adapter = createTestAdapter()
+    const runWithMigrationAuthority = vi.spyOn(adapter, 'runWithMigrationAuthority')
+    const transport = new DirectTransport({
+      adapter,
+      context: { orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY' },
+      version: '2026-04-01',
+    })
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.add',
+      entityType: 'contacts',
+      fieldName: 'linkedin_url',
+      fieldType: 'url',
+    }]
+
+    await expect(transport.request({
+      method: 'POST',
+      path: '/v1/schema/migrations/apply',
+      body: {
+        operations,
+        checksum: computeSchemaMigrationChecksum({
+          adapter: { name: 'sqlite', dialect: 'sqlite' },
+          orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
+          operations,
+        }),
+      },
+    })).rejects.toMatchObject({
+      error: { code: 'MIGRATION_AUTHORITY_UNAVAILABLE' },
+      status: 503,
+    })
+    expect(runWithMigrationAuthority).not.toHaveBeenCalled()
+  })
+
+  it('schema migration apply uses explicit direct migration authority', async () => {
+    const adapter = await createRealAdapter()
+    const runWithMigrationAuthority = vi.spyOn(adapter, 'runWithMigrationAuthority')
+    const migrationAuthority: SchemaMigrationAuthority = {
+      run: vi.fn(async (_context, fn) => fn(createNoopMigrationDatabase())),
+    }
+    const client = new OrbitClient({
+      adapter,
+      context: { orgId: ORG_ID },
+      version: '2026-04-01',
+      migrationAuthority,
+      destructiveMigrationEnvironment: 'test',
+    })
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.add',
+      entityType: 'contacts',
+      fieldName: 'github_url',
+      fieldType: 'url',
+    }]
+    const checksum = computeSchemaMigrationChecksum({
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      orgId: ORG_ID,
+      operations,
+    })
+
+    const result = await client.schema.applyMigration({ operations, checksum })
+
+    expect(result).toMatchObject({ checksum, status: 'applied' })
+    expect(migrationAuthority.run).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'apply', checksum }),
+      expect.any(Function),
+    )
+    expect(runWithMigrationAuthority).not.toHaveBeenCalled()
+  })
+
+  it('destructive schema field update carries confirmation and reaches explicit authority', async () => {
+    const adapter = await createRealAdapter()
+    const migrationAuthority: SchemaMigrationAuthority = {
+      run: vi.fn(async (_context, fn) => fn(createNoopMigrationDatabase())),
+    }
+    const client = new OrbitClient({
+      adapter,
+      context: { orgId: ORG_ID },
+      version: '2026-04-01',
+      migrationAuthority,
+      destructiveMigrationEnvironment: 'test',
+    })
+    await client.schema.addField('contacts', { name: 'legacy_code', type: 'text' })
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.update',
+      entityType: 'contacts',
+      fieldName: 'legacy_code',
+      patch: { fieldType: 'number' },
+    }]
+    const checksum = computeSchemaMigrationChecksum({
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      orgId: ORG_ID,
+      operations,
+    })
+
+    await expect(client.schema.updateField('contacts', 'legacy_code', {
+      fieldType: 'number',
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject<Partial<OrbitApiError>>({
+      error: expect.objectContaining({ code: 'MIGRATION_OPERATION_UNSUPPORTED' }),
+      status: 400,
+    })
+
+    expect(migrationAuthority.run).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'apply', checksum }),
+      expect.any(Function),
+    )
+  })
+
+  it('safe schema field updates can carry optional confirmation without migration authority', async () => {
+    const adapter = await createRealAdapter()
+    const client = new OrbitClient({
+      adapter,
+      context: { orgId: ORG_ID },
+      version: '2026-04-01',
+    })
+    await client.schema.addField('contacts', { name: 'safe_label', type: 'text' })
+
+    const result = await client.schema.updateField('contacts', 'safe_label', {
+      label: 'Safe Label',
+      confirmation: {
+        destructive: true,
+        checksum: 'a'.repeat(64),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })
+
+    expect(result).toMatchObject({
+      fieldName: 'safe_label',
+      label: 'Safe Label',
+    })
+  })
+
+  it('confirmed destructive field delete without explicit authority returns a structured Orbit error', async () => {
+    const adapter = await createRealAdapter()
+    const runWithMigrationAuthority = vi.spyOn(adapter, 'runWithMigrationAuthority')
+    const client = new OrbitClient({
+      adapter,
+      context: { orgId: ORG_ID },
+      version: '2026-04-01',
+    })
+    await client.schema.addField('contacts', { name: 'legacy_status', type: 'text' })
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: 'contacts',
+      fieldName: 'legacy_status',
+    }]
+    const checksum = computeSchemaMigrationChecksum({
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      orgId: ORG_ID,
+      operations,
+    })
+
+    await expect(client.schema.deleteField('contacts', 'legacy_status', {
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject<Partial<OrbitApiError>>({
+      error: expect.objectContaining({ code: 'MIGRATION_AUTHORITY_UNAVAILABLE' }),
+      status: 503,
+    })
+    expect(runWithMigrationAuthority).not.toHaveBeenCalled()
+  })
+
+  it('rollback migration carries checksum confirmation in direct mode', async () => {
+    const adapter = await createRealAdapter()
+    const migrationAuthority: SchemaMigrationAuthority = {
+      run: vi.fn(async (_context, fn) => fn(createNoopMigrationDatabase())),
+    }
+    const client = new OrbitClient({
+      adapter,
+      context: { orgId: ORG_ID },
+      version: '2026-04-01',
+      migrationAuthority,
+      destructiveMigrationEnvironment: 'test',
+    })
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.add',
+      entityType: 'contacts',
+      fieldName: 'rollback_probe',
+      fieldType: 'text',
+    }]
+    const checksum = computeSchemaMigrationChecksum({
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      orgId: ORG_ID,
+      operations,
+    })
+    const applied = await client.schema.applyMigration({ operations, checksum }) as { migrationId: string }
+    const rollbackOperations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: 'contacts',
+      fieldName: 'rollback_probe',
+    }]
+    const rollbackChecksum = computeSchemaMigrationChecksum({
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      orgId: ORG_ID,
+      operations: rollbackOperations,
+    })
+
+    const result = await client.schema.rollbackMigration(applied.migrationId, {
+      checksum: rollbackChecksum,
+      confirmation: {
+        destructive: true,
+        checksum: rollbackChecksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })
+
+    expect(result).toMatchObject({
+      migrationId: applied.migrationId,
+      checksum: rollbackChecksum,
+      status: 'rolled_back',
+    })
+    expect(migrationAuthority.run).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'rollback', checksum: rollbackChecksum }),
+      expect.any(Function),
+    )
+  })
+
+  it('direct rollback uses the path migration id over a body-supplied id', async () => {
+    const adapter = await createRealAdapter()
+    const migrationAuthority: SchemaMigrationAuthority = {
+      run: vi.fn(async (_context, fn) => fn(createNoopMigrationDatabase())),
+    }
+    const transport = new DirectTransport({
+      adapter,
+      context: { orgId: ORG_ID },
+      migrationAuthority,
+      destructiveMigrationEnvironment: 'test',
+    })
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.add',
+      entityType: 'contacts',
+      fieldName: 'rollback_path_probe',
+      fieldType: 'text',
+    }]
+    const checksum = computeSchemaMigrationChecksum({
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      orgId: ORG_ID,
+      operations,
+    })
+    const applied = await transport.request<{ migrationId: string }>({
+      method: 'POST',
+      path: '/v1/schema/migrations/apply',
+      body: { operations, checksum },
+    })
+    const rollbackOperations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: 'contacts',
+      fieldName: 'rollback_path_probe',
+    }]
+    const rollbackChecksum = computeSchemaMigrationChecksum({
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      orgId: ORG_ID,
+      operations: rollbackOperations,
+    })
+
+    const result = await transport.request<{ migrationId: string }>({
+      method: 'POST',
+      path: `/v1/schema/migrations/${applied.data.migrationId}/rollback`,
+      body: {
+        migrationId: 'migration_body_supplied',
+        checksum: rollbackChecksum,
+        confirmation: {
+          destructive: true,
+          checksum: rollbackChecksum,
+          confirmedAt: '2026-04-26T12:00:00.000Z',
+        },
+      },
+    })
+
+    expect(result.data).toMatchObject({
+      migrationId: applied.data.migrationId,
+      checksum: rollbackChecksum,
+      status: 'rolled_back',
+    })
+  })
+
+  it('schema migration paths wrap unknown direct failures without leaking raw stacks', async () => {
+    const adapter = await createRealAdapter()
+    const transport = new DirectTransport({
+      adapter,
+      context: { orgId: ORG_ID },
+      version: '2026-04-01',
+    })
+    ;(transport as any).services.schema.apply = vi.fn(async () => {
+      const err = Object.assign(new Error('raw internal migration failure'), {
+        code: 'INTERNAL_ERROR',
+      })
+      err.stack = 'Error: raw internal migration failure\n    at secret-stack-frame'
+      throw err
+    })
+
+    const err = await transport.request({
+      method: 'POST',
+      path: '/v1/schema/migrations/apply',
+      body: {
+        operations: [{
+          type: 'custom_field.add',
+          entityType: 'contacts',
+          fieldName: 'broken_path',
+          fieldType: 'text',
+        }],
+        checksum: 'a'.repeat(64),
+      },
+    }).catch((caught: unknown) => caught)
+
+    expect(err).toBeInstanceOf(OrbitApiError)
+    expect(err).toMatchObject<Partial<OrbitApiError>>({
+      error: expect.objectContaining({
+        code: 'INTERNAL_ERROR',
+        message: 'Schema migration request failed',
+      }),
+      status: 500,
+    })
+    expect((err as OrbitApiError).stack).not.toContain('secret-stack-frame')
+  })
 })
 
 function createTestAdapter(): StorageAdapter {
@@ -93,6 +439,21 @@ function createTestAdapter(): StorageAdapter {
   }
 
   return new SqliteStorageAdapter({ database: runtimeDb })
+}
+
+function createNoopMigrationDatabase(): Parameters<Parameters<SchemaMigrationAuthority['run']>[1]>[0] {
+  const db = {
+    async transaction<T>(fn: (tx: typeof db) => Promise<T>) {
+      return fn(db)
+    },
+    async execute(_statement: unknown) {
+      return undefined
+    },
+    async query() {
+      return []
+    },
+  }
+  return db as Parameters<Parameters<SchemaMigrationAuthority['run']>[1]>[0]
 }
 
 function makeDirectOptions(): OrbitClientOptions {
@@ -455,21 +816,21 @@ describe('DirectTransport workflow sub-routes', () => {
     })
   })
 
-  it('dispatches schema field update/delete routes to typed not-implemented errors', async () => {
+  it('dispatches destructive schema field routes to confirmation errors before authority', async () => {
     const { client } = await createWorkflowClient()
 
     await expect(
       client.schema.updateField('contacts', 'linkedin', { label: 'LinkedIn' }),
     ).rejects.toMatchObject<Partial<OrbitApiError>>({
-      error: expect.objectContaining({ code: 'INTERNAL_ERROR' }),
-      status: 501,
+      error: expect.objectContaining({ code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED' }),
+      status: 409,
     })
 
     await expect(
       client.schema.deleteField('contacts', 'linkedin'),
     ).rejects.toMatchObject<Partial<OrbitApiError>>({
-      error: expect.objectContaining({ code: 'INTERNAL_ERROR' }),
-      status: 501,
+      error: expect.objectContaining({ code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED' }),
+      status: 409,
     })
   })
 })

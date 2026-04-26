@@ -13,6 +13,19 @@ describe('registry', () => {
     expect(buildTools()).toHaveLength(23)
   })
 
+  it('intentionally excludes destructive schema migration tools', () => {
+    const names = buildTools().map((tool) => tool.name)
+
+    expect(names).not.toEqual(expect.arrayContaining([
+      'preview_schema_migration',
+      'apply_schema_migration',
+      'rollback_schema_migration',
+      'delete_custom_field',
+      'rename_custom_field',
+      'promote_custom_field',
+    ]))
+  })
+
   it('has non-empty unique tool names', () => {
     const names = buildTools().map((tool) => tool.name)
     expect(names.every((name) => typeof name === 'string' && name.length > 0)).toBe(true)

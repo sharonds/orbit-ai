@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { sql } from 'drizzle-orm'
 import { DataType, newDb } from 'pg-mem'
 
@@ -36,6 +36,7 @@ import { createInMemoryCustomFieldDefinitionRepository } from '../entities/custo
 import { createInMemoryAuditLogRepository } from '../entities/audit-logs/repository.js'
 import { createInMemorySchemaMigrationRepository } from '../entities/schema-migrations/repository.js'
 import { createInMemoryIdempotencyKeyRepository } from '../entities/idempotency-keys/repository.js'
+import { computeSchemaMigrationChecksum, type SchemaMigrationPublicForwardOperation } from '../schema-engine/migrations.js'
 import { createPostgresActivityRepository } from '../entities/activities/repository.js'
 import { createPostgresCompanyRepository } from '../entities/companies/repository.js'
 import { createPostgresContractRepository } from '../entities/contracts/repository.js'
@@ -143,6 +144,41 @@ function createPostgresTestAdapter() {
   const adapter = createPostgresStorageAdapter({ database })
 
   return { database, adapter }
+}
+
+function createRequiredRepositoryOverrides() {
+  return {
+    organizations: createInMemoryOrganizationRepository(),
+    organizationMemberships: createInMemoryOrganizationMembershipRepository(),
+    apiKeys: createInMemoryApiKeyRepository(),
+    companies: createInMemoryCompanyRepository(),
+    contacts: createInMemoryContactRepository(),
+    pipelines: createInMemoryPipelineRepository(),
+    stages: createInMemoryStageRepository(),
+    deals: createInMemoryDealRepository(),
+    users: createInMemoryUserRepository(),
+    entityTags: createInMemoryEntityTagRepository(),
+    webhookDeliveries: createInMemoryWebhookDeliveryRepository(),
+    customFieldDefinitions: createInMemoryCustomFieldDefinitionRepository(),
+    schemaMigrations: createInMemorySchemaMigrationRepository(),
+  }
+}
+
+const MIGRATION_APPLY_OPERATIONS: SchemaMigrationPublicForwardOperation[] = [
+  {
+    type: 'custom_field.add',
+    entityType: 'contacts',
+    fieldName: 'linkedin_url',
+    fieldType: 'url',
+  },
+]
+const MIGRATION_APPLY_INPUT = {
+  operations: MIGRATION_APPLY_OPERATIONS,
+  checksum: computeSchemaMigrationChecksum({
+    adapter: { name: 'sqlite', dialect: 'sqlite' },
+    orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
+    operations: MIGRATION_APPLY_OPERATIONS,
+  }),
 }
 
 describe('core services registry', () => {
@@ -365,6 +401,49 @@ describe('core services registry', () => {
 
   it('fails loudly when an adapter has no implemented repository bridge and no overrides', () => {
     expect(() => createCoreServices(createTestAdapter())).toThrow('is not implemented')
+  })
+
+  it('passes only explicit migration authority into the schema engine', async () => {
+    const migrationDb = asMigrationDatabase({
+      async transaction<T>(fn) {
+        return fn(this)
+      },
+      execute: vi.fn(async () => undefined),
+      query: vi.fn(async () => []),
+    })
+    const migrationAuthority = {
+      run: vi.fn(async <T>(_context: unknown, fn: (db: typeof migrationDb) => Promise<T>): Promise<T> => fn(migrationDb)),
+    }
+    const services = createCoreServices(createTestAdapter(), {
+      ...createRequiredRepositoryOverrides(),
+      migrationAuthority,
+    })
+
+    await services.schema.apply(ctx, MIGRATION_APPLY_INPUT)
+
+    expect(migrationAuthority.run).toHaveBeenCalledTimes(1)
+    expect(migrationDb.execute).toHaveBeenCalledTimes(1)
+    expect(migrationAuthority.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ctx,
+        operation: 'apply',
+        checksum: MIGRATION_APPLY_INPUT.checksum,
+      }),
+      expect.any(Function),
+    )
+  })
+
+  it('does not derive schema engine migration authority from the runtime adapter', async () => {
+    const adapter = createTestAdapter()
+    const runWithMigrationAuthority = vi.fn(adapter.runWithMigrationAuthority.bind(adapter))
+    adapter.runWithMigrationAuthority = runWithMigrationAuthority
+
+    const services = createCoreServices(adapter, createRequiredRepositoryOverrides())
+
+    await expect(services.schema.apply(ctx, MIGRATION_APPLY_INPUT)).rejects.toMatchObject({
+      code: 'MIGRATION_AUTHORITY_UNAVAILABLE',
+    })
+    expect(runWithMigrationAuthority).not.toHaveBeenCalled()
   })
 
   it('preserves Wave 1 compatibility until Slice A services are explicitly accessed', async () => {

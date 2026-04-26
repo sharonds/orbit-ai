@@ -1,18 +1,36 @@
 import type { Hono } from 'hono'
+import {
+  destructiveConfirmationSchema,
+  schemaMigrationApplyInputSchema,
+  schemaMigrationDeleteFieldInputSchema,
+  schemaMigrationPreviewInputSchema,
+  schemaMigrationRollbackInputSchema,
+  schemaMigrationUpdateFieldRequestInputSchema,
+} from '@orbit-ai/core'
 import type { CoreServices } from '@orbit-ai/core'
 import { z } from 'zod'
 import { requireScope } from '../scopes.js'
 import { toEnvelope, toError, sanitizeSchemaRead } from '../responses.js'
 
-// Defensive schema for migration input.
-// The `passthrough()` call allows any additional fields the service understands.
-const MigrationInputSchema = z.object({}).passthrough().refine(
-  (value) => Object.keys(value).length > 0,
-  { message: 'Migration input must include at least one field' },
-)
+const DeleteFieldRequestBodySchema = z.object({
+  confirmation: destructiveConfirmationSchema.optional(),
+}).strict()
 
 function notImplemented(c: any, operation: string) {
   return c.json(toError(c, 'INTERNAL_ERROR', `${operation} not implemented`), 501)
+}
+
+function hasScope(ctx: { scopes?: string[] } | undefined, scope: string): boolean {
+  const scopes = ctx?.scopes ?? []
+  if (scopes.includes('*')) return true
+  if (scopes.includes(scope)) return true
+  const [resource] = scope.split(':')
+  return resource !== undefined && scopes.includes(`${resource}:*`)
+}
+
+async function readJsonBody(c: any, fallback: Record<string, unknown> = {}): Promise<unknown> {
+  const text = await c.req.text()
+  return text.trim().length === 0 ? fallback : JSON.parse(text)
 }
 
 export function registerObjectRoutes(app: Hono, services: CoreServices) {
@@ -50,11 +68,33 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
   })
 
   // PATCH /v1/objects/:type/fields/:fieldName — update a custom field
-  app.patch('/v1/objects/:type/fields/:fieldName', requireScope('schema:write'), async (c) => {
+  app.patch('/v1/objects/:type/fields/:fieldName', async (c) => {
     if (typeof schema.updateField !== 'function') {
       return notImplemented(c, 'Update custom field')
     }
-    const body = await c.req.json()
+    if (typeof schema.preview !== 'function') {
+      return notImplemented(c, 'Schema migration preview')
+    }
+    const body = schemaMigrationUpdateFieldRequestInputSchema.parse(await readJsonBody(c))
+    const { confirmation: _confirmation, ...patch } = body
+    const authContext = c.get('orbit')
+    if (!hasScope(authContext, 'schema:write') && !hasScope(authContext, 'schema:apply')) {
+      return c.json(toError(c, 'AUTH_INSUFFICIENT_SCOPE', 'API key lacks required scope: schema:write or schema:apply'), 403)
+    }
+    const preview = await schema.preview(c.get('orbit'), {
+      operations: [{
+        type: 'custom_field.update',
+        entityType: c.req.param('type'),
+        fieldName: c.req.param('fieldName'),
+        patch,
+      }],
+    })
+    if (preview?.destructive === true && !hasScope(authContext, 'schema:apply')) {
+      return c.json(toError(c, 'AUTH_INSUFFICIENT_SCOPE', 'API key lacks required scope: schema:apply'), 403)
+    }
+    if (preview?.destructive !== true && !hasScope(authContext, 'schema:write')) {
+      return c.json(toError(c, 'AUTH_INSUFFICIENT_SCOPE', 'API key lacks required scope: schema:write'), 403)
+    }
     const result = await schema.updateField(
       c.get('orbit'),
       c.req.param('type'),
@@ -65,11 +105,17 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
   })
 
   // DELETE /v1/objects/:type/fields/:fieldName — delete a custom field
-  app.delete('/v1/objects/:type/fields/:fieldName', requireScope('schema:write'), async (c) => {
+  app.delete('/v1/objects/:type/fields/:fieldName', requireScope('schema:apply'), async (c) => {
     if (typeof schema.deleteField !== 'function') {
       return notImplemented(c, 'Delete custom field')
     }
-    await schema.deleteField(c.get('orbit'), c.req.param('type'), c.req.param('fieldName'))
+    const body = DeleteFieldRequestBodySchema.parse(await readJsonBody(c))
+    schemaMigrationDeleteFieldInputSchema.parse({
+      entityType: c.req.param('type'),
+      fieldName: c.req.param('fieldName'),
+      ...body,
+    })
+    await schema.deleteField(c.get('orbit'), c.req.param('type'), c.req.param('fieldName'), body)
     return c.json(toEnvelope(c, { deleted: true, field: c.req.param('fieldName') }))
   })
 
@@ -80,14 +126,8 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
     if (typeof schema.preview !== 'function') {
       return notImplemented(c, 'Schema migration preview')
     }
-    const body = await c.req.json()
-    const parsed = MigrationInputSchema.safeParse(body)
-    if (!parsed.success) {
-      return c.json(toError(c, 'VALIDATION_FAILED', 'Invalid migration input', {
-        hint: parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; '),
-      }), 400)
-    }
-    const result = await schema.preview(c.get('orbit'), parsed.data)
+    const input = schemaMigrationPreviewInputSchema.parse(await readJsonBody(c))
+    const result = await schema.preview(c.get('orbit'), input)
     return c.json(toEnvelope(c, sanitizeSchemaRead(result)))
   })
 
@@ -96,14 +136,8 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
     if (typeof schema.apply !== 'function') {
       return notImplemented(c, 'Schema migration apply')
     }
-    const body = await c.req.json()
-    const parsed = MigrationInputSchema.safeParse(body)
-    if (!parsed.success) {
-      return c.json(toError(c, 'VALIDATION_FAILED', 'Invalid migration input', {
-        hint: parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; '),
-      }), 400)
-    }
-    const result = await schema.apply(c.get('orbit'), parsed.data)
+    const input = schemaMigrationApplyInputSchema.parse(await readJsonBody(c))
+    const result = await schema.apply(c.get('orbit'), input)
     return c.json(toEnvelope(c, sanitizeSchemaRead(result)))
   })
 
@@ -112,7 +146,12 @@ export function registerObjectRoutes(app: Hono, services: CoreServices) {
     if (typeof schema.rollback !== 'function') {
       return notImplemented(c, 'Schema migration rollback')
     }
-    const result = await schema.rollback(c.get('orbit'), c.req.param('id'))
+    const body = await readJsonBody(c)
+    const input = schemaMigrationRollbackInputSchema.parse({
+      ...(body as Record<string, unknown>),
+      migrationId: c.req.param('id'),
+    })
+    const result = await schema.rollback(c.get('orbit'), input)
     return c.json(toEnvelope(c, sanitizeSchemaRead(result)))
   })
 }

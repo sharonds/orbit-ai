@@ -138,4 +138,67 @@ describe('customFieldDefinition service', () => {
     expect(found?.isPromoted).toBe(true)
     expect(found?.promotedColumnName).toBe('promoted_priority')
   })
+
+  it('updates safe metadata while preserving field identity and values', async () => {
+    const repo = createInMemoryCustomFieldDefinitionRepository()
+    const service = createCustomFieldDefinitionAdminService(repo)
+    const record = makeRecord({ defaultValue: 'medium' })
+    await repo.create(ctx, record)
+
+    const updated = await service.update(ctx, record.id, {
+      label: 'Priority segment',
+      description: 'Updated description',
+      updatedAt: new Date('2026-04-03T12:00:00.000Z'),
+    })
+
+    expect(updated).toMatchObject({
+      id: record.id,
+      organizationId: ctx.orgId,
+      entityType: 'contacts',
+      fieldName: 'priority',
+      fieldType: 'select',
+      label: 'Priority segment',
+      description: 'Updated description',
+      defaultValue: 'medium',
+      options: ['low', 'medium', 'high'],
+    })
+  })
+
+  it('rejects update conflicts within the same org and entity only', async () => {
+    const repo = createInMemoryCustomFieldDefinitionRepository()
+    const priority = makeRecord({ fieldName: 'priority' })
+    const tier = makeRecord({ id: generateId('customField'), fieldName: 'tier' })
+    const betaPriority = makeRecord({
+      id: generateId('customField'),
+      organizationId: ctxB.orgId,
+      fieldName: 'priority',
+    })
+    await repo.create(ctx, priority)
+    await repo.create(ctx, tier)
+    await repo.create(ctxB, betaPriority)
+
+    await expect(repo.update(ctx, tier.id, { fieldName: 'priority' })).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'fieldName',
+    })
+    await expect(repo.update(ctxB, betaPriority.id, { label: 'Beta priority' })).resolves.toMatchObject({
+      organizationId: ctxB.orgId,
+      fieldName: 'priority',
+      label: 'Beta priority',
+    })
+  })
+
+  it('deletes only the matching org-scoped custom field definition', async () => {
+    const repo = createInMemoryCustomFieldDefinitionRepository()
+    const service = createCustomFieldDefinitionAdminService(repo)
+    const record = makeRecord()
+    const betaRecord = makeRecord({ id: generateId('customField'), organizationId: ctxB.orgId })
+    await repo.create(ctx, record)
+    await repo.create(ctxB, betaRecord)
+
+    await expect(service.delete(ctxB, record.id)).resolves.toBe(false)
+    await expect(service.delete(ctx, record.id)).resolves.toBe(true)
+    await expect(repo.get(ctx, record.id)).resolves.toBeNull()
+    await expect(repo.get(ctxB, betaRecord.id)).resolves.toMatchObject({ id: betaRecord.id })
+  })
 })

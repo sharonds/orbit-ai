@@ -439,17 +439,30 @@ const POSTGRES_WAVE_2_SLICE_E_SCHEMA_STATEMENTS = [
   `create table if not exists schema_migrations (
     id text primary key,
     organization_id text not null references organizations(id),
+    checksum text not null,
+    adapter jsonb not null,
     description text not null,
     entity_type text,
     operation_type text not null,
+    forward_operations jsonb not null default '[]'::jsonb,
+    reverse_operations jsonb not null default '[]'::jsonb,
+    destructive boolean not null default false,
+    status text not null default 'pending',
     sql_statements jsonb not null default '[]'::jsonb,
     rollback_statements jsonb not null default '[]'::jsonb,
+    applied_by text,
     applied_by_user_id text references users(id),
     approved_by_user_id text references users(id),
+    started_at timestamptz,
     applied_at timestamptz,
+    rolled_back_at timestamptz,
+    failed_at timestamptz,
+    error_code text,
+    error_message text,
     created_at timestamptz not null,
     updated_at timestamptz not null
   )`,
+  `create index if not exists schema_migrations_target_idx on schema_migrations (organization_id, status, applied_at)`,
   `create index if not exists schema_migrations_applied_at_idx on schema_migrations (applied_at)`,
   `create table if not exists idempotency_keys (
     id text primary key,
@@ -466,6 +479,47 @@ const POSTGRES_WAVE_2_SLICE_E_SCHEMA_STATEMENTS = [
     updated_at timestamptz not null
   )`,
   `create unique index if not exists idempotency_unique_idx on idempotency_keys (organization_id, key, method, path)`,
+] as const
+
+const POSTGRES_SCHEMA_MIGRATIONS_UPGRADE_STATEMENTS = [
+  `alter table schema_migrations add column if not exists checksum text`,
+  `alter table schema_migrations add column if not exists adapter jsonb`,
+  `alter table schema_migrations add column if not exists forward_operations jsonb`,
+  `alter table schema_migrations add column if not exists reverse_operations jsonb`,
+  `alter table schema_migrations add column if not exists destructive boolean`,
+  `alter table schema_migrations add column if not exists status text`,
+  `alter table schema_migrations add column if not exists sql_statements jsonb`,
+  `alter table schema_migrations add column if not exists rollback_statements jsonb`,
+  `alter table schema_migrations add column if not exists applied_by text`,
+  `alter table schema_migrations add column if not exists started_at timestamptz`,
+  `alter table schema_migrations add column if not exists rolled_back_at timestamptz`,
+  `alter table schema_migrations add column if not exists failed_at timestamptz`,
+  `alter table schema_migrations add column if not exists error_code text`,
+  `alter table schema_migrations add column if not exists error_message text`,
+  `update schema_migrations
+    set checksum = coalesce(checksum, '0000000000000000000000000000000000000000000000000000000000000000'),
+        adapter = coalesce(adapter, '{"name":"postgres","dialect":"postgres"}'::jsonb),
+        forward_operations = coalesce(forward_operations, '[]'::jsonb),
+        reverse_operations = coalesce(reverse_operations, '[]'::jsonb),
+        destructive = coalesce(destructive, false),
+        status = coalesce(status, case when applied_at is not null then 'applied' else 'pending' end),
+        sql_statements = coalesce(sql_statements, '[]'::jsonb),
+        rollback_statements = coalesce(rollback_statements, '[]'::jsonb)`,
+  `alter table schema_migrations
+    alter column checksum set not null,
+    alter column adapter set not null,
+    alter column forward_operations set default '[]'::jsonb,
+    alter column forward_operations set not null,
+    alter column reverse_operations set default '[]'::jsonb,
+    alter column reverse_operations set not null,
+    alter column destructive set default false,
+    alter column destructive set not null,
+    alter column status set default 'pending',
+    alter column status set not null,
+    alter column sql_statements set default '[]'::jsonb,
+    alter column sql_statements set not null,
+    alter column rollback_statements set default '[]'::jsonb,
+    alter column rollback_statements set not null`,
 ] as const
 
 function buildCreateSchemaStatement() {
@@ -530,6 +584,10 @@ export async function initializePostgresWave2SliceESchema(
     await tx.execute(sql.raw(buildSetLocalSearchPathStatement()))
 
     for (const statement of POSTGRES_WAVE_2_SLICE_E_SCHEMA_STATEMENTS) {
+      await tx.execute(sql.raw(statement))
+    }
+
+    for (const statement of POSTGRES_SCHEMA_MIGRATIONS_UPGRADE_STATEMENTS) {
       await tx.execute(sql.raw(statement))
     }
 

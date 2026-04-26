@@ -1,4 +1,13 @@
-import type { CustomFieldDefinition, OrbitEnvelope } from '@orbit-ai/core'
+import type {
+  CustomFieldDefinition,
+  DestructiveConfirmation,
+  OrbitEnvelope,
+  SchemaMigrationApplyInput,
+  SchemaMigrationApplyOutput,
+  SchemaMigrationPreviewInput,
+  SchemaMigrationRollbackInput,
+  SchemaMigrationUpdateFieldRequestInput,
+} from '@orbit-ai/core'
 import type { OrbitTransport } from '../transport/index.js'
 
 /**
@@ -21,6 +30,19 @@ export interface SchemaObjectDefinition {
  * documented top-level fields without coupling to internals.
  */
 export type SchemaMigrationResult = Record<string, unknown>
+
+export type SchemaPreviewMigrationInput = SchemaMigrationPreviewInput | Record<string, unknown>
+export type SchemaApplyMigrationInput = SchemaMigrationApplyInput | (Record<string, unknown> & {
+  checksum?: string
+  confirmation?: DestructiveConfirmation
+})
+
+export type SchemaDeleteFieldInput = {
+  confirmation?: DestructiveConfirmation
+}
+
+export type SchemaUpdateFieldResult = CustomFieldDefinition | SchemaMigrationApplyOutput
+export type SchemaRollbackMigrationInput = Omit<SchemaMigrationRollbackInput, 'migrationId'>
 
 export class SchemaResource {
   constructor(private readonly transport: OrbitTransport) {}
@@ -53,9 +75,9 @@ export class SchemaResource {
   async updateField(
     type: string,
     fieldName: string,
-    body: Record<string, unknown>,
-  ): Promise<CustomFieldDefinition> {
-    const r = await this.transport.request<CustomFieldDefinition>({
+    body: SchemaMigrationUpdateFieldRequestInput,
+  ): Promise<SchemaUpdateFieldResult> {
+    const r = await this.transport.request<SchemaUpdateFieldResult>({
       method: 'PATCH',
       path: `/v1/objects/${type}/fields/${fieldName}`,
       body,
@@ -63,15 +85,20 @@ export class SchemaResource {
     return r.data
   }
 
-  async deleteField(type: string, fieldName: string): Promise<{ deleted: true; field: string }> {
+  async deleteField(
+    type: string,
+    fieldName: string,
+    body?: SchemaDeleteFieldInput,
+  ): Promise<{ deleted: true; field: string }> {
     const r = await this.transport.request<{ deleted: true; field: string }>({
       method: 'DELETE',
       path: `/v1/objects/${type}/fields/${fieldName}`,
+      ...(body !== undefined ? { body } : {}),
     })
     return r.data
   }
 
-  async previewMigration(body: Record<string, unknown>): Promise<SchemaMigrationResult> {
+  async previewMigration(body: SchemaPreviewMigrationInput): Promise<SchemaMigrationResult> {
     const r = await this.transport.request<SchemaMigrationResult>({
       method: 'POST',
       path: '/v1/schema/migrations/preview',
@@ -80,7 +107,7 @@ export class SchemaResource {
     return r.data
   }
 
-  async applyMigration(body: Record<string, unknown>): Promise<SchemaMigrationResult> {
+  async applyMigration(body: SchemaApplyMigrationInput): Promise<SchemaMigrationResult> {
     const r = await this.transport.request<SchemaMigrationResult>({
       method: 'POST',
       path: '/v1/schema/migrations/apply',
@@ -89,10 +116,11 @@ export class SchemaResource {
     return r.data
   }
 
-  async rollbackMigration(id: string): Promise<SchemaMigrationResult> {
+  async rollbackMigration(id: string, body?: SchemaRollbackMigrationInput): Promise<SchemaMigrationResult> {
     const r = await this.transport.request<SchemaMigrationResult>({
       method: 'POST',
       path: `/v1/schema/migrations/${id}/rollback`,
+      ...(body !== undefined ? { body } : {}),
     })
     return r.data
   }
@@ -104,15 +132,19 @@ export class SchemaResource {
     updateField: (
       type: string,
       fieldName: string,
-      body: Record<string, unknown>,
-    ) => Promise<OrbitEnvelope<CustomFieldDefinition>>
+      body: SchemaMigrationUpdateFieldRequestInput,
+    ) => Promise<OrbitEnvelope<SchemaUpdateFieldResult>>
     deleteField: (
       type: string,
       fieldName: string,
+      body?: SchemaDeleteFieldInput,
     ) => Promise<OrbitEnvelope<{ deleted: true; field: string }>>
-    previewMigration: (body: Record<string, unknown>) => Promise<OrbitEnvelope<SchemaMigrationResult>>
-    applyMigration: (body: Record<string, unknown>) => Promise<OrbitEnvelope<SchemaMigrationResult>>
-    rollbackMigration: (id: string) => Promise<OrbitEnvelope<SchemaMigrationResult>>
+    previewMigration: (body: SchemaPreviewMigrationInput) => Promise<OrbitEnvelope<SchemaMigrationResult>>
+    applyMigration: (body: SchemaApplyMigrationInput) => Promise<OrbitEnvelope<SchemaMigrationResult>>
+    rollbackMigration: (
+      id: string,
+      body?: SchemaRollbackMigrationInput,
+    ) => Promise<OrbitEnvelope<SchemaMigrationResult>>
   } {
     return {
       listObjects: () =>
@@ -129,15 +161,16 @@ export class SchemaResource {
           body,
         }),
       updateField: (type, fieldName, body) =>
-        this.transport.rawRequest<CustomFieldDefinition>({
+        this.transport.rawRequest<SchemaUpdateFieldResult>({
           method: 'PATCH',
           path: `/v1/objects/${type}/fields/${fieldName}`,
           body,
         }),
-      deleteField: (type, fieldName) =>
+      deleteField: (type, fieldName, body) =>
         this.transport.rawRequest<{ deleted: true; field: string }>({
           method: 'DELETE',
           path: `/v1/objects/${type}/fields/${fieldName}`,
+          ...(body !== undefined ? { body } : {}),
         }),
       previewMigration: (body) =>
         this.transport.rawRequest<SchemaMigrationResult>({
@@ -151,10 +184,11 @@ export class SchemaResource {
           path: '/v1/schema/migrations/apply',
           body,
         }),
-      rollbackMigration: (id) =>
+      rollbackMigration: (id, body) =>
         this.transport.rawRequest<SchemaMigrationResult>({
           method: 'POST',
           path: `/v1/schema/migrations/${id}/rollback`,
+          ...(body !== undefined ? { body } : {}),
         }),
     }
   }

@@ -49,8 +49,9 @@ packages you run in your own stack:
   scoped access such as `contacts:read` or `*`.
 - **Agent-ready MCP server** - 23 built-in tools, stdio and HTTP transports, and
   output redaction/truncation helpers.
-- **Schema metadata and custom fields** - schema inspection and custom-field
-  surfaces are present, while migration execution remains an alpha workstream.
+- **Schema metadata and migrations** - schema inspection, custom fields, and
+  checksum-bound migration preview/apply/rollback are available on the alpha
+  API, SDK, and CLI surfaces.
 - **Operational protections** - structured errors, request IDs, idempotency,
   rate limiting, payload limits, and explicit alpha limitations.
 - **Integration connectors** - Gmail, Google Calendar, and Stripe connectors for
