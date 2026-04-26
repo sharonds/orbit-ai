@@ -10,6 +10,7 @@ export interface Options {
   readonly install: boolean
   readonly installCmd?: string
   readonly help: boolean
+  readonly version: boolean
 }
 
 // Lowercase-only because the generated starter package name is unscoped.
@@ -28,6 +29,7 @@ export function parseOptions(argv: readonly string[]): Options {
       install: { type: 'boolean', default: true },
       'install-cmd': { type: 'string' },
       help: { type: 'boolean', default: false, short: 'h' },
+      version: { type: 'boolean', default: false, short: 'v' },
     },
     strict: true,
   })
@@ -42,13 +44,22 @@ export function parseOptions(argv: readonly string[]): Options {
   if (template !== undefined && !TEMPLATES.includes(template as TemplateName)) {
     throw new Error(`Unknown template '${template}'. Available: ${TEMPLATES.join(', ')}`)
   }
+  const install = values.install ?? true
+  const installCmd = values['install-cmd'] as string | undefined
+  if (installCmd !== undefined && installCmd.trim().length === 0) {
+    throw new Error('--install-cmd cannot be empty.')
+  }
+  if (installCmd !== undefined && install === false) {
+    throw new Error('--install-cmd cannot be used with --no-install.')
+  }
   const result: Options = {
     ...(projectName !== undefined ? { projectName } : {}),
     ...(template !== undefined ? { template: template as TemplateName } : {}),
     yes: Boolean(values.yes),
-    install: values.install ?? true,
-    ...(values['install-cmd'] !== undefined ? { installCmd: values['install-cmd'] as string } : {}),
+    install,
+    ...(installCmd !== undefined ? { installCmd } : {}),
     help: Boolean(values.help),
+    version: Boolean(values.version),
   }
   return result
 }

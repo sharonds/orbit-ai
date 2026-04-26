@@ -70,6 +70,33 @@ describe('run() error paths', () => {
     expect(messages).toMatch(/project name is required/i)
   })
 
+  it('prints version and returns without prompting or touching the filesystem', async () => {
+    process.stdin.isTTY = false
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await run(['--version'])
+
+    expect(logSpy).toHaveBeenCalledWith('@orbit-ai/create-orbit-app 0.1.0-alpha.0')
+    expect(errSpy).not.toHaveBeenCalled()
+    expect(fs.readdirSync(workDir)).toEqual([])
+  })
+
+  it('exits 2 for parser conflicts before prompting or touching the filesystem', async () => {
+    process.stdin.isTTY = true
+    const exitSpy = stubExit()
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(
+      run(['my-app', '--no-install', '--install-cmd', 'pnpm install']),
+    ).rejects.toThrow(/exit:2/)
+
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    const messages = errSpy.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(messages).toMatch(/--install-cmd cannot be used with --no-install/i)
+    expect(fs.readdirSync(workDir)).toEqual([])
+  })
+
   it('exits 1 when the target directory exists and is not empty', async () => {
     const targetDir = path.join(workDir, 'my-app')
     fs.mkdirSync(targetDir)

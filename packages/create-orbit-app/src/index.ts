@@ -21,6 +21,7 @@ Options:
   --yes, -y             Non-interactive; accept all defaults
   --no-install          Skip package-manager install after scaffold
   --install-cmd <cmd>   Custom install command (e.g., 'pnpm install')
+  --version, -v         Show create-orbit-app version
   --help, -h            Show this help
 
 Examples:
@@ -38,6 +39,10 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
   }
   if (opts.help) {
     console.log(HELP)
+    return
+  }
+  if (opts.version) {
+    console.log(`@orbit-ai/create-orbit-app ${getOrbitVersion()}`)
     return
   }
 
