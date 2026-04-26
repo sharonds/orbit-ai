@@ -61,7 +61,7 @@ Note: the Plan D execution contract was supplied from the parent workspace path 
 | 8. Add Packed Tarball Smoke Coverage | Complete | `4667ef7`, `2f260b6`, `aa578a6` | This commit | Implementation subagent `019dc99d-00d0-7df1-9c89-405f30078d93`; reviews `019dc9a2-abff-7732-9dab-bc16658738ca`, `019dc9a2-acb6-7690-b68a-b269b4f1cd24`, re-review `019dc9a5-0203-7903-9e53-dd6e7ad7c768` |
 | 9. Update Create-Orbit-App User Documentation | Complete | `25927e8` | This commit | Implementation subagent `019dc9a7-d604-7d52-ac6b-841bfcf9a572`; reviews `019dc9a9-831a-74e2-9523-92f215968ea9`, `019dc9a9-8357-70a0-92d2-c4145ca21b38` |
 | 10. Align Release And Repo Documentation With Scoped Package Reality | Complete | `438089a`, `3dce243` | This commit | Implementation subagent `019dc9aa-d5d2-7583-8489-e0988d6902f2`; reviews `019dc9ac-79b2-7ea3-a43e-129e8caf7073`, `019dc9ac-7a1d-7af2-8620-5918d0d4ccbc`, re-review `019dc9ae-5fbd-7a22-ae68-d0a1288f3cd2` |
-| 11. Changeset And Package Artifact Readiness | Pending | Pending | Pending | Pending |
+| 11. Changeset And Package Artifact Readiness | Complete | `15101ab` | This commit | Implementation subagent `019dc9b0-0754-7e02-ad54-a55784722678`; package/release review `019dc9b1-d1cc-7330-a398-d06e1ab8df46` |
 | 12. Final Verification, Reviews, And Concordance | Pending | Pending | Pending | Pending |
 
 ## Baseline Gate
@@ -542,6 +542,52 @@ Named review lenses:
 - Package/release re-review subagent `019dc9ae-5fbd-7a22-ae68-d0a1288f3cd2`: no remaining Critical/High/Medium findings; confirmed all 8 package READMEs present and package metadata matches `@orbit-ai/create-orbit-app`.
 
 Result: no unresolved Critical/High/Medium Task 10 findings remain.
+
+### Task 11 Reviews
+
+Implementation subagent: `019dc9b0-0754-7e02-ad54-a55784722678`
+
+Implementation commit: `15101ab changeset: record create-orbit-app follow-up hardening`
+
+Changed files:
+
+- `.changeset/plan-d-create-orbit-app-readiness.md`
+- `scripts/release-workflow.test.mjs`
+
+Focused validation:
+
+```text
+$ node scripts/verify-package-artifacts.mjs
+Package artifact verification passed.
+exit 0
+
+$ node --test scripts/release-workflow.test.mjs
+1..39
+# tests 39
+# pass 39
+# fail 0
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app test -- src/publishGuard.test.ts
+Test Files  1 passed (1)
+Tests       3 passed (3)
+exit 0
+```
+
+Package/release verification:
+
+- Patch changeset added for `@orbit-ai/create-orbit-app`.
+- Package metadata was verify-only; no manifest drift required edits.
+- `.changeset/config.json` fixed group covers `@orbit-ai/create-orbit-app`.
+- `publishGuard` fail-closed behavior remains covered by `packages/create-orbit-app/src/publishGuard.test.ts`.
+- CI publish uses `NPM_CONFIG_IGNORE_SCRIPTS: "true"` and relies on built artifacts plus `scripts/verify-package-artifacts.mjs`, not lifecycle scripts.
+- No `CLAUDE.md`, `.claude`, or `MEMORY.md` changes.
+
+Named review lenses:
+
+- Package/release review subagent `019dc9b1-d1cc-7330-a398-d06e1ab8df46`: no Critical/High/Medium findings. Low finding: fail-closed guard assertion is in `publishGuard.test.ts`, not `release-workflow.test.mjs`. Decision: keep; Task 11 validation requires `publishGuard.test.ts`, and it passed with fail-closed coverage.
+
+Result: no unresolved Critical/High/Medium Task 11 findings remain.
 
 ## Deferred Items And Skipped Validation
 
