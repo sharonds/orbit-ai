@@ -191,6 +191,7 @@ describe('copyTemplate', () => {
     const target = path.join(dst, 'out')
     const specialFileName = 'socket-like-special'
     const specialFilePath = path.join(realSourceDir, specialFileName)
+    let specialDirentReturned = false
     const specialDirent = {
       name: specialFileName,
       parentPath: realSourceDir,
@@ -224,6 +225,7 @@ describe('copyTemplate', () => {
           async (...args: Parameters<typeof import('node:fs/promises')['readdir']>) => {
             const [dir, options] = args
             if (dir === realSourceDir && options && typeof options === 'object' && 'withFileTypes' in options) {
+              specialDirentReturned = true
               return [specialDirent]
             }
             return actual.readdir(...args)
@@ -235,9 +237,10 @@ describe('copyTemplate', () => {
     try {
       await copyTemplateWithSpecialFile({ sourceDir: realSourceDir, targetDir: target, replacements: {} })
 
+      expect(specialDirentReturned).toBe(true)
       expect(fs.existsSync(path.join(target, specialFileName))).toBe(false)
-      expect(readFileMock).not.toHaveBeenCalledWith(specialFilePath, expect.anything())
-      expect(copyFileMock).not.toHaveBeenCalledWith(specialFilePath, expect.anything())
+      expect(readFileMock.mock.calls.some(([file]) => file === specialFilePath)).toBe(false)
+      expect(copyFileMock.mock.calls.some(([src]) => src === specialFilePath)).toBe(false)
     } finally {
       vi.doUnmock('node:fs/promises')
       vi.resetModules()
