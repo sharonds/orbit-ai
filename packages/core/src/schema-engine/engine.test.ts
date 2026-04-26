@@ -1,15 +1,21 @@
 import { describe, expect, it, vi } from 'vitest'
-import { OrbitSchemaEngine, type SchemaMigrationAuthority } from './engine.js'
+import { OrbitSchemaEngine, type SchemaEngineSchemaAdapter, type SchemaMigrationAuthority } from './engine.js'
 import type { OrbitAuthContext } from '../adapters/interface.js'
 import type { CustomFieldDefinitionRepository } from '../entities/custom-field-definitions/repository.js'
 import type { CustomFieldDefinitionRecord } from '../entities/custom-field-definitions/validators.js'
 import type { SchemaMigrationRepository } from '../entities/schema-migrations/repository.js'
 import { OrbitError } from '../types/errors.js'
+import { computeSchemaMigrationChecksum, type SchemaMigrationPublicForwardOperation } from './migrations.js'
 
 const ctx: OrbitAuthContext = { orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY', scopes: ['*'] }
 const betaCtx: OrbitAuthContext = { orgId: 'org_01ARYZ6S41ZZZZZZZZZZZZZZZZ', scopes: ['*'] }
 
-function field(id: string, fieldName: string, organizationId = ctx.orgId): CustomFieldDefinitionRecord {
+function field(
+  id: string,
+  fieldName: string,
+  organizationId = ctx.orgId,
+  overrides: Partial<CustomFieldDefinitionRecord> = {},
+): CustomFieldDefinitionRecord {
   const now = new Date('2026-04-24T00:00:00.000Z')
   return {
     id,
@@ -28,6 +34,7 @@ function field(id: string, fieldName: string, organizationId = ctx.orgId): Custo
     validation: {},
     createdAt: now,
     updatedAt: now,
+    ...overrides,
   }
 }
 
@@ -99,11 +106,21 @@ function makeEngine(
   customFields: CustomFieldDefinitionRepository,
   migrationAuthority?: SchemaMigrationAuthority,
   migrationLedger: SchemaMigrationRepository = ledger(),
+  adapter?: SchemaEngineSchemaAdapter,
 ): OrbitSchemaEngine {
   return new OrbitSchemaEngine({
     customFields: () => customFields,
     ledger: () => migrationLedger,
+    ...(adapter ? { adapter: () => adapter } : {}),
     ...(migrationAuthority ? { migrationAuthority } : {}),
+  })
+}
+
+function checksumFor(operations: SchemaMigrationPublicForwardOperation[]): string {
+  return computeSchemaMigrationChecksum({
+    adapter: { name: 'sqlite', dialect: 'sqlite' },
+    orgId: ctx.orgId,
+    operations,
   })
 }
 
@@ -117,25 +134,24 @@ function makeAuthority() {
   return { run }
 }
 
+const APPLY_OPERATIONS: SchemaMigrationPublicForwardOperation[] = [{
+  type: 'custom_field.add',
+  entityType: 'contacts',
+  fieldName: 'linkedin_url',
+  fieldType: 'url',
+}]
 const APPLY_INPUT = {
-  operations: [
-    {
-      type: 'custom_field.promote',
-      entityType: 'contacts',
-      fieldName: 'linkedin_url',
-    },
-  ],
-  checksum: 'a'.repeat(64),
+  operations: APPLY_OPERATIONS,
+  checksum: checksumFor(APPLY_OPERATIONS),
 }
+const DESTRUCTIVE_APPLY_OPERATIONS: SchemaMigrationPublicForwardOperation[] = [{
+  type: 'column.drop',
+  tableName: 'contacts',
+  columnName: 'legacy_score',
+}]
 const DESTRUCTIVE_APPLY_INPUT = {
-  operations: [
-    {
-      type: 'column.drop',
-      tableName: 'contacts',
-      columnName: 'legacy_score',
-    },
-  ],
-  checksum: 'b'.repeat(64),
+  operations: DESTRUCTIVE_APPLY_OPERATIONS,
+  checksum: checksumFor(DESTRUCTIVE_APPLY_OPERATIONS),
 }
 
 describe('OrbitSchemaEngine', () => {
@@ -347,7 +363,37 @@ describe('OrbitSchemaEngine', () => {
     expect(result.summary).toContain('Add linkedin_url custom field to contacts')
   })
 
+  it('previews indexed custom field add as destructive when JSONB indexes are not supported', async () => {
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+
+    const result = await makeEngine(repo).preview(ctx, {
+      operations: [{
+        type: 'custom_field.add',
+        entityType: 'contacts',
+        fieldName: 'linkedin_url',
+        fieldType: 'url',
+        indexed: true,
+      }],
+    })
+
+    expect(result.destructive).toBe(true)
+    expect(result.confirmationRequired).toBe(true)
+    expect(result.confirmationInstructions.destructiveOperations).toEqual(['custom_field.add'])
+    expect(result.warnings).toContain('Adapter sqlite has not proven JSONB custom-field index support.')
+  })
+
   it('previews deleting an existing custom field as destructive', async () => {
+    const calls: Array<Record<string, unknown>> = []
     const repo: CustomFieldDefinitionRepository = {
       async create(_ctx, record) {
         return record
@@ -356,8 +402,9 @@ describe('OrbitSchemaEngine', () => {
         return null
       },
       async list(_ctx, query) {
+        calls.push(query)
         return {
-          data: query.filter?.field_name === 'legacy_code'
+          data: query.filter === undefined
             ? [field('field_01J00000000000000000000006', 'legacy_code')]
             : [],
           hasMore: false,
@@ -374,6 +421,8 @@ describe('OrbitSchemaEngine', () => {
       }],
     })
 
+    expect(calls).toEqual([{ limit: 500 }])
+    expect(result.warnings).not.toContain('Custom field contacts.legacy_code was not found in metadata or adapter snapshot.')
     expect(result).toMatchObject({
       destructive: true,
       confirmationRequired: true,
@@ -421,6 +470,73 @@ describe('OrbitSchemaEngine', () => {
     expect(result.destructive).toBe(true)
     expect(result.confirmationRequired).toBe(true)
     expect(result.confirmationInstructions.destructiveOperations).toEqual(['custom_field.rename'])
+  })
+
+  it('previews unpromoted compatible custom field widening as metadata-only non-destructive', async () => {
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return {
+          data: [field('field_01J00000000000000000000008', 'website', ctx.orgId, { fieldType: 'url' })],
+          hasMore: false,
+          nextCursor: null,
+        }
+      },
+    }
+
+    const result = await makeEngine(repo).preview(ctx, {
+      operations: [{
+        type: 'custom_field.update',
+        entityType: 'contacts',
+        fieldName: 'website',
+        patch: { fieldType: 'text' },
+      }],
+    })
+
+    expect(result.destructive).toBe(false)
+    expect(result.confirmationRequired).toBe(false)
+  })
+
+  it('previews promoted compatible custom field widening as destructive', async () => {
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return {
+          data: [
+            field('field_01J00000000000000000000009', 'website', ctx.orgId, {
+              fieldType: 'url',
+              isPromoted: true,
+              promotedColumnName: 'website',
+            }),
+          ],
+          hasMore: false,
+          nextCursor: null,
+        }
+      },
+    }
+
+    const result = await makeEngine(repo).preview(ctx, {
+      operations: [{
+        type: 'custom_field.update',
+        entityType: 'contacts',
+        fieldName: 'website',
+        patch: { fieldType: 'text' },
+      }],
+    })
+
+    expect(result.destructive).toBe(true)
+    expect(result.confirmationRequired).toBe(true)
+    expect(result.confirmationInstructions.destructiveOperations).toEqual(['custom_field.update'])
   })
 
   it('does not write ledger records or execute migration authority during preview', async () => {
@@ -528,6 +644,64 @@ describe('OrbitSchemaEngine', () => {
       },
     })).rejects.toMatchObject({
       code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('rejects apply when the supplied checksum does not match current adapter, org, and operations', async () => {
+    const authority = makeAuthority()
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const engine = makeEngine(repo, authority)
+
+    await expect(engine.apply(ctx, {
+      operations: APPLY_OPERATIONS,
+      checksum: 'a'.repeat(64),
+    })).rejects.toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('uses preview destructive classification before applying required custom field adds', async () => {
+    const authority = makeAuthority()
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const engine = makeEngine(repo, authority)
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.add',
+      entityType: 'contacts',
+      fieldName: 'tier',
+      fieldType: 'text',
+      required: true,
+    }]
+
+    await expect(engine.apply(ctx, {
+      operations,
+      checksum: checksumFor(operations),
+    })).rejects.toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
+      details: {
+        destructiveOperations: ['custom_field.add'],
+      },
     })
     expect(authority.run).not.toHaveBeenCalled()
   })

@@ -71,13 +71,6 @@ export type SchemaEngineSchemaAdapter = Pick<
 >
 
 const ALLOWED_FIELD_TYPES = ['text', 'number', 'boolean', 'date', 'datetime', 'select', 'multi_select', 'url', 'email', 'phone', 'currency', 'relation'] as const
-const DESTRUCTIVE_APPLY_OPERATION_TYPES = new Set([
-  'custom_field.delete',
-  'custom_field.rename',
-  'column.drop',
-  'column.rename',
-  'index.drop',
-])
 const DEFAULT_SCHEMA_SNAPSHOT: SchemaSnapshot = {
   customFields: [],
   tables: [...PUBLIC_CRM_ENTITY_TYPES, 'custom_field_definitions', 'schema_migrations'],
@@ -85,7 +78,7 @@ const DEFAULT_SCHEMA_SNAPSHOT: SchemaSnapshot = {
 const DEFAULT_SCHEMA_ADAPTER: SchemaEngineSchemaAdapter = {
   name: 'sqlite',
   dialect: 'sqlite',
-  supportsJsonbIndexes: true,
+  supportsJsonbIndexes: false,
   async getSchemaSnapshot() {
     return DEFAULT_SCHEMA_SNAPSHOT
   },
@@ -325,28 +318,29 @@ export class OrbitSchemaEngine {
   ): Promise<Record<string, unknown>> {
     assertOrgContext(ctx)
     const input = schemaMigrationApplyInputSchema.parse(data)
-    void this.ledger
-    const destructiveOperations = input.operations
-      .filter((operation) => DESTRUCTIVE_APPLY_OPERATION_TYPES.has(operation.type))
-      .map((operation) => operation.type)
+    const preview = await this.preview(ctx, { operations: input.operations })
+    if (input.checksum !== preview.checksum) {
+      this.destructiveConfirmationStale(preview.checksum, input.checksum)
+    }
+    const destructiveOperations = preview.confirmationInstructions.destructiveOperations
     if (destructiveOperations.length > 0 && !input.confirmation) {
-      this.destructiveConfirmationRequired(destructiveOperations, input.checksum)
+      this.destructiveConfirmationRequired(destructiveOperations, preview.checksum)
     }
     if (destructiveOperations.length > 0) {
       const confirmation = input.confirmation
-      if (confirmation && confirmation.checksum !== input.checksum) {
-        this.destructiveConfirmationStale(input.checksum, confirmation.checksum)
+      if (confirmation && confirmation.checksum !== preview.checksum) {
+        this.destructiveConfirmationStale(preview.checksum, confirmation.checksum)
       }
     }
 
     await this.requireMigrationAuthority().run({
       ctx,
       operation: 'apply',
-      checksum: input.checksum,
+      checksum: preview.checksum,
     }, async () => undefined)
     return {
       migrationId: generateId('migration'),
-      checksum: input.checksum,
+      checksum: preview.checksum,
       status: 'noop',
       appliedOperations: [],
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
@@ -450,6 +444,12 @@ function classifyPreviewOperation(
         )
         return { destructive: true }
       }
+      if (operation.indexed === true && !context.adapter.supportsJsonbIndexes) {
+        context.warnings.push(
+          `Adapter ${context.adapter.name} has not proven JSONB custom-field index support.`,
+        )
+        return { destructive: true }
+      }
       return { destructive: false }
 
     case 'custom_field.update':
@@ -505,6 +505,12 @@ function classifyCustomFieldUpdate(
 
   if (operation.patch.fieldType && operation.patch.fieldType !== existing.fieldType) {
     if (isCompatibleCustomFieldWidening(existing.fieldType, operation.patch.fieldType)) {
+      if (existing.isPromoted) {
+        context.warnings.push(
+          `Changing promoted custom field ${operation.entityType}.${operation.fieldName} from ${existing.fieldType} to ${operation.patch.fieldType} requires physical column migration.`,
+        )
+        return { destructive: true }
+      }
       return { destructive: false }
     }
     context.warnings.push(
