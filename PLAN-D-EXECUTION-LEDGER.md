@@ -59,7 +59,7 @@ Note: the Plan D execution contract was supplied from the parent workspace path 
 | 6. Document And Test Exact Alpha Version Pinning | Complete | `36cabb4` | This commit | Implementation subagent `019dc996-8301-7eb0-b5ef-3ed4abe980d4`; package/release review `019dc998-5f81-7e93-9c91-8d40ee7cac4a` |
 | 7. Strengthen Package Manager Detection Coverage | Complete | `993a810` | This commit | Implementation subagent `019dc999-9964-7882-aae8-e7225a640842`; code review `019dc99b-34bd-78c2-bae6-b971896cc4ee` |
 | 8. Add Packed Tarball Smoke Coverage | Complete | `4667ef7`, `2f260b6`, `aa578a6` | This commit | Implementation subagent `019dc99d-00d0-7df1-9c89-405f30078d93`; reviews `019dc9a2-abff-7732-9dab-bc16658738ca`, `019dc9a2-acb6-7690-b68a-b269b4f1cd24`, re-review `019dc9a5-0203-7903-9e53-dd6e7ad7c768` |
-| 9. Update Create-Orbit-App User Documentation | Pending | Pending | Pending | Pending |
+| 9. Update Create-Orbit-App User Documentation | Complete | `25927e8` | This commit | Implementation subagent `019dc9a7-d604-7d52-ac6b-841bfcf9a572`; reviews `019dc9a9-831a-74e2-9523-92f215968ea9`, `019dc9a9-8357-70a0-92d2-c4145ca21b38` |
 | 10. Align Release And Repo Documentation With Scoped Package Reality | Pending | Pending | Pending | Pending |
 | 11. Changeset And Package Artifact Readiness | Pending | Pending | Pending | Pending |
 | 12. Final Verification, Reviews, And Concordance | Pending | Pending | Pending | Pending |
@@ -485,6 +485,33 @@ Named review lenses:
 - Package/release re-review subagent `019dc9a5-0203-7903-9e53-dd6e7ad7c768`: Medium finding remained because the post-publish runtime proof was a tautological string assertion. Fixed in `aa578a6` by removing the fake assertion and recording the legitimate skip/post-publish gate in this ledger.
 
 Result: no unresolved Critical/High/Medium Task 8 findings remain; generated starter runtime proof is plan-approved skipped validation with Task 10 post-publish gate.
+
+### Task 9 Reviews
+
+Implementation subagent: `019dc9a7-d604-7d52-ac6b-841bfcf9a572`
+
+Implementation commit: `25927e8 docs(create-orbit-app): document scoped alpha usage and install command trust`
+
+Changed files:
+
+- `packages/create-orbit-app/README.md`
+- `packages/create-orbit-app/CHANGELOG.md`
+
+Focused validation:
+
+```text
+$ rg -n 'npx create-orbit-app|root scope|--version|--install-cmd|@orbit-ai/create-orbit-app@alpha' packages/create-orbit-app/README.md packages/create-orbit-app/CHANGELOG.md
+Only scoped alpha examples, --version, and --install-cmd documentation matched.
+No unscoped `npx create-orbit-app` or `root scope` match appeared.
+exit 0
+```
+
+Named review lenses:
+
+- Docs review subagent `019dc9a9-831a-74e2-9523-92f215968ea9`: no Critical/High/Medium findings. Low finding claimed a missing changelog hardening note but referenced the root `CHANGELOG.md`; the package changelog entry exists in the Task 9 diff.
+- Security docs review subagent `019dc9a9-8357-70a0-92d2-c4145ca21b38`: no Critical/High/Medium/Low findings; confirmed install-command trust/no-shell docs and scoped alpha usage.
+
+Result: no unresolved Critical/High/Medium Task 9 findings remain.
 
 ## Deferred Items And Skipped Validation
 
