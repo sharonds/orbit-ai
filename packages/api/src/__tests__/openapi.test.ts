@@ -61,6 +61,33 @@ describe('OpenAPI spec', () => {
     expect(spec.paths['/v1/webhooks/{id}/redeliver']?.post).toBeDefined()
   })
 
+  it('documents schema migration and field confirmation DTOs', () => {
+    expect(spec.paths['/v1/schema/migrations/preview']?.post.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/SchemaMigrationPreviewRequest',
+    })
+    expect(spec.paths['/v1/schema/migrations/apply']?.post.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/SchemaMigrationApplyRequest',
+    })
+    expect(spec.paths['/v1/schema/migrations/{id}/rollback']?.post.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/SchemaMigrationRollbackRequest',
+    })
+    expect(spec.paths['/v1/objects/{type}/fields/{fieldName}']?.patch.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/SchemaMigrationUpdateFieldRequest',
+    })
+    expect(spec.paths['/v1/objects/{type}/fields/{fieldName}']?.delete.requestBody.content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/SchemaMigrationDeleteFieldRequest',
+    })
+
+    const applyRequest = spec.components.schemas.SchemaMigrationApplyRequest
+    expect(applyRequest.required).toEqual(expect.arrayContaining(['operations', 'checksum']))
+    expect(applyRequest.properties.confirmation.$ref).toBe('#/components/schemas/DestructiveConfirmation')
+    expect(applyRequest.additionalProperties).toBe(false)
+
+    const previewResponse = spec.components.schemas.SchemaMigrationPreviewResponse
+    expect(previewResponse.properties.confirmationInstructions.$ref).toBe('#/components/schemas/SchemaMigrationConfirmationInstructions')
+    expect(previewResponse.properties.scope.$ref).toBe('#/components/schemas/SchemaMigrationTrustedScope')
+  })
+
   it('contacts emits full CRUD (proves gating does not over-restrict)', () => {
     const contactsList = spec.paths['/v1/contacts']
     expect(contactsList?.get).toBeDefined()

@@ -70,4 +70,21 @@ describe('createApi', () => {
       destructiveMigrationEnvironment: 'production',
     })
   })
+
+  it('passes only explicitly configured migration authority into generated core services', () => {
+    const adapter = stubAdapter()
+    const migrationAuthority = {
+      run: vi.fn(async <T>(_context: unknown, fn: (db: unknown) => Promise<T>) => fn({})),
+    }
+    const app = createApi({
+      adapter,
+      version: '2026-04-01',
+      migrationAuthority,
+    })
+
+    expect(app).toBeDefined()
+    expect(createCoreServicesForRuntimeAdapter).toHaveBeenCalledWith(adapter, {
+      migrationAuthority,
+    })
+  })
 })
