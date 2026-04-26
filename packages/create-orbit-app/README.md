@@ -28,7 +28,12 @@ The default template boots an in-memory SQLite adapter, seeds the Acme Events de
 | `--yes`, `-y` | Non-interactive; accept all defaults |
 | `--no-install` | Skip package-manager install after scaffolding |
 | `--install-cmd <cmd>` | Custom install command (e.g. `pnpm install`) |
+| `--version`, `-v` | Show the package version |
 | `--help`, `-h` | Show help |
+
+`--install-cmd` is trusted caller input for automation and advanced local workflows. The command string is parsed into argv and executed directly without a shell, so shell syntax such as pipes, redirects, command substitution, and environment-variable expansion is not interpreted by the scaffolder.
+
+`--install-cmd` cannot be combined with `--no-install`; choose either a custom install command or no install step.
 
 ## License
 
