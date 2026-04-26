@@ -40,13 +40,13 @@ jobs:
           changed_files="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
           printf '%s\n' "$changed_files"
 
-          if printf '%s\n' "$changed_files" | grep -E '^(packages/(core|api|sdk|cli|mcp|integrations|demo-seed|create-orbit-app)/|e2e/|examples/nodejs-quickstart/|pnpm-lock\.yaml$|\.github/workflows/(ci|release)\.yml$|scripts/(release-workflow\.test|release-dry-run|verify-package-artifacts)\.mjs$|\.changeset/)'; then
+          if printf '%s\n' "$changed_files" | grep -E '^(package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|packages/[^/]+/package\.json$|packages/(core|api|sdk|cli|mcp|integrations|demo-seed|create-orbit-app)/|e2e/|examples/nodejs-quickstart/|\.github/workflows/(ci|release)\.yml$|scripts/release[^/]*($|/)|scripts/verify-package-artifacts\.mjs$|\.changeset/|docs/product/release-definition-v2\.md$)'; then
             echo "run_sqlite_e2e=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_sqlite_e2e=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if printf '%s\n' "$changed_files" | grep -E '^(packages/(core|api|sdk)/|e2e/src/harness/|e2e/src/journeys/(_|02|03|04|05|06|07|08|09|10|11)|pnpm-lock\.yaml$|\.github/workflows/(ci|release)\.yml$|scripts/(release-workflow\.test|release-dry-run|verify-package-artifacts)\.mjs$|\.changeset/)'; then
+          if printf '%s\n' "$changed_files" | grep -E '^(package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|packages/[^/]+/package\.json$|packages/(core|api|sdk|cli|mcp|demo-seed)/src/|e2e/|\.github/workflows/(ci|release)\.yml$|scripts/release[^/]*($|/)|scripts/verify-package-artifacts\.mjs$|\.changeset/|docs/product/release-definition-v2\.md$)'; then
             echo "run_postgres_e2e=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_postgres_e2e=false" >> "$GITHUB_OUTPUT"
@@ -188,5 +188,7 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm -r build
-      - name: Run journeys 2-11 against Postgres
-        run: pnpm -F @orbit-ai/e2e test src/journeys/02 src/journeys/03 src/journeys/04 src/journeys/05 src/journeys/06 src/journeys/07 src/journeys/08 src/journeys/09 src/journeys/10 src/journeys/11
+      - name: Run Postgres-backed E2E subset
+        run: |
+          pnpm -F @orbit-ai/e2e test src/journeys/02 src/journeys/03 src/journeys/04 src/journeys/05 src/journeys/06 src/journeys/07 src/journeys/08 src/journeys/09 src/journeys/10 src/journeys/11 src/journeys/12 src/journeys/15
+          pnpm -F @orbit-ai/e2e test src/harness/build-stack.test.ts

@@ -125,7 +125,7 @@ const POSTGRES_WAVE_1_SCHEMA_STATEMENTS = [
     id text primary key,
     organization_id text not null references organizations(id),
     title text not null,
-    value text,
+    value numeric(18,2),
     currency text not null default 'USD',
     stage_id text references stages(id),
     pipeline_id text references pipelines(id),

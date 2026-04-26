@@ -110,39 +110,126 @@ test('ci e2e-scope regexes cover release-sensitive paths', () => {
   const [sqlitePattern, postgresPattern] = patterns
 
   for (const path of [
+    'package.json',
+    'pnpm-workspace.yaml',
     'packages/demo-seed/package.json',
+    'packages/demo-seed/src/index.ts',
     'packages/create-orbit-app/package.json',
     'packages/cli/package.json',
+    'packages/cli/src/index.ts',
+    'packages/mcp/src/server.ts',
+    'packages/core/src/index.ts',
+    'packages/api/src/routes/objects.ts',
+    'packages/sdk/src/client.ts',
     'e2e/README.md',
+    'e2e/src/harness/build-stack.ts',
     'examples/nodejs-quickstart/package.json',
     'pnpm-lock.yaml',
     '.github/workflows/ci.yml',
     '.github/workflows/release.yml',
     'scripts/release-workflow.test.mjs',
     'scripts/release-dry-run.mjs',
+    'scripts/release/checks.mjs',
     'scripts/verify-package-artifacts.mjs',
     '.changeset/plan-b-codex-followups.md',
+    'docs/product/release-definition-v2.md',
   ]) {
     assert.match(path, sqlitePattern, `${path} should trigger SQLite E2E`)
   }
 
   for (const path of [
+    'package.json',
+    'pnpm-workspace.yaml',
     'packages/core/package.json',
+    'packages/create-orbit-app/package.json',
     'packages/api/src/routes/objects.ts',
     'packages/sdk/package.json',
+    'packages/cli/src/index.ts',
+    'packages/mcp/src/server.ts',
+    'packages/demo-seed/src/index.ts',
     'e2e/src/harness/build-stack.ts',
     'e2e/src/journeys/_crud-matrix.ts',
     'e2e/src/journeys/07-custom-field.test.ts',
+    'e2e/src/journeys/12-sdk-helpers.test.ts',
+    'e2e/src/journeys/15-tenant-isolation.test.ts',
     'pnpm-lock.yaml',
+    '.github/workflows/ci.yml',
     '.github/workflows/release.yml',
     'scripts/release-workflow.test.mjs',
+    'scripts/release/checks.mjs',
     '.changeset/plan-b-codex-followups.md',
+    'docs/product/release-definition-v2.md',
   ]) {
     assert.match(path, postgresPattern, `${path} should trigger Postgres E2E`)
   }
 
   assert.doesNotMatch('docs/releasing.md', sqlitePattern)
-  assert.doesNotMatch('packages/create-orbit-app/package.json', postgresPattern)
+  assert.doesNotMatch('packages/create-orbit-app/src/index.ts', postgresPattern)
+})
+
+test('Postgres E2E CI job covers adapter-aware journeys and harness safety tests', () => {
+  const postgresJobIndex = ciWorkflow.indexOf('journeys-postgres:')
+  assert.ok(postgresJobIndex > -1, 'missing Postgres E2E job')
+  const postgresJob = ciWorkflow.slice(postgresJobIndex)
+  const requiredPostgresCommand =
+    'pnpm -F @orbit-ai/e2e test src/journeys/02 src/journeys/03 src/journeys/04 src/journeys/05 src/journeys/06 src/journeys/07 src/journeys/08 src/journeys/09 src/journeys/10 src/journeys/11 src/journeys/12 src/journeys/15'
+
+  assert.match(postgresJob, new RegExp(escapeRegExp(requiredPostgresCommand)), 'Postgres E2E job must run the required journey subset')
+  assert.match(
+    postgresJob,
+    /pnpm -F @orbit-ai\/e2e test src\/harness\/build-stack\.test\.ts/,
+    'Postgres E2E job must run the build-stack harness safety test',
+  )
+})
+
+test('E2E API listener exists for CLI API-mode journeys', () => {
+  const src = readFileSync(new URL('../e2e/src/harness/api-server.ts', import.meta.url), 'utf8')
+  const testSrc = readFileSync(new URL('../e2e/src/harness/api-server.test.ts', import.meta.url), 'utf8')
+  assert.match(src, /createServer/, 'api-server must use a real Node HTTP listener')
+  assert.match(src, /api\.fetch\(new Request/, 'api-server must route requests through the Hono API fetch handler')
+  assert.match(src, /127\.0\.0\.1/, 'api-server must bind locally for CLI child processes')
+  assert.match(testSrc, /startApiServer/, 'api-server must have runtime coverage')
+  assert.match(testSrc, /server\.baseUrl/, 'api-server runtime test must assert the bound URL')
+  assert.match(testSrc, /server\.close\(\)/, 'api-server runtime test must close the listener')
+})
+
+test('CLI workspace helper is adapter-aware with shared Postgres safety', () => {
+  const src = readFileSync(new URL('../e2e/src/harness/prepare-cli-workspace.ts', import.meta.url), 'utf8')
+  const safetySrc = readFileSync(new URL('../e2e/src/harness/postgres-safety.ts', import.meta.url), 'utf8')
+  const buildStackSrc = readFileSync(new URL('../e2e/src/harness/build-stack.ts', import.meta.url), 'utf8')
+  assert.match(src, /ORBIT_E2E_ADAPTER/, 'prepare-cli-workspace must read ORBIT_E2E_ADAPTER')
+  assert.match(src, /adapterType === 'postgres'/, 'prepare-cli-workspace must have a Postgres branch')
+  assert.match(src, /adapter: 'postgres'/, 'prepare-cli-workspace must return adapter metadata')
+  assert.match(src, /verifiedBy: 'metadata'/, 'prepare-cli-workspace must return proof metadata')
+  assert.match(src, /assertSafePostgresE2eUrl\(databaseUrl\)/, 'prepare-cli-workspace must call shared safety helper')
+  assert.match(buildStackSrc, /assertSafePostgresE2eUrl\(databaseUrl\)/, 'buildStack must call shared safety helper')
+  assert.match(safetySrc, /orbit_e2e/, 'shared safety helper must allow only local e2e databases')
+})
+
+test('Postgres buildStack API key insert cannot reassign existing keys', () => {
+  const src = readFileSync(new URL('../e2e/src/harness/build-stack.ts', import.meta.url), 'utf8')
+  const testSrc = readFileSync(new URL('../e2e/src/harness/build-stack.test.ts', import.meta.url), 'utf8')
+  assert.match(src, /ON CONFLICT \(key_hash\) DO NOTHING/)
+  assert.doesNotMatch(src, /ON CONFLICT \(key_hash\) DO UPDATE SET organization_id/)
+  assert.doesNotMatch(src, /ON CONFLICT \(key_prefix\)/)
+  assert.match(testSrc, /hash collision belongs to a different organization/)
+  assert.match(testSrc, /key_prefix/)
+})
+
+test('MCP harness closes server when client connect fails', () => {
+  const src = readFileSync(new URL('../e2e/src/harness/run-mcp.ts', import.meta.url), 'utf8')
+  const serverConnectIndex = src.indexOf('await server.connect(serverTransport)')
+  const clientConnectIndex = src.indexOf('await mcpClient.connect(clientTransport)')
+  const failureMessageIndex = src.indexOf('Failed to close MCP server after client connect failure:')
+  assert.ok(serverConnectIndex > -1, 'missing MCP server connect')
+  assert.ok(clientConnectIndex > serverConnectIndex, 'client should connect after server')
+  assert.ok(failureMessageIndex > clientConnectIndex, 'client connect failure path should close server')
+  assert.match(src, /catch \(err\)[\s\S]*server as \{ close\?: \(\) => Promise<void> \}[\s\S]*throw err/)
+})
+
+test('E2E config keeps shared Postgres journeys serial', () => {
+  const src = readFileSync(new URL('../e2e/vitest.config.ts', import.meta.url), 'utf8')
+  assert.match(src, /fileParallelism:\s*false/, 'shared Postgres e2e database requires serial journey files')
 })
 
 test('create-orbit-app package declares publish metadata and prepack build hook', () => {
@@ -619,6 +706,10 @@ function runNodeScript(script, cwd, extraEnv = {}) {
     encoding: 'utf8',
     env: { ...process.env, ...extraEnv },
   })
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function output(result) {

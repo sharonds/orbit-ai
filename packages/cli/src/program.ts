@@ -121,13 +121,23 @@ function classifyError(error: unknown): { code: number; payload: Record<string, 
     error instanceof Error &&
     (error.name === 'OrbitApiError' || (error as { statusCode?: number }).statusCode !== undefined)
   ) {
-    const e = error as { statusCode?: number; code?: string; requestId?: string }
+    const e = error as {
+      statusCode?: number
+      code?: string
+      requestId?: string
+      request_id?: string
+      error?: Record<string, unknown>
+    }
+    const envelopeError = e.error && typeof e.error === 'object' ? e.error : {}
     return {
       code: 1,
       payload: {
-        code: e.code ?? 'API_ERROR',
-        message: error.message,
-        ...(e.requestId ? { request_id: e.requestId } : {}),
+        ...envelopeError,
+        code: (envelopeError.code as string | undefined) ?? e.code ?? 'API_ERROR',
+        message: (envelopeError.message as string | undefined) ?? error.message,
+        ...((envelopeError.request_id ?? e.request_id ?? e.requestId)
+          ? { request_id: envelopeError.request_id ?? e.request_id ?? e.requestId }
+          : {}),
       },
     }
   }

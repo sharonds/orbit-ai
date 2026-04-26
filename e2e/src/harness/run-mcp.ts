@@ -13,6 +13,14 @@ export interface McpHandle {
     method: 'tools/call',
     params: { name: string; arguments?: Record<string, unknown> },
   ): Promise<{ content?: Array<{ type: string; text: string }>; isError?: boolean }>
+  request(
+    method: 'resources/list',
+    params: Record<string, unknown>,
+  ): Promise<{ resources: Array<{ uri: string; name: string }> }>
+  request(
+    method: 'resources/read',
+    params: { uri: string },
+  ): Promise<{ contents: Array<{ uri: string; text?: string; blob?: string; mimeType?: string }> }>
   request(method: string, params: Record<string, unknown>): Promise<unknown>
   close(): Promise<void>
 }
@@ -37,7 +45,24 @@ export async function spawnMcp(opts: SpawnMcpOptions): Promise<McpHandle> {
   )
 
   await server.connect(serverTransport)
-  await mcpClient.connect(clientTransport)
+  try {
+    await mcpClient.connect(clientTransport)
+  } catch (err) {
+    try {
+      if (typeof (server as { close?: () => Promise<void> }).close === 'function') {
+        await (server as { close: () => Promise<void> }).close()
+      }
+    } catch (closeErr) {
+      console.error(
+        'Failed to close MCP server after client connect failure:',
+        closeErr instanceof Error ? closeErr.message : String(closeErr),
+      )
+      if (err instanceof Error && (err as Error & { cause?: unknown }).cause === undefined) {
+        ;(err as Error & { cause?: unknown }).cause = closeErr
+      }
+    }
+    throw err
+  }
 
   async function dispatchRequest(method: string, params: Record<string, unknown>): Promise<unknown> {
     if (method === 'tools/list') {
@@ -46,6 +71,12 @@ export async function spawnMcp(opts: SpawnMcpOptions): Promise<McpHandle> {
     if (method === 'tools/call') {
       const p = params as { name: string; arguments?: Record<string, unknown> }
       return mcpClient.callTool({ name: p.name, arguments: p.arguments })
+    }
+    if (method === 'resources/list') {
+      return mcpClient.listResources(params)
+    }
+    if (method === 'resources/read') {
+      return mcpClient.readResource(params as { uri: string })
     }
     return (mcpClient as unknown as { request(method: string, params: unknown): Promise<unknown> }).request(method, params)
   }

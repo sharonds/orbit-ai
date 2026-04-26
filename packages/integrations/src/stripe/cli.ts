@@ -9,6 +9,7 @@ export interface StripeConfigureArgs {
 
 const STRIPE_API_KEY_ENV = 'ORBIT_STRIPE_API_KEY'
 const STRIPE_SLUG = 'stripe'
+const STRIPE_API_KEY_SENTINEL = '__orbit_sentinel__:stripe:api_key'
 
 export function buildStripeCommands(runtime: CliRuntimeContext): IntegrationCommand[] {
   return [
@@ -58,7 +59,7 @@ export function buildStripeCommands(runtime: CliRuntimeContext): IntegrationComm
             runtime.organizationId,
             STRIPE_SLUG,
             runtime.userId,
-            { accessToken: apiKey, refreshToken: '__stripe_api_key__' },
+            { accessToken: apiKey, refreshToken: STRIPE_API_KEY_SENTINEL },
           )
           runtime.print({ configured: true, provider: STRIPE_SLUG })
         } catch (err) {

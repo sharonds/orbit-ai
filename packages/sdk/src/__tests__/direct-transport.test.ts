@@ -41,7 +41,7 @@ describe('DirectTransport', () => {
         adapter: mockAdapter as any,
         context: { orgId: 'org_1' },
       })
-    } catch {
+    } catch (_err) {
       // Construction may fail with mock adapter — that is OK
     }
 
@@ -63,14 +63,14 @@ describe('DirectTransport', () => {
         adapter: mockAdapter as any,
         context: { orgId: 'org_1' },
       })
-    } catch {
+    } catch (_err) {
       // Construction may fail with mock adapter
     }
 
     if (transport) {
       try {
         await transport.request({ method: 'GET', path: '/contacts/cid_1' })
-      } catch {
+      } catch (_err) {
         // Expected to fail with mock adapter
       }
     }
@@ -368,6 +368,24 @@ describe('DirectTransport workflow sub-routes', () => {
     expect(detached.detached).toBe(true)
   })
 
+  it('preserves HTTP schema metadata shape in direct mode', async () => {
+    const { client } = await createWorkflowClient()
+    await client.schema.addField('contacts', {
+      name: 'linkedin_url',
+      label: 'LinkedIn URL',
+      type: 'url',
+    })
+
+    const object = await client.schema.describeObject('contacts')
+    expect(object.customFields.some((field) => field.fieldName === 'linkedin_url')).toBe(true)
+    expect(object).not.toHaveProperty('custom_fields')
+
+    const objects = await client.schema.listObjects()
+    const contacts = objects.find((item) => item.type === 'contacts')
+    expect(contacts?.customFields.some((field) => field.fieldName === 'linkedin_url')).toBe(true)
+    expect(contacts).not.toHaveProperty('custom_fields')
+  })
+
   it('returns typed validation errors for missing schema field bodies in direct mode', async () => {
     const { transport } = await createWorkflowClient()
 
@@ -380,6 +398,47 @@ describe('DirectTransport workflow sub-routes', () => {
       error: expect.objectContaining({ code: 'VALIDATION_FAILED' }),
       status: 400,
     })
+  })
+
+  it('maps Zod validation errors to API-shaped errors in direct mode', async () => {
+    const { transport } = await createWorkflowClient()
+    const err = await transport.request({
+      method: 'POST',
+      path: '/v1/deals',
+      body: { name: 'Bad Deal', value: '1e21' },
+    }).catch((caught: unknown) => caught)
+
+    expect(err).toBeInstanceOf(OrbitApiError)
+    expect(err).toMatchObject<Partial<OrbitApiError>>({
+      error: expect.objectContaining({
+        code: 'VALIDATION_FAILED',
+        doc_url: 'https://orbit-ai.dev/docs/errors#validation_failed',
+        hint: expect.stringContaining('value'),
+        retryable: false,
+      }),
+      status: 400,
+    })
+    expect((err as OrbitApiError).error.request_id).toMatch(/^req_/)
+  })
+
+  it('adds API-shaped metadata defaults to direct-mode OrbitApiError failures', async () => {
+    const { transport } = await createWorkflowClient()
+    const err = await transport.request({
+      method: 'POST',
+      path: '/v1/deals/deal_missing/move',
+      body: {},
+    }).catch((caught: unknown) => caught)
+
+    expect(err).toBeInstanceOf(OrbitApiError)
+    expect(err).toMatchObject<Partial<OrbitApiError>>({
+      error: expect.objectContaining({
+        code: 'VALIDATION_FAILED',
+        doc_url: 'https://orbit-ai.dev/docs/errors#validation_failed',
+        retryable: false,
+      }),
+      status: 400,
+    })
+    expect((err as OrbitApiError).error.request_id).toMatch(/^req_/)
   })
 
   it('rejects empty schema migration bodies in direct mode', async () => {

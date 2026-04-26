@@ -9,6 +9,9 @@ export interface CrudMatrixInput {
   readonly entity: 'contacts' | 'companies' | 'deals'
   readonly create: Record<string, unknown>
   readonly update: Record<string, unknown>
+  readonly updateField: 'name'
+  readonly updateValue: string
+  readonly assertField: 'name'
   readonly expectedIdPrefix: string
 }
 
@@ -23,11 +26,12 @@ export async function runCrudMatrix(stack: Stack, input: CrudMatrixInput): Promi
 // SDK surfaces (HTTP + direct)
 // ========================
 async function runSdkCrud(stack: Stack, input: CrudMatrixInput): Promise<void> {
+  type ResourceRecord = { id: string } & Record<string, unknown>
   type Resource = {
-    create(i: Record<string, unknown>): Promise<{ id: string }>
-    get(id: string): Promise<{ id: string }>
-    list(q?: { limit?: number }): Promise<{ data: Array<{ id: string }>; meta: { has_more: boolean } }>
-    update(id: string, i: Record<string, unknown>): Promise<{ id: string }>
+    create(i: Record<string, unknown>): Promise<ResourceRecord>
+    get(id: string): Promise<ResourceRecord>
+    list(q?: { limit?: number }): Promise<{ data: ResourceRecord[]; meta: { has_more: boolean } }>
+    update(id: string, i: Record<string, unknown>): Promise<ResourceRecord>
     delete(id: string): Promise<unknown>
   }
 
@@ -48,6 +52,10 @@ async function runSdkCrud(stack: Stack, input: CrudMatrixInput): Promise<void> {
 
     const updated = await resource.update(created.id, input.update)
     expect(updated.id, `${label}: update returns same id`).toBe(created.id)
+    expect(input.update[input.updateField], `${label}: update config value`).toBe(input.updateValue)
+
+    const refetched = await resource.get(created.id)
+    expect(refetched[input.assertField], `${label}: update persisted`).toBe(input.updateValue)
 
     await resource.delete(created.id)
 
@@ -93,6 +101,12 @@ async function runRawApiCrud(stack: Stack, input: CrudMatrixInput): Promise<void
     new Request(`${base}/${id}`, { method: 'PATCH', headers: auth, body: JSON.stringify(input.update) }),
   )
   expect(updateRes.status, 'raw-api: update 200').toBe(200)
+  expect(input.update[input.updateField], 'raw-api: update config value').toBe(input.updateValue)
+
+  const refetchRes = await stack.api.fetch(new Request(`${base}/${id}`, { headers: auth }))
+  expect(refetchRes.status, 'raw-api: refetch after update 200').toBe(200)
+  const refetchedEnv = (await refetchRes.json()) as { data: Record<string, unknown> }
+  expect(refetchedEnv.data[input.assertField], 'raw-api: update persisted').toBe(input.updateValue)
 
   const deleteRes = await stack.api.fetch(
     new Request(`${base}/${id}`, { method: 'DELETE', headers: auth }),
@@ -151,6 +165,17 @@ async function runCliCrud(input: CrudMatrixInput): Promise<void> {
       env: workspace.env,
     })
     expect(updateRes.exitCode, 'cli: update exitCode').toBe(0)
+    expect(input.update[input.updateField], 'cli: update config value').toBe(input.updateValue)
+
+    const refetchRes = await runCli({
+      args: ['--mode', 'direct', '--json', input.entity, 'get', createdId],
+      cwd: workspace.cwd,
+      env: workspace.env,
+    })
+    expect(refetchRes.exitCode, 'cli: refetch after update exitCode').toBe(0)
+    expect(readEnvelopeField(refetchRes.json, input.assertField), 'cli: update persisted').toBe(
+      input.updateValue,
+    )
 
     const deleteRes = await runCli({
       args: ['--mode', 'direct', input.entity, 'delete', createdId],
@@ -174,6 +199,15 @@ function toCliFlags(input: Record<string, unknown>): string[] {
 
 function kebab(s: string): string {
   return s.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)
+}
+
+function readEnvelopeField(payload: unknown, field: CrudMatrixInput['assertField']): unknown {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return undefined
+  const record = payload as Record<string, unknown>
+  if (record[field] !== undefined) return record[field]
+  const data = record.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined
+  return (data as Record<string, unknown>)[field]
 }
 
 // ========================
@@ -223,6 +257,18 @@ async function runMcpCrud(stack: Stack, input: CrudMatrixInput): Promise<void> {
       (updateResp as { isError?: boolean }).isError,
       'mcp: update_record not an error',
     ).toBeFalsy()
+    expect(input.update[input.updateField], 'mcp: update config value').toBe(input.updateValue)
+
+    const verifyResp = await mcp.request('tools/call', {
+      name: 'get_record',
+      arguments: { object_type: input.entity, record_id: createdId },
+    })
+    const verifyText =
+      (verifyResp as { content?: Array<{ text: string }> }).content?.[0]?.text ?? '{}'
+    const verifyData = JSON.parse(verifyText) as Record<string, unknown>
+    expect(readEnvelopeField(verifyData, input.assertField), 'mcp: update persisted').toBe(
+      input.updateValue,
+    )
 
     const deleteResp = await mcp.request('tools/call', {
       name: 'delete_record',

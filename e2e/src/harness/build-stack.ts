@@ -10,10 +10,12 @@ import { createApi } from '@orbit-ai/api/node'
 import { OrbitClient } from '@orbit-ai/sdk'
 import { seed, TENANT_PROFILES } from '@orbit-ai/demo-seed'
 import { sql } from 'drizzle-orm'
+import { assertSafePostgresE2eUrl } from './postgres-safety.js'
 
 export interface StackOptions {
   readonly tenant: 'acme' | 'beta' | 'both'
   readonly adapter?: 'sqlite' | 'postgres'
+  readonly rawApiKey?: string
 }
 
 export interface Stack {
@@ -27,23 +29,8 @@ export interface Stack {
   readonly teardown: () => Promise<void>
 }
 
-const POSTGRES_TEST_DATABASE_NAMES = new Set(['orbit_e2e', 'orbit_e2e_test', 'orbit_ai_test'])
-
 function createRawApiKey(): string {
   return `sk_test_e2e_${crypto.randomUUID().replace(/-/g, '')}`
-}
-
-function assertSafePostgresE2eUrl(databaseUrl: string): void {
-  const url = new URL(databaseUrl)
-  const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1'
-  const databaseName = url.pathname.replace(/^\//, '')
-
-  if (!isLocalhost || !POSTGRES_TEST_DATABASE_NAMES.has(databaseName)) {
-    throw new Error(
-      `Refusing to run Postgres e2e tests against ${url.hostname}/${databaseName}. ` +
-      `Use localhost with one of: ${[...POSTGRES_TEST_DATABASE_NAMES].join(', ')}.`,
-    )
-  }
 }
 
 async function sha256hex(input: string): Promise<string> {
@@ -70,9 +57,63 @@ function buildFetchInterceptor(api: ReturnType<typeof createApi>, previousFetch:
   }) as typeof fetch
 }
 
+async function insertPostgresE2eApiKey(
+  database: PostgresOrbitDatabase,
+  input: {
+    readonly organizationId: string
+    readonly rawApiKey: string
+  },
+): Promise<{ id: string; keyHash: string; keyPrefix: string }> {
+  const keyHash = await sha256hex(input.rawApiKey)
+  const keyId = `key_e2e_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`
+  const keyPrefix = input.rawApiKey.slice(0, 16)
+  const now = new Date().toISOString()
+
+  await database.execute(sql`
+    INSERT INTO api_keys (id, organization_id, name, key_hash, key_prefix, scopes, created_at, updated_at)
+    VALUES (${keyId}, ${input.organizationId}, ${'e2e-test-key'}, ${keyHash}, ${keyPrefix}, ${'["*"]'}::jsonb, ${now}::timestamptz, ${now}::timestamptz)
+    ON CONFLICT (key_hash) DO NOTHING
+  `)
+
+  const rows = await database.query<{
+    id: string
+    organization_id: string
+    name: string
+    scopes: string
+    revoked_at: string | null
+    expires_at: string | null
+  }>(
+    sql`
+      SELECT id, organization_id, name, scopes::text AS scopes, revoked_at::text AS revoked_at, expires_at::text AS expires_at
+      FROM api_keys
+      WHERE key_hash = ${keyHash}
+      LIMIT 1
+    `,
+  )
+  const row = rows[0]
+  if (!row) {
+    throw new Error('Postgres e2e API key insert did not create or find a key row')
+  }
+  if (row.organization_id !== input.organizationId) {
+    throw new Error('Postgres e2e API key hash collision belongs to a different organization')
+  }
+  if (row.id !== keyId) {
+    const activeHarnessKey =
+      row.name === 'e2e-test-key' &&
+      row.scopes === '["*"]' &&
+      row.revoked_at === null &&
+      (row.expires_at === null || Date.parse(row.expires_at) > Date.now())
+    if (!activeHarnessKey) {
+      throw new Error('Postgres e2e API key hash collision matched a pre-existing non-harness key')
+    }
+  }
+
+  return { id: row.id, keyHash, keyPrefix }
+}
+
 export async function buildStack(opts: StackOptions): Promise<Stack> {
   const adapterType = opts.adapter ?? 'sqlite'
-  const rawApiKey = createRawApiKey()
+  const rawApiKey = opts.rawApiKey ?? createRawApiKey()
 
   if (adapterType === 'postgres') {
     const databaseUrl = process.env.DATABASE_URL
@@ -84,60 +125,77 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
       database,
       disconnect: async () => database.close(),
     })
-    await adapter.migrate()
 
-    // Postgres CI runs multiple journey files against the same safe local test
-    // database, so each stack build resets the deterministic demo tenants.
-    const postgresSeedOptions = { mode: 'reset' as const, allowResetOfExistingOrg: true }
-    const acme = await seed(adapter, { profile: TENANT_PROFILES.acme, ...postgresSeedOptions })
-    const beta =
-      opts.tenant === 'both' || opts.tenant === 'beta'
-        ? await seed(adapter, { profile: TENANT_PROFILES.beta, ...postgresSeedOptions })
-        : undefined
+    let restoreFetch: (() => void) | undefined
+    try {
+      await adapter.migrate()
 
-    // Insert test API key directly into the database
-    const keyHash = await sha256hex(rawApiKey)
-    const keyId = `key_e2e_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`
-    const keyPrefix = rawApiKey.slice(0, 16)
-    const now = new Date().toISOString()
-    await database.execute(sql`
-      INSERT INTO api_keys (id, organization_id, name, key_hash, key_prefix, scopes, created_at, updated_at)
-      VALUES (${keyId}, ${acme.organization.id}, ${'e2e-test-key'}, ${keyHash}, ${keyPrefix}, ${'["*"]'}::jsonb, ${now}::timestamptz, ${now}::timestamptz)
-      ON CONFLICT (key_prefix) DO UPDATE SET organization_id = excluded.organization_id, key_hash = excluded.key_hash, updated_at = excluded.updated_at
-    `)
+      // Postgres CI runs multiple journey files against the same safe local test
+      // database, so each stack build resets the deterministic demo tenants.
+      const postgresSeedOptions = { mode: 'reset' as const, allowResetOfExistingOrg: true }
+      const acme = await seed(adapter, { profile: TENANT_PROFILES.acme, ...postgresSeedOptions })
+      const beta =
+        opts.tenant === 'both' || opts.tenant === 'beta'
+          ? await seed(adapter, { profile: TENANT_PROFILES.beta, ...postgresSeedOptions })
+          : undefined
 
-    const api = createApi({ adapter, version: '2026-04-01' })
-    const previousFetch = globalThis.fetch
-    globalThis.fetch = buildFetchInterceptor(api, previousFetch)
+      const apiKey = await insertPostgresE2eApiKey(database, {
+        organizationId: acme.organization.id,
+        rawApiKey,
+      })
 
-    const sdkHttp = new OrbitClient({
-      baseUrl: 'http://test.local',
-      apiKey: rawApiKey,
-      version: '2026-04-01',
-      maxRetries: 0,
-    })
-    const sdkDirect = new OrbitClient({
-      adapter,
-      context: { orgId: acme.organization.id },
-    })
-
-    return {
-      adapter,
-      api,
-      sdkHttp,
-      sdkDirect,
-      acmeOrgId: acme.organization.id,
-      betaOrgId: beta?.organization.id,
-      rawApiKey,
-      async teardown() {
+      const api = createApi({ adapter, version: '2026-04-01' })
+      const previousFetch = globalThis.fetch
+      restoreFetch = () => {
         globalThis.fetch = previousFetch
-        try {
-          await database.execute(sql`DELETE FROM api_keys WHERE id = ${keyId}`)
-          await adapter.disconnect()
-        } catch (err) {
-          console.error('build-stack: adapter.disconnect failed:', err instanceof Error ? err.message : String(err))
-        }
-      },
+      }
+      globalThis.fetch = buildFetchInterceptor(api, previousFetch)
+
+      const sdkHttp = new OrbitClient({
+        baseUrl: 'http://test.local',
+        apiKey: rawApiKey,
+        version: '2026-04-01',
+        maxRetries: 0,
+      })
+      const sdkDirect = new OrbitClient({
+        adapter,
+        context: { orgId: acme.organization.id },
+      })
+
+      return {
+        adapter,
+        api,
+        sdkHttp,
+        sdkDirect,
+        acmeOrgId: acme.organization.id,
+        betaOrgId: beta?.organization.id,
+        rawApiKey,
+        async teardown() {
+          restoreFetch?.()
+          try {
+            await database.execute(sql`DELETE FROM api_keys WHERE id = ${apiKey.id}`)
+          } catch (err) {
+            console.error('build-stack: API key cleanup failed:', err instanceof Error ? err.message : String(err))
+          } finally {
+            try {
+              await adapter.disconnect()
+            } catch (err) {
+              console.error('build-stack: adapter.disconnect failed:', err instanceof Error ? err.message : String(err))
+            }
+          }
+        },
+      }
+    } catch (err) {
+      restoreFetch?.()
+      try {
+        await adapter.disconnect()
+      } catch (disconnectErr) {
+        console.error(
+          'build-stack: adapter.disconnect failed after setup error:',
+          disconnectErr instanceof Error ? disconnectErr.message : String(disconnectErr),
+        )
+      }
+      throw err
     }
   }
 

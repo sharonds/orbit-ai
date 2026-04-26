@@ -9,7 +9,10 @@ describe('Journey 3 — CRUD contacts (5 surfaces)', () => {
       await runCrudMatrix(stack, {
         entity: 'contacts',
         create: { name: 'Journey3 Person', email: 'j3@journey3.local' },
-        update: { name: 'Journey3 Renamed' },
+        update: { name: 'Updated Contact' },
+        updateField: 'name',
+        updateValue: 'Updated Contact',
+        assertField: 'name',
         expectedIdPrefix: 'contact_',
       })
     } finally {

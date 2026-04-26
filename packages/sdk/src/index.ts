@@ -10,7 +10,7 @@ export type { SearchInput } from './search.js'
 // Wave 1 resource types
 export type { ContactRecord, CreateContactInput, UpdateContactInput } from './resources/contacts.js'
 export type { CompanyRecord, CreateCompanyInput, UpdateCompanyInput } from './resources/companies.js'
-export type { DealRecord, CreateDealInput, UpdateDealInput } from './resources/deals.js'
+export type { DealRecord, DealValueInput, CreateDealInput, UpdateDealInput } from './resources/deals.js'
 export type { PipelineRecord, CreatePipelineInput, UpdatePipelineInput } from './resources/pipelines.js'
 export type { StageRecord, CreateStageInput, UpdateStageInput } from './resources/stages.js'
 export type { UserRecord, CreateUserInput, UpdateUserInput } from './resources/users.js'

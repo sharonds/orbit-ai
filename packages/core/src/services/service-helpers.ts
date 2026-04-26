@@ -234,5 +234,11 @@ export function assertDeleted(value: boolean, message: string): void {
 }
 
 export function assertOrgContext(ctx: Pick<OrbitAuthContext, 'orgId'>): string {
+  if (!ctx?.orgId) {
+    throw createOrbitError({
+      code: 'AUTH_CONTEXT_REQUIRED',
+      message: 'Organization context is required',
+    })
+  }
   return assertOrbitId(ctx.orgId, 'organization')
 }

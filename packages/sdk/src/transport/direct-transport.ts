@@ -1,4 +1,4 @@
-import { createCoreServices, resolvePublicEntityServiceKey, type OrbitEnvelope, type OrbitAuthContext } from '@orbit-ai/core'
+import { createCoreServices, resolvePublicEntityServiceKey, type OrbitEnvelope, type OrbitAuthContext, type OrbitErrorCode } from '@orbit-ai/core'
 import type { OrbitClientOptions } from '../config.js'
 import type { OrbitTransport, TransportRequest } from './index.js'
 import { OrbitApiError } from '../errors.js'
@@ -79,17 +79,34 @@ export class DirectTransport implements OrbitTransport {
       })
       return this.wrapEnvelope(input.method, input.path, input.query, result) as OrbitEnvelope<T>
     } catch (err: unknown) {
-      if (err instanceof OrbitApiError) throw err
-      const orbitErr = err as { code?: string; message?: string; field?: string; retryable?: boolean }
-      if (orbitErr.code) {
+      if (err instanceof OrbitApiError) {
+        throw new OrbitApiError(enrichDirectErrorShape(err.error), err.status)
+      }
+      if (isZodValidationError(err)) {
         throw new OrbitApiError(
-          {
-            code: orbitErr.code as OrbitApiError['error']['code'],
+          enrichDirectErrorShape({
+            code: 'VALIDATION_FAILED',
+            message: 'Request body failed validation',
+            hint: err.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join('; '),
+          }),
+          400,
+        )
+      }
+      const orbitErr = err as { code?: string; message?: string; field?: string; retryable?: boolean; request_id?: string; doc_url?: string; hint?: string; recovery?: string }
+      if (orbitErr.code) {
+        const code = orbitErr.code as OrbitErrorCode
+        throw new OrbitApiError(
+          enrichDirectErrorShape({
+            code,
             message: orbitErr.message ?? 'Unknown error',
             field: orbitErr.field,
+            request_id: orbitErr.request_id ?? createDirectRequestId(),
+            doc_url: orbitErr.doc_url ?? directErrorDocUrl(code),
+            hint: orbitErr.hint,
+            recovery: orbitErr.recovery,
             retryable: orbitErr.retryable,
-          },
-          this.errorCodeToStatus(orbitErr.code),
+          }),
+          this.errorCodeToStatus(code),
         )
       }
       throw err
@@ -104,7 +121,6 @@ export class DirectTransport implements OrbitTransport {
     const startIdx = segments[0] === 'v1' ? 1 : 0
     const entity = segments[startIdx]
     const action = segments[startIdx + 1]
-    const verb = segments[startIdx + 2] // present for 4-segment workflow routes
 
     if (!entity) throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unknown path: ${path}` }, 404)
 
@@ -130,7 +146,8 @@ export class DirectTransport implements OrbitTransport {
       const subAction = segments[startIdx + 3] // e.g. field name
       if (method === 'GET' && !action) {
         if (typeof schema.listObjects !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: listObjects not implemented' }, 501)
-        return schema.listObjects(this.ctx)
+        const result = await schema.listObjects(this.ctx)
+        return Array.isArray(result) ? result.map(sanitizeSchemaMetadataRead) : sanitizeSchemaMetadataRead(result)
       }
       if (method === 'GET' && action && !subEntity) {
         if (typeof schema.getObject !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: getObject not implemented' }, 501)
@@ -138,19 +155,20 @@ export class DirectTransport implements OrbitTransport {
         if (result === null || result === undefined) {
           throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Object type '${action}' not found` }, 404)
         }
-        return result
+        return sanitizeSchemaMetadataRead(result)
       }
       if (method === 'POST' && action && subEntity === 'fields') {
         if (typeof schema.addField !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: addField not implemented' }, 501)
-        return schema.addField(this.ctx, action, this.bodyObject(body, path))
+        return sanitizeSchemaMetadataRead(await schema.addField(this.ctx, action, this.bodyObject(body, path)))
       }
       if (method === 'PATCH' && action && subEntity === 'fields' && subAction) {
         if (typeof schema.updateField !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: updateField not implemented' }, 501)
-        return schema.updateField(this.ctx, action, subAction, this.bodyObject(body, path))
+        return sanitizeSchemaMetadataRead(await schema.updateField(this.ctx, action, subAction, this.bodyObject(body, path)))
       }
       if (method === 'DELETE' && action && subEntity === 'fields' && subAction) {
         if (typeof schema.deleteField !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: deleteField not implemented' }, 501)
-        return schema.deleteField(this.ctx, action, subAction)
+        await schema.deleteField(this.ctx, action, subAction)
+        return { deleted: true, field: subAction }
       }
       throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unhandled schema route: ${method} ${path}` }, 404)
     }
@@ -167,15 +185,15 @@ export class DirectTransport implements OrbitTransport {
       const subOp = segments[startIdx + 3] // 'rollback' when id is present
       if (method === 'POST' && operation === 'preview') {
         if (typeof schema.preview !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: preview not implemented' }, 501)
-        return schema.preview(this.ctx, this.migrationBody(body, path))
+        return sanitizeSchemaMetadataRead(await schema.preview(this.ctx, this.migrationBody(body, path)))
       }
       if (method === 'POST' && operation === 'apply') {
         if (typeof schema.apply !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: apply not implemented' }, 501)
-        return schema.apply(this.ctx, this.migrationBody(body, path))
+        return sanitizeSchemaMetadataRead(await schema.apply(this.ctx, this.migrationBody(body, path)))
       }
       if (method === 'POST' && subOp === 'rollback' && operation) {
         if (typeof schema.rollback !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Schema engine: rollback not implemented' }, 501)
-        return schema.rollback(this.ctx, operation)
+        return sanitizeSchemaMetadataRead(await schema.rollback(this.ctx, operation))
       }
       throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unhandled schema migration route: ${method} ${path}` }, 404)
     }
@@ -210,22 +228,15 @@ export class DirectTransport implements OrbitTransport {
     if (entity === 'deals' && method === 'POST' && action && segments[startIdx + 2] === 'move') {
       const input = this.camelizeBody(this.bodyObject(body, path))
       if (typeof service.move === 'function') return service.move(this.ctx, action, input)
-      const stageId = input.stageId
-      if (typeof stageId !== 'string' || stageId.length === 0) {
-        throw new OrbitApiError({ code: 'VALIDATION_FAILED', message: 'Deal move stageId is required', field: 'stageId' }, 400)
-      }
-      if (typeof service.update !== 'function') throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Deal move not implemented' }, 501)
-      return service.update(this.ctx, action, { stageId })
+      throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Deal move not implemented' }, 501)
     }
     if (entity === 'deals' && method === 'GET' && action === 'pipeline') {
       if (typeof service.pipeline === 'function') return service.pipeline(this.ctx)
-      if (!this.canBuildDealAggregates()) throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Deal pipeline view not implemented' }, 501)
-      return this.buildDealPipelineView()
+      throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Deal pipeline view not implemented' }, 501)
     }
     if (entity === 'deals' && method === 'GET' && action === 'stats') {
       if (typeof service.stats === 'function') return service.stats(this.ctx)
-      if (!this.canBuildDealAggregates()) throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Deal stats not implemented' }, 501)
-      return this.buildDealStats()
+      throw new OrbitApiError({ code: 'INTERNAL_ERROR', message: 'Deal stats not implemented' }, 501)
     }
     if (entity === 'sequences' && method === 'POST' && action && segments[startIdx + 2] === 'enroll') {
       const input: Record<string, unknown> = { ...this.camelizeBody(this.bodyObject(body, path)), sequenceId: action }
@@ -333,6 +344,7 @@ export class DirectTransport implements OrbitTransport {
     if (!entity) return undefined
 
     if (entity === 'search') return 'search'
+    if (entity === 'objects' || entity === 'schema') return null
     if (entity === 'deals' && (action === 'pipeline' || action === 'stats')) return null
     if (entity === 'deals' && verb === 'move') return 'deals'
     if (entity === 'sequences' && verb === 'enroll') return 'sequence_enrollments'
@@ -355,7 +367,11 @@ export class DirectTransport implements OrbitTransport {
   private migrationBody(body: unknown, path: string): Record<string, unknown> {
     const data = this.bodyObject(body, path)
     if (Object.keys(data).length === 0) {
-      throw new OrbitApiError({ code: 'VALIDATION_FAILED', message: 'Migration input must include at least one field' }, 400)
+      throw new OrbitApiError({
+        code: 'VALIDATION_FAILED',
+        message: 'Invalid migration input',
+        hint: '(root): Migration input must include at least one field',
+      }, 400)
     }
     return data
   }
@@ -371,69 +387,6 @@ export class DirectTransport implements OrbitTransport {
       }
     }
     return result
-  }
-
-  private async listAll(service: { list: Function }, query: Record<string, unknown> = {}): Promise<Record<string, unknown>[]> {
-    const rows: Record<string, unknown>[] = []
-    let cursor: string | undefined
-    do {
-      const result = await service.list(this.ctx, { ...query, limit: 500, ...(cursor ? { cursor } : {}) }) as {
-        data: Record<string, unknown>[]
-        nextCursor?: string | null
-      }
-      rows.push(...result.data)
-      cursor = result.nextCursor ?? undefined
-    } while (cursor)
-    return rows
-  }
-
-  private canBuildDealAggregates(): boolean {
-    return (
-      typeof this.services.pipelines?.list === 'function' &&
-      typeof this.services.stages?.list === 'function' &&
-      typeof this.services.deals?.list === 'function'
-    )
-  }
-
-  private async buildDealPipelineView(): Promise<Record<string, unknown>> {
-    const pipelines = await this.listAll(this.services.pipelines)
-    const stages = await this.listAll(this.services.stages)
-    const deals = await this.listAll(this.services.deals)
-
-    return {
-      pipelines: pipelines.map((pipeline) => ({
-        ...pipeline,
-        stages: stages
-          .filter((stage) => stage.pipelineId === pipeline.id)
-          .map((stage) => ({
-            ...stage,
-            deals: deals.filter((deal) => deal.stageId === stage.id),
-          })),
-      })),
-    }
-  }
-
-  private async buildDealStats(): Promise<Record<string, unknown>> {
-    const deals = await this.listAll(this.services.deals)
-    const byStatus: Record<string, number> = {}
-    let totalValue = 0
-
-    for (const deal of deals) {
-      const status = typeof deal.status === 'string' ? deal.status : 'unknown'
-      byStatus[status] = (byStatus[status] ?? 0) + 1
-      if (deal.value !== null && deal.value !== undefined) {
-        const value = Number(deal.value)
-        if (Number.isFinite(value)) totalValue += value
-      }
-    }
-
-    return {
-      count: deals.length,
-      totalValue,
-      total_value: totalValue,
-      byStatus,
-      by_status: byStatus,
-    }
   }
 
   private wrapEnvelope(
@@ -461,7 +414,7 @@ export class DirectTransport implements OrbitTransport {
       return {
         data: this.serializePage(path, (paginated.data as unknown[]) ?? []),
         meta: {
-          request_id: `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 26)}`,
+          request_id: createDirectRequestId(),
           cursor: null,
           next_cursor: nextCursor,
           has_more: paginated.hasMore ?? false,
@@ -473,7 +426,7 @@ export class DirectTransport implements OrbitTransport {
     return {
       data: this.serializeResult(path, data),
       meta: {
-        request_id: `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 26)}`,
+        request_id: createDirectRequestId(),
         cursor: null,
         next_cursor: null,
         has_more: false,
@@ -518,5 +471,52 @@ export class DirectTransport implements OrbitTransport {
       INTERNAL_ERROR: 500,
     }
     return map[code] ?? 500
+  }
+}
+
+interface ZodIssueLike {
+  readonly path: Array<string | number>
+  readonly message: string
+}
+
+interface ZodValidationErrorLike extends Error {
+  readonly issues: ZodIssueLike[]
+}
+
+function isZodValidationError(err: unknown): err is ZodValidationErrorLike {
+  if (!(err instanceof Error) || err.name !== 'ZodError') return false
+  const issues = (err as Error & { issues?: unknown }).issues
+  return Array.isArray(issues) &&
+    issues.every((issue) => {
+      if (!issue || typeof issue !== 'object') return false
+      const record = issue as Record<string, unknown>
+      return Array.isArray(record.path) && typeof record.message === 'string'
+    })
+}
+
+function sanitizeSchemaMetadataRead(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (key.startsWith('_')) continue
+    out[key] = value
+  }
+  return out
+}
+
+function createDirectRequestId(): string {
+  return `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 26)}`
+}
+
+function directErrorDocUrl(code: OrbitErrorCode): string {
+  return `https://orbit-ai.dev/docs/errors#${code.toLowerCase()}`
+}
+
+function enrichDirectErrorShape(error: OrbitApiError['error']): OrbitApiError['error'] {
+  return {
+    ...error,
+    request_id: error.request_id ?? createDirectRequestId(),
+    doc_url: error.doc_url ?? directErrorDocUrl(error.code),
+    retryable: error.retryable ?? false,
   }
 }
