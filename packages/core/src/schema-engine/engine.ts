@@ -408,11 +408,12 @@ export class OrbitSchemaEngine {
       requireRuntimeEnvironment: this.migrationAuthority !== undefined,
     })
 
-    const authority = this.requireMigrationAuthority()
+    const reverseOperations = buildReverseOperations(preview.operations)
     await this.assertApplyOperationPreconditions(ctx, preview.operations)
+    this.assertApplyHasReversibleOperations(preview.operations, reverseOperations)
+    const authority = this.requireMigrationAuthority()
     const migrationId = generateId('migration')
     const now = new Date()
-    const reverseOperations = buildReverseOperations(preview.operations)
     const record: SchemaMigrationRecord = {
       id: migrationId,
       organizationId: orgId,
@@ -500,6 +501,7 @@ export class OrbitSchemaEngine {
       migrationId: input.migrationId,
       adapter: adapterScope,
     })
+    this.assertRollbackHasWork(record)
     const rollbackChecksum = computeSchemaMigrationChecksum({
       adapter: adapterScope,
       orgId,
@@ -666,6 +668,25 @@ export class OrbitSchemaEngine {
         default:
           break
       }
+    }
+  }
+
+  private assertApplyHasReversibleOperations(
+    operations: SchemaMigrationForwardOperation[],
+    reverseOperations: SchemaMigrationForwardOperation[],
+  ): void {
+    if (operations.some((operation) => operation.type === 'custom_field.delete') && reverseOperations.length === 0) {
+      this.unsupportedMigrationOperation(
+        'custom_field.delete requires reversible metadata and value snapshots before apply',
+      )
+    }
+  }
+
+  private assertRollbackHasWork(record: SchemaMigrationRecord): void {
+    if (record.reverseOperations.length === 0) {
+      this.unsupportedMigrationOperation(
+        `schema migration rollback:${record.id} has no reversible operations`,
+      )
     }
   }
 

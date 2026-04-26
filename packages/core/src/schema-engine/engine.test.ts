@@ -1591,7 +1591,7 @@ describe('OrbitSchemaEngine', () => {
     expect(authority.run).not.toHaveBeenCalled()
   })
 
-  it('applies confirmed custom field delete migrations after metadata proof', async () => {
+  it('does not apply confirmed custom field delete migrations with empty reverse operations', async () => {
     const authority = makeAuthority()
     const migrationLedger = trackingLedger()
     const operations: SchemaMigrationPublicForwardOperation[] = [{
@@ -1613,15 +1613,12 @@ describe('OrbitSchemaEngine', () => {
         checksum,
         confirmedAt: '2026-04-26T12:00:00.000Z',
       },
-    })).resolves.toMatchObject({
-      status: 'applied',
-      appliedOperations: operations,
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
     })
-    expect(authority.run).toHaveBeenCalledTimes(1)
-    expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
-      status: 'applied',
-      appliedAt: expect.any(Date),
-    }))
+    expect(migrationLedger.create).not.toHaveBeenCalled()
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalled()
+    expect(authority.run).not.toHaveBeenCalled()
   })
 
   it('rejects batched migrations until multi-target locking is implemented', async () => {
@@ -1795,6 +1792,34 @@ describe('OrbitSchemaEngine', () => {
       errorCode: 'MIGRATION_FAILED',
       errorMessage: 'Schema migration failed (phase=rollback; causeCode=INTERNAL_ERROR)',
       failedAt: expect.any(Date),
+    }))
+  })
+
+  it('rejects rollback of non-reversible delete ledgers without marking rolled_back', async () => {
+    const authority = makeAuthority()
+    const migrationLedger = trackingLedger()
+    const migrationId = 'migration_01J00000000000000000000050'
+    const record = {
+      ...migrationRecord({
+        id: migrationId,
+        forwardOperations: [{
+          type: 'custom_field.delete',
+          entityType: 'contacts',
+          fieldName: 'linkedin_url',
+        }],
+      }),
+      destructive: true,
+      reverseOperations: [],
+    } as SchemaMigrationRecord
+    vi.mocked(migrationLedger.assertRollbackPreconditions).mockResolvedValue(record)
+    const engine = makeEngine(createInMemoryCustomFieldRepo(), authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.rollback(ctx, { migrationId })).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalledWith(ctx, migrationId, expect.objectContaining({
+      status: 'rolled_back',
     }))
   })
 
@@ -1999,7 +2024,7 @@ describe('OrbitSchemaEngine', () => {
     expect(authority.run).not.toHaveBeenCalled()
   })
 
-  it('routes confirmed destructive field updates through authority and applies confirmed deletes', async () => {
+  it('routes confirmed destructive field updates through authority and rejects confirmed deletes before authority', async () => {
     const authority = makeAuthority()
     const updateOperations: SchemaMigrationPublicForwardOperation[] = [{
       type: 'custom_field.update',
@@ -2045,8 +2070,10 @@ describe('OrbitSchemaEngine', () => {
         checksum: checksumFor(deleteOperations),
         confirmedAt: '2026-04-26T12:00:00.000Z',
       },
-    })).resolves.toBeUndefined()
-    expect(authority.run).toHaveBeenCalledTimes(2)
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+    })
+    expect(authority.run).toHaveBeenCalledTimes(1)
   })
 
   it('does not let deleteField body override the path target used for confirmation', async () => {
@@ -2081,8 +2108,10 @@ describe('OrbitSchemaEngine', () => {
         checksum: checksumFor(operations),
         confirmedAt: '2026-04-26T12:00:00.000Z',
       },
-    })).resolves.toBeUndefined()
-    expect(authority.run).toHaveBeenCalledTimes(1)
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
   })
 
   it('rejects custom field rename when the new name already exists on the same entity', async () => {
@@ -2192,7 +2221,7 @@ describe('OrbitSchemaEngine', () => {
     expect(migrationDb.execute).toHaveBeenCalledTimes(2)
   })
 
-  it('applies confirmed custom field delete through authority and removes values', async () => {
+  it('fails closed for confirmed custom field delete before metadata or value mutation', async () => {
     const migrationDb = makeMigrationDb()
     const authority = makeAuthority(migrationDb)
     const migrationLedger = trackingLedger()
@@ -2215,15 +2244,14 @@ describe('OrbitSchemaEngine', () => {
         checksum,
         confirmedAt: '2026-04-26T12:00:00.000Z',
       },
-    })).resolves.toMatchObject({
-      status: 'applied',
-      appliedOperations: operations,
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
     })
-    expect(authority.run).toHaveBeenCalledTimes(1)
-    expect(migrationDb.execute).toHaveBeenCalledTimes(2)
+    expect(authority.run).not.toHaveBeenCalled()
+    expect(migrationDb.execute).not.toHaveBeenCalled()
   })
 
-  it('supports delete value migration for every custom_fields table and rejects unsupported entity types before authority', async () => {
+  it('rejects direct delete for every custom_fields table and rejects unsupported entity types before authority', async () => {
     const extensibleEntityTypes = [
       'companies',
       'contacts',
@@ -2261,11 +2289,11 @@ describe('OrbitSchemaEngine', () => {
           checksum,
           confirmedAt: '2026-04-26T12:00:00.000Z',
         },
-      })).resolves.toMatchObject({
-        status: 'applied',
+      })).rejects.toMatchObject({
+        code: 'MIGRATION_OPERATION_UNSUPPORTED',
       })
-      expect(authority.run).toHaveBeenCalledTimes(1)
-      expect(migrationDb.execute).toHaveBeenCalledTimes(2)
+      expect(authority.run).not.toHaveBeenCalled()
+      expect(migrationDb.execute).not.toHaveBeenCalled()
     }
 
     const authority = makeAuthority()
