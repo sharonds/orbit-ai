@@ -188,6 +188,12 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm -r build
+      - name: Run Postgres authority boundary tests
+        env:
+          ORBIT_TEST_POSTGRES_URL: ${{ env.DATABASE_URL }}
+          ORBIT_TEST_POSTGRES_ALLOW_SCHEMA_RESET: '1'
+          ORBIT_TEST_POSTGRES_AUTHORITY_ROLES: '1'
+        run: pnpm -F @orbit-ai/core test -- src/adapters/postgres/live-bootstrap.test.ts
       - name: Run Postgres-backed E2E subset
         run: |
           pnpm -F @orbit-ai/e2e test src/journeys/02 src/journeys/03 src/journeys/04 src/journeys/05 src/journeys/06 src/journeys/07 src/journeys/08 src/journeys/09 src/journeys/10 src/journeys/11 src/journeys/12 src/journeys/15
