@@ -48,7 +48,7 @@ function formatCents(cents: number): string {
 }
 
 const dealValueSchema = z.union([
-  z.number(),
+  z.number().finite(),
   z.string(),
 ]).transform((value, ctx) => {
   const normalized = typeof value === 'number' ? normalizeNumberValue(value, ctx) : value

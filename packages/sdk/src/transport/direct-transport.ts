@@ -121,7 +121,6 @@ export class DirectTransport implements OrbitTransport {
     const startIdx = segments[0] === 'v1' ? 1 : 0
     const entity = segments[startIdx]
     const action = segments[startIdx + 1]
-    const verb = segments[startIdx + 2] // present for 4-segment workflow routes
 
     if (!entity) throw new OrbitApiError({ code: 'RESOURCE_NOT_FOUND', message: `Unknown path: ${path}` }, 404)
 

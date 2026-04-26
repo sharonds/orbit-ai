@@ -5,6 +5,7 @@ describe('deal value validation', () => {
   it.each([
     ['scientific notation string', { name: 'Bad Deal', value: '1e21' }],
     ['unsafe number magnitude', { name: 'Bad Deal', value: 1e21 }],
+    ['NaN number', { name: 'Bad Deal', value: NaN }],
     ['infinite number', { name: 'Bad Deal', value: Infinity }],
     ['too many integer digits', { name: 'Bad Deal', value: '12345678901234567.00' }],
     ['too many fractional digits', { name: 'Bad Deal', value: '1.234' }],

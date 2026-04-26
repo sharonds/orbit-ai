@@ -41,7 +41,7 @@ describe('DirectTransport', () => {
         adapter: mockAdapter as any,
         context: { orgId: 'org_1' },
       })
-    } catch {
+    } catch (_err) {
       // Construction may fail with mock adapter — that is OK
     }
 
@@ -63,14 +63,14 @@ describe('DirectTransport', () => {
         adapter: mockAdapter as any,
         context: { orgId: 'org_1' },
       })
-    } catch {
+    } catch (_err) {
       // Construction may fail with mock adapter
     }
 
     if (transport) {
       try {
         await transport.request({ method: 'GET', path: '/contacts/cid_1' })
-      } catch {
+      } catch (_err) {
         // Expected to fail with mock adapter
       }
     }
