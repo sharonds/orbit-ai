@@ -1,4 +1,4 @@
-# Changelog
+# @orbit-ai/integrations
 
 ## 0.1.0-alpha.1
 
@@ -14,21 +14,15 @@
   - Improve release dry-run diagnostics for spawn failures, signals, and malformed manifests.
   - Fix release docs and stale Orbit SDK environment variable examples.
 
+- [#82](https://github.com/sharonds/orbit-ai/pull/82) [`8f6291f`](https://github.com/sharonds/orbit-ai/commit/8f6291f0c71ea857a01d96dbcc5cd2bb52d23e63) Thanks [@sharonds](https://github.com/sharonds)! - Internal Plan C hardening:
+
+  - `@orbit-ai/core`: require org context for schema-engine reads and reject deal values that do not fit numeric(18,2).
+  - `@orbit-ai/integrations`: replace Stripe's unscoped API-key sentinel with a namespaced sentinel and status handling.
+
+  The E2E launch gate was hardened with tenant-isolation, MCP tool invocation, CRUD update-persistence, and Postgres adapter-proof coverage.
+
 - [#60](https://github.com/sharonds/orbit-ai/pull/60) [`b2e12a8`](https://github.com/sharonds/orbit-ai/commit/b2e12a85fb7d27d116d92748d690697ae14bcf0b) Thanks [@sharonds](https://github.com/sharonds)! - Add missing npm metadata for the CLI, demo seed, and integrations packages, and harden the alpha publish workflow with package artifact verification.
 
 - Updated dependencies [[`3ec754c`](https://github.com/sharonds/orbit-ai/commit/3ec754c47b868bf8b98fc85d648250811fd0b857), [`8f6291f`](https://github.com/sharonds/orbit-ai/commit/8f6291f0c71ea857a01d96dbcc5cd2bb52d23e63)]:
   - @orbit-ai/core@0.1.0-alpha.1
-
-All notable changes to `@orbit-ai/demo-seed` are documented here.
-
-## [Unreleased]
-
-- Initial release. Deterministic multi-tenant seed dataset (`acme` and `beta` profiles) built on top of `@orbit-ai/core` services.
-- Safety: `seed({ mode: 'reset' })` now refuses to wipe an organization the current call did not create unless `allowResetOfExistingOrg: true` is set explicitly. Guards against a slug collision with a real tenant named "Acme Events" / "Beta Collective".
-- Safety: `resetSeed()` clears `entity_tags` before `tags` to prevent FK violations when a consumer has associated seed tags with records.
-- Fix: `seedPipelinesAndStages` is now append-idempotent — re-uses any existing "Default Sales Pipeline" and its stages rather than creating duplicates.
-- Fix: `seedTags` filters by name directly instead of paginating the first 100 tags, which silently broke for tenants with more than 100 tags.
-- Fix: `seedUsers` strips spaces/punctuation from generated emails so names like "De Boer" pass Zod validation.
-- Fix: `pnpm pack` now includes the compiled `dist/` via a `prepack` script. Previously tarballs contained only metadata.
-- Packaging: demo domains use only IANA-reserved, non-routable TLDs per RFC 2606 / 6761 (`.test`, `.example`, `.invalid`); demo user emails keep the RFC 6762 `.local` suffix.
-- Packaging: `engines.node` pinned to `>=22.0.0`.
+  - @orbit-ai/sdk@0.1.0-alpha.1

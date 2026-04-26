@@ -1,6 +1,6 @@
 {
   "name": "@orbit-ai/create-orbit-app",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Scaffold a new Orbit AI starter in under 60 seconds. Alpha usage: npx @orbit-ai/create-orbit-app@alpha my-app",
   "keywords": [
     "crm",
@@ -28,7 +28,10 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
   "files": [
     "bin",

@@ -9,7 +9,14 @@
     "@orbit-ai/demo-seed": "0.1.0-alpha.0",
     "@orbit-ai/integrations": "0.1.0-alpha.0",
     "@orbit-ai/mcp": "0.1.0-alpha.0",
-    "@orbit-ai/sdk": "0.1.0-alpha.0"
+    "@orbit-ai/sdk": "0.1.0-alpha.0",
+    "@orbit-ai/e2e": "0.0.0",
+    "orbit-ai-nodejs-quickstart": "0.0.0"
   },
-  "changesets": []
+  "changesets": [
+    "plan-b-codex-followups",
+    "plan-c-followups",
+    "plan-d-followups",
+    "release-readiness-check"
+  ]
 }
