@@ -57,7 +57,7 @@ Note: the Plan D execution contract was supplied from the parent workspace path 
 | 4. Make Cleanup Failures Observable | Complete | `83ca615` | This commit | Implementation subagent `019dc98c-3d47-7f52-ac86-b7574499f9b4`; reviews `019dc98f-70ea-71d2-9faf-b5c77fa4b43d`, `019dc98f-7235-7313-8bc3-45b382e79f47` |
 | 5. Prove Atomic Rollback And Template Symlink Safety | Complete | `75e3075`, `156adac` | This commit | Implementation subagent `019dc991-43af-7d63-bb95-4762c2d22a20`; reviews `019dc993-1692-7562-b9f7-c0d68ea220fa`, `019dc993-172e-7a42-a726-efb33745558c`, re-reviews `019dc994-bfba-7793-a15a-ad4129d4ca3d`, `019dc994-c014-7091-a0bb-55bad16a40f7` |
 | 6. Document And Test Exact Alpha Version Pinning | Complete | `36cabb4` | This commit | Implementation subagent `019dc996-8301-7eb0-b5ef-3ed4abe980d4`; package/release review `019dc998-5f81-7e93-9c91-8d40ee7cac4a` |
-| 7. Strengthen Package Manager Detection Coverage | Pending | Pending | Pending | Pending |
+| 7. Strengthen Package Manager Detection Coverage | Complete | `993a810` | This commit | Implementation subagent `019dc999-9964-7882-aae8-e7225a640842`; code review `019dc99b-34bd-78c2-bae6-b971896cc4ee` |
 | 8. Add Packed Tarball Smoke Coverage | Pending | Pending | Pending | Pending |
 | 9. Update Create-Orbit-App User Documentation | Pending | Pending | Pending | Pending |
 | 10. Align Release And Repo Documentation With Scoped Package Reality | Pending | Pending | Pending | Pending |
@@ -368,9 +368,49 @@ Named review lenses:
 
 Result: no unresolved Critical/High/Medium Task 6 findings remain.
 
+### Task 7 Reviews
+
+Implementation subagent: `019dc999-9964-7882-aae8-e7225a640842`
+
+Implementation commit: `993a810 test(create-orbit-app): strengthen package manager detection coverage`
+
+Changed files:
+
+- `packages/create-orbit-app/src/install.ts`
+- `packages/create-orbit-app/src/install.test.ts`
+- `packages/create-orbit-app/src/__tests__/index.test.ts`
+
+Focused validation:
+
+```text
+$ corepack pnpm -F @orbit-ai/create-orbit-app test -- src/install.test.ts
+Test Files  1 passed (1)
+Tests       13 passed (13)
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app test -- src/__tests__/index.test.ts
+Test Files  1 passed (1)
+Tests       11 passed (11)
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app typecheck
+tsc -p tsconfig.json --noEmit
+exit 0
+```
+
+Named review lenses:
+
+- Code review subagent `019dc99b-34bd-78c2-bae6-b971896cc4ee`: no Critical/High/Medium/Low findings. Reviewer also ran full create-orbit-app tests successfully. An initial unsupported `--runInBand` flag failed, then reviewer reran without it successfully.
+
+Deferred finding resolution:
+
+- Task 3 Low security review finding about malformed known-prefix package-manager user agents was resolved in `993a810` by requiring a version digit after known prefixes and testing `pnpm/`, `yarn/`, and `bun/` fallback to `npm`.
+
+Result: no unresolved Critical/High/Medium Task 7 findings remain.
+
 ## Deferred Items And Skipped Validation
 
-- Task 3 Low security review finding about malformed known-prefix package-manager user agents is deferred to Task 7, which owns package-manager detection coverage.
+- Task 3 Low security review finding about malformed known-prefix package-manager user agents was deferred to Task 7 and resolved in `993a810`.
 
 ## Plan Drift Log
 
