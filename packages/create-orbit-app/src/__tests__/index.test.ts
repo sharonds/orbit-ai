@@ -178,8 +178,7 @@ describe('run() error paths', () => {
       expect(messages).toMatch(/cd my-app/)
       expect(messages).toMatch(/install/i)
 
-      // Avoid an unused-var lint complaint from strict tsc settings.
-      expect(logSpy).toBeDefined()
+      expect(logSpy).toHaveBeenCalledWith('\nInstalling dependencies…')
     } finally {
       fs.rmSync(scriptDir, { recursive: true, force: true })
     }

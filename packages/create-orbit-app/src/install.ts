@@ -6,9 +6,9 @@ export const INSTALL_TIMEOUT_MS = 300_000
 
 export function detectPackageManager(env: NodeJS.ProcessEnv): PackageManager {
   const ua = env.npm_config_user_agent ?? ''
-  if (ua.startsWith('pnpm/')) return 'pnpm'
-  if (ua.startsWith('yarn/')) return 'yarn'
-  if (ua.startsWith('bun/')) return 'bun'
+  if (/^pnpm\/\d/.test(ua)) return 'pnpm'
+  if (/^yarn\/\d/.test(ua)) return 'yarn'
+  if (/^bun\/\d/.test(ua)) return 'bun'
   return 'npm'
 }
 

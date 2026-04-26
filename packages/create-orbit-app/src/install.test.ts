@@ -18,6 +18,12 @@ describe('detectPackageManager', () => {
   it('falls back to npm for malformed or unknown user-agents', () => {
     expect(detectPackageManager({ npm_config_user_agent: 'not-a-package-manager' })).toBe('npm')
     expect(detectPackageManager({ npm_config_user_agent: 'unknown/1.0.0' })).toBe('npm')
+    expect(detectPackageManager({ npm_config_user_agent: 'bun-wasm/0.5.0' })).toBe('npm')
+    expect(detectPackageManager({ npm_config_user_agent: 'foo pnpm/9.12.3' })).toBe('npm')
+    expect(detectPackageManager({ npm_config_user_agent: '' })).toBe('npm')
+    expect(detectPackageManager({ npm_config_user_agent: 'pnpm/' })).toBe('npm')
+    expect(detectPackageManager({ npm_config_user_agent: 'yarn/' })).toBe('npm')
+    expect(detectPackageManager({ npm_config_user_agent: 'bun/' })).toBe('npm')
   })
 })
 
@@ -74,7 +80,7 @@ describe('runInstall (execa smoke)', () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'coa-install-ok-'))
     try {
       const script = writeExitScript(cwd, 0)
-      await expect(runInstall({ cwd, customCmd: `node ${script}` })).resolves.toBeDefined()
+      await expect(runInstall({ cwd, packageManager: 'npm', customCmd: `node ${script}` })).resolves.toBe('npm')
     } finally {
       fs.rmSync(cwd, { recursive: true, force: true })
     }
