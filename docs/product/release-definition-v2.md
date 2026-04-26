@@ -39,7 +39,7 @@ GA-era gates (full security review sign-off, interface parity matrix checked in,
 - `@orbit-ai/mcp`
 - `@orbit-ai/integrations`
 - `@orbit-ai/demo-seed` *(new — introduced for alpha.1)*
-- `create-orbit-app` *(new — introduced for alpha.1)*
+- `@orbit-ai/create-orbit-app` *(new — introduced for alpha.1)*
 
 ### 3.2 Adapter support
 
@@ -55,7 +55,7 @@ Same as v1: Gmail, Google Calendar, Stripe.
 ### 3.4 Public surface
 
 - Landing page at a committed domain with one-line pitch, install command, link to docs, beta waitlist signup.
-- `create-orbit-app` scaffolder producing a runnable starter seeded with demo data.
+- `@orbit-ai/create-orbit-app` scaffolder producing a runnable starter seeded with demo data.
 
 ## 4. Scope Explicitly Excluded
 
@@ -111,7 +111,7 @@ All 15 journeys inherited from v1 Section 5.1 plus Plan C hardening must work en
 alpha.1 **does not publish** if:
 - Any of the 15 journeys lacks a passing automated test.
 - Any published package has a broken `files` manifest (missing `dist/`, `README.md`, or `LICENSE`).
-- The `create-orbit-app` starter fails a clean `npm install && npm start` on a fresh machine.
+- The `@orbit-ai/create-orbit-app` starter fails a clean `npm install && npm start` on a fresh machine.
 - The landing page lacks a working waitlist signup or install command.
 
 ## 6. Interface Parity (relaxed for alpha.1)
@@ -128,13 +128,13 @@ alpha.1 inherits the security posture from the 2026-04-08 post-stack audit (all 
 
 New packages introduced in alpha.1:
 - `@orbit-ai/demo-seed` — data-only package, no network / no auth / no user input. Security scope: verify no hardcoded real credentials in fixtures.
-- `create-orbit-app` — scaffolder only, no network beyond npm install. Security scope: verify no arbitrary-file write outside the target directory.
+- `@orbit-ai/create-orbit-app` — scaffolder only, no network beyond npm install. Security scope: verify no arbitrary-file write outside the target directory.
 
 ## 8. Documentation Gate
 
 alpha.1 requires:
 - Root `README.md` with install command, quickstart, link to docs
-- `README.md` in each published package (`core`, `api`, `sdk`, `cli`, `mcp`, `integrations`, `demo-seed`, `create-orbit-app`) — **current state: 6/8 present; need to add for demo-seed and create-orbit-app**
+- `README.md` in each published package (`core`, `api`, `sdk`, `cli`, `mcp`, `integrations`, `demo-seed`, `create-orbit-app`) — **current state: 8/8 present**
 - `CHANGELOG.md` with the `0.1.0-alpha.1` entry
 - `docs/known-limitations.md` listing any known drift
 - Landing page linking to the GitHub repo and npm packages
@@ -143,9 +143,15 @@ alpha.1 requires:
 
 alpha.1 requires:
 - npm publish pipeline (changesets) in CI — committed to `main`, runnable on tag
-- All 6 existing packages + 2 new packages published under `@orbit-ai/*` scope (plus `create-orbit-app` under root scope)
+- All 6 existing packages + 2 new packages published under `@orbit-ai/*` scope
 - Git tag `v0.1.0-alpha.1` pushed and matching the npm release
-- Post-publish sanity: `npx create-orbit-app smoke-test` succeeds on a clean machine
+- Post-publish sanity on a clean machine:
+  ```bash
+  npx @orbit-ai/create-orbit-app@alpha my-app --yes
+  cd my-app
+  npm start
+  ```
+  This must prove the generated app installs published dependencies, seeds demo data, and prints real rows.
 
 ## 10. Success Criteria (post-publish, first 30 days)
 
@@ -172,7 +178,7 @@ Listed to prevent scope creep during plan execution:
 Orbit AI is alpha.1-ready when:
 1. All 15 journeys pass in CI against the demo seed
 2. All 8 packages publish cleanly to npm under `0.1.0-alpha.1`
-3. `npx create-orbit-app` works end-to-end on a fresh machine
+3. `npx @orbit-ai/create-orbit-app@alpha my-app --yes` works end-to-end on a fresh machine
 4. The landing page is live with a working waitlist
 5. `CHANGELOG.md` reflects the release
 
