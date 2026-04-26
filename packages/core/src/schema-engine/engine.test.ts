@@ -862,7 +862,7 @@ describe('OrbitSchemaEngine', () => {
       },
       async list() {
         return {
-          data: [field('field_01J00000000000000000000013', 'website', ctx.orgId, { fieldType: 'url' })],
+          data: [field('field_01J00000000000000000000013', 'website', ctx.orgId, { fieldType: 'text' })],
           hasMore: false,
           nextCursor: null,
         }

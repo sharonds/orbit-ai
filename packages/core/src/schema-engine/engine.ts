@@ -494,9 +494,11 @@ function mergeCustomFieldEvidence(a: CustomFieldEvidence, b: CustomFieldEvidence
   const bDefault = hasNonNullDefaultValue(b) ? b.defaultValue : undefined
   const promotedColumnName = a.promotedColumnName ?? b.promotedColumnName
   const defaultValue = aDefault ?? bDefault ?? b.defaultValue ?? a.defaultValue
+  const fieldType = a.isPromoted ? a.fieldType : b.fieldType
   const merged: CustomFieldEvidence = {
     ...a,
     ...b,
+    fieldType,
     isRequired: a.isRequired || b.isRequired,
     isIndexed: a.isIndexed || b.isIndexed,
     isPromoted: a.isPromoted || b.isPromoted,
