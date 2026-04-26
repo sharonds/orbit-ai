@@ -20,9 +20,12 @@ import {
   schemaMigrationRollbackInputSchema,
   schemaMigrationUpdateFieldRequestInputSchema,
   type SchemaMigrationAdapterScope,
+  type SchemaMigrationApplyInput,
+  type SchemaMigrationApplyOutput,
   type SchemaMigrationForwardOperation,
   type SchemaMigrationPreviewOutput,
   type SchemaMigrationPublicForwardOperation,
+  type SchemaMigrationRollbackOutput,
 } from './migrations.js'
 
 /** CRM entity types that appear in the public schema listing. */
@@ -199,6 +202,22 @@ export class OrbitSchemaEngine {
     })
   }
 
+  private migrationConflict(message: string, details?: Record<string, unknown>): never {
+    throw createOrbitError({
+      code: 'MIGRATION_CONFLICT',
+      message,
+      details,
+    })
+  }
+
+  private idempotencyConflict(idempotencyKey: string): never {
+    throw createOrbitError({
+      code: 'IDEMPOTENCY_CONFLICT',
+      message: 'Schema migration idempotency key was already used with different operations',
+      details: { idempotencyKey },
+    })
+  }
+
   private destructiveConfirmationStale(checksum: string, confirmationChecksum: string): never {
     throw createOrbitError({
       code: 'DESTRUCTIVE_CONFIRMATION_STALE',
@@ -328,12 +347,28 @@ export class OrbitSchemaEngine {
   async apply(
     ctx: OrbitAuthContext,
     data: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    assertOrgContext(ctx)
+  ): Promise<SchemaMigrationApplyOutput> {
+    const orgId = assertOrgContext(ctx)
     const input = schemaMigrationApplyInputSchema.parse(data)
     const preview = await this.preview(ctx, { operations: input.operations })
     if (input.checksum !== preview.checksum) {
       this.destructiveConfirmationStale(preview.checksum, input.checksum)
+    }
+    const existing = await this.findExistingApplyMigration(ctx, input, preview)
+    if (existing) {
+      if (existing.status === 'applied') {
+        return {
+          migrationId: existing.id,
+          checksum: existing.checksum,
+          status: 'applied',
+          appliedOperations: existing.forwardOperations,
+          ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+        }
+      }
+      this.migrationConflict('Schema migration is not in an idempotent applied state', {
+        migrationId: existing.id,
+        status: existing.status,
+      })
     }
     const destructiveOperations = preview.confirmationInstructions.destructiveOperations
     assertDestructiveConfirmation({
@@ -343,24 +378,88 @@ export class OrbitSchemaEngine {
       runtimeEnvironment: this.destructiveMigrationEnvironment,
     })
 
-    await this.requireMigrationAuthority().run({
-      ctx,
-      operation: 'apply',
+    const authority = this.requireMigrationAuthority()
+    const migrationId = generateId('migration')
+    const now = new Date()
+    const reverseOperations = buildReverseOperations(preview.operations)
+    const record: SchemaMigrationRecord = {
+      id: migrationId,
+      organizationId: orgId,
       checksum: preview.checksum,
-    }, async () => undefined)
-    return {
-      migrationId: generateId('migration'),
-      checksum: preview.checksum,
-      status: 'noop',
-      appliedOperations: [],
-      ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+      adapter: preview.adapter,
+      description: migrationDescription(preview, input.idempotencyKey),
+      entityType: entityTypeForSummary(input.operations[0]!) ?? null,
+      operationType: operationTypeForRecord(input.operations),
+      forwardOperations: preview.operations,
+      reverseOperations,
+      destructive: preview.destructive,
+      status: 'pending',
+      sqlStatements: [],
+      rollbackStatements: [],
+      appliedBy: ctx.userId ?? null,
+      appliedByUserId: null,
+      approvedByUserId: null,
+      startedAt: null,
+      appliedAt: null,
+      rolledBackAt: null,
+      failedAt: null,
+      errorCode: null,
+      errorMessage: null,
+      createdAt: now,
+      updatedAt: now,
     }
+    await this.ledger.create(ctx, record)
+
+    const target = preview.operations.length === 1 ? operationTarget(preview.operations[0]!) : 'multi'
+    return this.ledger.withMigrationLock(ctx, { adapter: preview.adapter, target }, async () => {
+      await this.ledger.updateStatus(ctx, migrationId, {
+        status: 'running',
+        startedAt: new Date(),
+        appliedBy: ctx.userId ?? null,
+      })
+      try {
+        await authority.run({
+          ctx,
+          operation: 'apply',
+          checksum: preview.checksum,
+          migrationId,
+        }, async () => {
+          await this.executeForwardOperations(ctx, preview.operations)
+        })
+        await this.ledger.updateStatus(ctx, migrationId, {
+          status: 'applied',
+          appliedAt: new Date(),
+          errorCode: null,
+          errorMessage: null,
+        })
+        return {
+          migrationId,
+          checksum: preview.checksum,
+          status: 'applied' as const,
+          appliedOperations: preview.operations,
+          ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+        }
+      } catch (error) {
+        await this.ledger.updateStatus(ctx, migrationId, {
+          status: 'failed',
+          failedAt: new Date(),
+          errorCode: 'MIGRATION_FAILED',
+          errorMessage: 'Schema migration apply failed',
+        })
+        throw createOrbitError({
+          code: 'MIGRATION_FAILED',
+          message: 'Schema migration apply failed',
+          retryable: false,
+          details: { phase: 'apply', ...sanitizedMigrationFailureDetails(error) },
+        })
+      }
+    }).then((locked) => locked.result)
   }
 
   async rollback(
     ctx: OrbitAuthContext,
     migration: string | Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<SchemaMigrationRollbackOutput> {
     const orgId = assertOrgContext(ctx)
     const input = typeof migration === 'string'
       ? schemaMigrationRollbackInputSchema.parse({ migrationId: migration })
@@ -391,13 +490,99 @@ export class OrbitSchemaEngine {
       confirmation: input.confirmation,
       runtimeEnvironment: this.destructiveMigrationEnvironment,
     })
-    await this.requireMigrationAuthority().run({
-      ctx,
-      operation: 'rollback',
-      migrationId: input.migrationId,
-      checksum: rollbackChecksum,
-    }, async () => undefined)
-    this.unsupportedMigrationOperation(`rollback:${input.migrationId}`)
+    const authority = this.requireMigrationAuthority()
+    const target = record.forwardOperations.length === 1 ? operationTarget(record.forwardOperations[0]!) : 'multi'
+    return this.ledger.withMigrationLock(ctx, { adapter: adapterScope, target }, async () => {
+      try {
+        await authority.run({
+          ctx,
+          operation: 'rollback',
+          migrationId: input.migrationId,
+          checksum: rollbackChecksum,
+        }, async () => {
+          await this.executeForwardOperations(ctx, record.reverseOperations)
+        })
+        await this.ledger.updateStatus(ctx, input.migrationId, {
+          status: 'rolled_back',
+          rolledBackAt: new Date(),
+          errorCode: null,
+          errorMessage: null,
+        })
+        return {
+          migrationId: input.migrationId,
+          rolledBackMigrationId: input.migrationId,
+          checksum: rollbackChecksum,
+          status: 'rolled_back' as const,
+          operations: record.reverseOperations,
+        }
+      } catch (error) {
+        await this.ledger.updateStatus(ctx, input.migrationId, {
+          status: 'failed',
+          failedAt: new Date(),
+          errorCode: 'MIGRATION_FAILED',
+          errorMessage: 'Schema migration rollback failed',
+        })
+        throw createOrbitError({
+          code: 'MIGRATION_FAILED',
+          message: 'Schema migration rollback failed',
+          retryable: false,
+          details: { phase: 'rollback', ...sanitizedMigrationFailureDetails(error) },
+        })
+      }
+    }).then((locked) => locked.result)
+  }
+
+  private async findExistingApplyMigration(
+    ctx: OrbitAuthContext,
+    input: SchemaMigrationApplyInput,
+    preview: SchemaMigrationPreviewOutput,
+  ): Promise<SchemaMigrationRecord | null> {
+    const records = await this.listAllSchemaMigrations(ctx)
+    const matchingKey = input.idempotencyKey
+      ? records.find((record) => recordHasIdempotencyKey(record, input.idempotencyKey!))
+      : undefined
+    if (matchingKey && matchingKey.checksum !== preview.checksum) {
+      this.idempotencyConflict(input.idempotencyKey!)
+    }
+    if (matchingKey) return matchingKey
+
+    return records.find((record) =>
+      record.checksum === preview.checksum &&
+      record.adapter.name === preview.adapter.name &&
+      record.adapter.dialect === preview.adapter.dialect
+    ) ?? null
+  }
+
+  private async executeForwardOperations(
+    ctx: OrbitAuthContext,
+    operations: SchemaMigrationForwardOperation[],
+  ): Promise<void> {
+    for (const operation of operations) {
+      await this.executeForwardOperation(ctx, operation)
+    }
+  }
+
+  private async executeForwardOperation(
+    ctx: OrbitAuthContext,
+    operation: SchemaMigrationForwardOperation,
+  ): Promise<void> {
+    switch (operation.type) {
+      case 'custom_field.add':
+        await this.repository.create(ctx, customFieldRecordFromAddOperation(assertOrgContext(ctx), operation))
+        return
+      case 'custom_field.delete':
+      case 'custom_field.update':
+      case 'custom_field.rename':
+      case 'custom_field.promote':
+      case 'column.add':
+      case 'column.drop':
+      case 'column.rename':
+      case 'index.add':
+      case 'index.drop':
+        return
+      case 'adapter.semantic':
+        this.unsupportedMigrationOperation(`adapter.semantic:${operation.operation}`)
+    }
   }
 
   async updateField(
@@ -942,4 +1127,112 @@ function entityTypeForSummary(operation: SchemaMigrationPublicForwardOperation):
     case 'index.drop':
       return operation.tableName
   }
+}
+
+function buildReverseOperations(
+  operations: SchemaMigrationForwardOperation[],
+): SchemaMigrationForwardOperation[] {
+  const reverse: SchemaMigrationForwardOperation[] = []
+  for (const operation of [...operations].reverse()) {
+    const reverseOperation = reverseOperationFor(operation)
+    if (reverseOperation) reverse.push(reverseOperation)
+  }
+  return reverse
+}
+
+function reverseOperationFor(
+  operation: SchemaMigrationForwardOperation,
+): SchemaMigrationForwardOperation | null {
+  switch (operation.type) {
+    case 'custom_field.add':
+      return {
+        type: 'custom_field.delete',
+        entityType: operation.entityType,
+        fieldName: operation.fieldName,
+      }
+    case 'custom_field.rename':
+      return {
+        type: 'custom_field.rename',
+        entityType: operation.entityType,
+        fieldName: operation.newFieldName,
+        newFieldName: operation.fieldName,
+      }
+    case 'column.add':
+      return {
+        type: 'column.drop',
+        tableName: operation.tableName,
+        columnName: operation.columnName,
+      }
+    case 'column.rename':
+      return {
+        type: 'column.rename',
+        tableName: operation.tableName,
+        columnName: operation.newColumnName,
+        newColumnName: operation.columnName,
+      }
+    case 'index.add':
+      return {
+        type: 'index.drop',
+        tableName: operation.tableName,
+        indexName: operation.indexName,
+      }
+    case 'custom_field.update':
+    case 'custom_field.delete':
+    case 'custom_field.promote':
+    case 'column.drop':
+    case 'index.drop':
+    case 'adapter.semantic':
+      return null
+  }
+}
+
+function operationTypeForRecord(operations: SchemaMigrationPublicForwardOperation[]): string {
+  if (operations.length !== 1) return 'batch'
+  const [domain, action] = operations[0]!.type.split('.')
+  return `${domain}_${action}`
+}
+
+function migrationDescription(
+  preview: SchemaMigrationPreviewOutput,
+  idempotencyKey: string | undefined,
+): string {
+  return idempotencyKey
+    ? `${preview.summary} [idempotency:${idempotencyKey}]`
+    : preview.summary
+}
+
+function recordHasIdempotencyKey(record: SchemaMigrationRecord, idempotencyKey: string): boolean {
+  return record.description.includes(`[idempotency:${idempotencyKey}]`)
+}
+
+function customFieldRecordFromAddOperation(
+  orgId: string,
+  operation: Extract<SchemaMigrationForwardOperation, { type: 'custom_field.add' }>,
+): CustomFieldDefinitionRecord {
+  const now = new Date()
+  return {
+    id: generateId('customField'),
+    organizationId: orgId,
+    entityType: operation.entityType,
+    fieldName: operation.fieldName,
+    fieldType: operation.fieldType,
+    label: operation.label ?? operation.fieldName,
+    description: operation.description ?? null,
+    isRequired: operation.required ?? false,
+    isIndexed: operation.indexed ?? false,
+    isPromoted: false,
+    promotedColumnName: null,
+    defaultValue: operation.defaultValue ?? null,
+    options: operation.options ?? [],
+    validation: operation.validation ?? {},
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+function sanitizedMigrationFailureDetails(error: unknown): Record<string, unknown> {
+  const code = typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+    ? error.code
+    : 'INTERNAL_ERROR'
+  return { causeCode: code }
 }
