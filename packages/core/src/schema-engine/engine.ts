@@ -95,6 +95,18 @@ const DEFAULT_SCHEMA_ADAPTER: SchemaEngineSchemaAdapter = {
     return DEFAULT_SCHEMA_SNAPSHOT
   },
 }
+const EXTENSIBLE_ENTITY_TABLES = {
+  companies: 'companies',
+  contacts: 'contacts',
+  deals: 'deals',
+  activities: 'activities',
+  tasks: 'tasks',
+  notes: 'notes',
+  products: 'products',
+  payments: 'payments',
+  contracts: 'contracts',
+  sequences: 'sequences',
+} as const
 const DESTRUCTIVE_PREVIEW_OPERATION_TYPES = new Set([
   'custom_field.delete',
   'custom_field.rename',
@@ -210,6 +222,14 @@ export class OrbitSchemaEngine {
       code: 'MIGRATION_CONFLICT',
       message,
       details,
+    })
+  }
+
+  private unsupportedCustomFieldEntity(entityType: string): never {
+    throw createOrbitError({
+      code: 'VALIDATION_FAILED',
+      message: `Entity type '${entityType}' does not support custom field value storage`,
+      field: 'entityType',
     })
   }
 
@@ -389,6 +409,7 @@ export class OrbitSchemaEngine {
     })
 
     const authority = this.requireMigrationAuthority()
+    await this.assertApplyOperationPreconditions(ctx, preview.operations)
     const migrationId = generateId('migration')
     const now = new Date()
     const reverseOperations = buildReverseOperations(preview.operations)
@@ -582,13 +603,12 @@ export class OrbitSchemaEngine {
         await executeCustomFieldAdd(db, assertOrgContext(ctx), operation)
         return
       case 'custom_field.delete':
-        if (phase !== 'rollback') {
-          this.unsupportedMigrationOperation(operation.type)
-        }
-        await executeCustomFieldDelete(db, assertOrgContext(ctx), operation)
+        await executeCustomFieldDelete(db, assertOrgContext(ctx), operation, this.schemaAdapter.dialect)
+        return
+      case 'custom_field.rename':
+        await executeCustomFieldRename(db, assertOrgContext(ctx), operation, this.schemaAdapter.dialect)
         return
       case 'custom_field.update':
-      case 'custom_field.rename':
       case 'custom_field.promote':
       case 'column.add':
       case 'column.drop':
@@ -601,13 +621,84 @@ export class OrbitSchemaEngine {
     }
   }
 
+  private async assertApplyOperationPreconditions(
+    ctx: OrbitAuthContext,
+    operations: SchemaMigrationForwardOperation[],
+  ): Promise<void> {
+    for (const operation of operations) {
+      switch (operation.type) {
+        case 'custom_field.delete': {
+          this.tableForExtensibleEntity(operation.entityType)
+          const existing = await this.findCustomField(ctx, operation.entityType, operation.fieldName)
+          if (!existing) {
+            this.validationFailed(
+              `Custom field ${operation.entityType}.${operation.fieldName} does not exist`,
+              'fieldName',
+            )
+          }
+          break
+        }
+        case 'custom_field.rename': {
+          this.tableForExtensibleEntity(operation.entityType)
+          const [existing, conflict] = await Promise.all([
+            this.findCustomField(ctx, operation.entityType, operation.fieldName),
+            this.findCustomField(ctx, operation.entityType, operation.newFieldName),
+          ])
+          if (!existing) {
+            this.validationFailed(
+              `Custom field ${operation.entityType}.${operation.fieldName} does not exist`,
+              'fieldName',
+            )
+          }
+          if (conflict) {
+            throw createOrbitError({
+              code: 'CONFLICT',
+              message: `Custom field '${operation.newFieldName}' already exists for entity type '${operation.entityType}' in this organization`,
+              field: 'newFieldName',
+            })
+          }
+          break
+        }
+        case 'custom_field.update':
+        case 'custom_field.promote':
+          this.tableForExtensibleEntity(operation.entityType)
+          break
+        default:
+          break
+      }
+    }
+  }
+
+  private tableForExtensibleEntity(entityType: string): string {
+    const table = EXTENSIBLE_ENTITY_TABLES[entityType as keyof typeof EXTENSIBLE_ENTITY_TABLES]
+    if (!table) {
+      this.unsupportedCustomFieldEntity(entityType)
+    }
+    return table
+  }
+
+  private async findCustomField(
+    ctx: OrbitAuthContext,
+    entityType: string,
+    fieldName: string,
+  ): Promise<CustomFieldDefinitionRecord | null> {
+    const result = await this.repository.list(ctx, {
+      limit: 2,
+      filter: {
+        entity_type: entityType,
+        field_name: fieldName,
+      },
+    })
+    return result.data[0] ?? null
+  }
+
   async updateField(
     ctx: OrbitAuthContext,
     entityType: string,
     fieldName: string,
     data: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    const orgId = assertOrgContext(ctx)
+    assertOrgContext(ctx)
     if (!PUBLIC_CRM_ENTITY_TYPES.includes(entityType as PublicCrmEntityType)) {
       this.validationFailed(`Unknown entity type: ${entityType}`, 'entityType')
     }
@@ -619,22 +710,25 @@ export class OrbitSchemaEngine {
       fieldName,
       patch,
     }]
-    const adapter = this.schemaAdapter
-    const checksum = computeSchemaMigrationChecksum({
-      adapter: {
-        name: adapter.name,
-        dialect: adapter.dialect,
-      },
-      orgId,
-      operations,
-    })
-    assertDestructiveConfirmation({
-      destructiveOperations: operations.map((operation) => operation.type),
-      checksum,
-      confirmation: _confirmation,
-      runtimeEnvironment: this.destructiveMigrationEnvironment,
-    })
-    this.unsupportedMigrationOperation(`custom_field.update:${entityType}.${fieldName}`)
+    const preview = await this.preview(ctx, { operations })
+    if (preview.destructive) {
+      return this.apply(ctx, {
+        operations,
+        checksum: preview.checksum,
+        ...(_confirmation ? { confirmation: _confirmation } : {}),
+      })
+    }
+
+    this.tableForExtensibleEntity(entityType)
+    const existing = await this.findCustomField(ctx, entityType, fieldName)
+    if (!existing) {
+      this.validationFailed(`Custom field ${entityType}.${fieldName} does not exist`, 'fieldName')
+    }
+    const updated = await this.repository.update(ctx, existing.id, toCustomFieldDefinitionPatch(patch))
+    if (!updated) {
+      this.validationFailed(`Custom field ${entityType}.${fieldName} does not exist`, 'fieldName')
+    }
+    return updated
   }
 
   async deleteField(
@@ -649,6 +743,10 @@ export class OrbitSchemaEngine {
       fieldName,
       confirmation: data.confirmation,
     })
+    if (!PUBLIC_CRM_ENTITY_TYPES.includes(input.entityType as PublicCrmEntityType)) {
+      this.validationFailed(`Unknown entity type: ${input.entityType}`, 'entityType')
+    }
+    this.tableForExtensibleEntity(input.entityType)
     const operations: SchemaMigrationPublicForwardOperation[] = [{
       type: 'custom_field.delete',
       entityType: input.entityType,
@@ -669,7 +767,11 @@ export class OrbitSchemaEngine {
       confirmation: input.confirmation,
       runtimeEnvironment: this.destructiveMigrationEnvironment,
     })
-    this.unsupportedMigrationOperation(`custom_field.delete:${entityType}.${fieldName}`)
+    await this.apply(ctx, {
+      operations,
+      checksum,
+      confirmation: input.confirmation,
+    })
   }
 }
 
@@ -1275,6 +1377,22 @@ function customFieldRecordFromAddOperation(
   }
 }
 
+function toCustomFieldDefinitionPatch(
+  patch: Extract<SchemaMigrationPublicForwardOperation, { type: 'custom_field.update' }>['patch'],
+): Partial<CustomFieldDefinitionRecord> {
+  return {
+    ...(patch.label !== undefined ? { label: patch.label } : {}),
+    ...(patch.description !== undefined ? { description: patch.description } : {}),
+    ...(patch.fieldType !== undefined ? { fieldType: patch.fieldType } : {}),
+    ...(patch.required !== undefined ? { isRequired: patch.required } : {}),
+    ...(patch.indexed !== undefined ? { isIndexed: patch.indexed } : {}),
+    ...(patch.defaultValue !== undefined ? { defaultValue: patch.defaultValue } : {}),
+    ...(patch.options !== undefined ? { options: patch.options } : {}),
+    ...(patch.validation !== undefined ? { validation: patch.validation } : {}),
+    updatedAt: new Date(),
+  }
+}
+
 async function executeCustomFieldAdd(
   db: MigrationDatabase,
   orgId: string,
@@ -1324,13 +1442,113 @@ async function executeCustomFieldDelete(
   db: MigrationDatabase,
   orgId: string,
   operation: Extract<SchemaMigrationForwardOperation, { type: 'custom_field.delete' }>,
+  dialect: SchemaEngineSchemaAdapter['dialect'],
 ): Promise<void> {
-  await db.execute(sql`
-    delete from custom_field_definitions
+  const tableName = tableNameForCustomFieldOperation(operation.entityType)
+  await db.transaction(async (tx) => {
+    await tx.execute(customFieldValueDeleteStatement(dialect, tableName, orgId, operation.fieldName))
+    await tx.execute(sql`
+      delete from custom_field_definitions
+      where organization_id = ${orgId}
+        and entity_type = ${operation.entityType}
+        and field_name = ${operation.fieldName}
+    `)
+  })
+}
+
+async function executeCustomFieldRename(
+  db: MigrationDatabase,
+  orgId: string,
+  operation: Extract<SchemaMigrationForwardOperation, { type: 'custom_field.rename' }>,
+  dialect: SchemaEngineSchemaAdapter['dialect'],
+): Promise<void> {
+  const tableName = tableNameForCustomFieldOperation(operation.entityType)
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      update custom_field_definitions
+      set field_name = ${operation.newFieldName},
+          updated_at = ${new Date()}
+      where organization_id = ${orgId}
+        and entity_type = ${operation.entityType}
+        and field_name = ${operation.fieldName}
+    `)
+    await tx.execute(customFieldValueRenameStatement(
+      dialect,
+      tableName,
+      orgId,
+      operation.fieldName,
+      operation.newFieldName,
+    ))
+  })
+}
+
+function tableNameForCustomFieldOperation(entityType: string): string {
+  const tableName = EXTENSIBLE_ENTITY_TABLES[entityType as keyof typeof EXTENSIBLE_ENTITY_TABLES]
+  if (!tableName) {
+    throw createOrbitError({
+      code: 'VALIDATION_FAILED',
+      message: `Entity type '${entityType}' does not support custom field value storage`,
+      field: 'entityType',
+    })
+  }
+  return tableName
+}
+
+function customFieldValueDeleteStatement(
+  dialect: SchemaEngineSchemaAdapter['dialect'],
+  tableName: string,
+  orgId: string,
+  fieldName: string,
+) {
+  if (dialect === 'postgres') {
+    return sql`
+      update ${sql.raw(tableName)}
+      set custom_fields = custom_fields - ${fieldName},
+          updated_at = now()
+      where organization_id = ${orgId}
+    `
+  }
+
+  return sql`
+    update ${sql.raw(tableName)}
+    set custom_fields = json_remove(coalesce(custom_fields, '{}'), ${sqliteJsonPath(fieldName)}),
+        updated_at = ${new Date()}
     where organization_id = ${orgId}
-      and entity_type = ${operation.entityType}
-      and field_name = ${operation.fieldName}
-  `)
+  `
+}
+
+function customFieldValueRenameStatement(
+  dialect: SchemaEngineSchemaAdapter['dialect'],
+  tableName: string,
+  orgId: string,
+  oldFieldName: string,
+  newFieldName: string,
+) {
+  if (dialect === 'postgres') {
+    return sql`
+      update ${sql.raw(tableName)}
+      set custom_fields = (custom_fields - ${oldFieldName}) || jsonb_build_object(${newFieldName}, custom_fields -> ${oldFieldName}),
+          updated_at = now()
+      where organization_id = ${orgId}
+        and custom_fields ? ${oldFieldName}
+    `
+  }
+
+  return sql`
+    update ${sql.raw(tableName)}
+    set custom_fields = json_set(
+          json_remove(coalesce(custom_fields, '{}'), ${sqliteJsonPath(oldFieldName)}),
+          ${sqliteJsonPath(newFieldName)},
+          json_extract(coalesce(custom_fields, '{}'), ${sqliteJsonPath(oldFieldName)})
+        ),
+        updated_at = ${new Date()}
+    where organization_id = ${orgId}
+      and json_type(coalesce(custom_fields, '{}'), ${sqliteJsonPath(oldFieldName)}) is not null
+  `
+}
+
+function sqliteJsonPath(fieldName: string): string {
+  return `$."${fieldName.replaceAll('"', '\\"')}"`
 }
 
 function sanitizedMigrationFailure(

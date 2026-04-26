@@ -16,6 +16,12 @@ import { customFieldDefinitionRecordSchema, type CustomFieldDefinitionRecord } f
 export interface CustomFieldDefinitionRepository {
   create(ctx: OrbitAuthContext, record: CustomFieldDefinitionRecord): Promise<CustomFieldDefinitionRecord>
   get(ctx: OrbitAuthContext, id: string): Promise<CustomFieldDefinitionRecord | null>
+  update(
+    ctx: OrbitAuthContext,
+    id: string,
+    patch: Partial<CustomFieldDefinitionRecord>,
+  ): Promise<CustomFieldDefinitionRecord | null>
+  delete(ctx: OrbitAuthContext, id: string): Promise<boolean>
   list(ctx: OrbitAuthContext, query: SearchQuery): Promise<InternalPaginatedResult<CustomFieldDefinitionRecord>>
 }
 
@@ -96,6 +102,44 @@ export function createInMemoryCustomFieldDefinitionRepository(
       const orgId = assertOrgContext(ctx)
       const record = rows.get(id)
       return record && record.organizationId === orgId ? record : null
+    },
+    async update(ctx, id, patch) {
+      const orgId = assertOrgContext(ctx)
+      const current = rows.get(id)
+      if (!current || current.organizationId !== orgId) {
+        return null
+      }
+      const next = customFieldDefinitionRecordSchema.parse({
+        ...current,
+        ...patch,
+        organizationId: current.organizationId,
+      })
+      const existing = [...rows.values()].find(
+        (r) =>
+          r.id !== id &&
+          r.organizationId === next.organizationId &&
+          r.entityType === next.entityType &&
+          r.fieldName === next.fieldName,
+      )
+      if (existing) {
+        throw createOrbitError({
+          code: 'CONFLICT',
+          message: `Custom field '${next.fieldName}' already exists for entity type '${next.entityType}' in this organization`,
+          field: 'fieldName',
+        })
+      }
+
+      rows.set(id, next)
+      return next
+    },
+    async delete(ctx, id) {
+      const orgId = assertOrgContext(ctx)
+      const current = rows.get(id)
+      if (!current || current.organizationId !== orgId) {
+        return false
+      }
+      rows.delete(id)
+      return true
     },
     async list(ctx, query) {
       return runArrayQuery(scopedRows(ctx), query, {
@@ -180,6 +224,9 @@ export function createSqliteCustomFieldDefinitionRepository(
     onCreateError(error, record) {
       coerceCustomFieldDefinitionConflict(error, record)
     },
+    onUpdateError(error, record) {
+      coerceCustomFieldDefinitionConflict(error, record)
+    },
   })
 
   return {
@@ -192,6 +239,17 @@ export function createSqliteCustomFieldDefinitionRepository(
     },
     async get(ctx, id) {
       return base.get(ctx, id)
+    },
+    async update(ctx, id, patch) {
+      const current = await base.get(ctx, id)
+      if (!current) return null
+      return base.update(ctx, id, {
+        ...patch,
+        organizationId: current.organizationId,
+      })
+    },
+    async delete(ctx, id) {
+      return base.delete(ctx, id)
     },
     async list(ctx, query) {
       return base.list(ctx, query)
@@ -268,6 +326,9 @@ export function createPostgresCustomFieldDefinitionRepository(
     onCreateError(error, record) {
       coerceCustomFieldDefinitionConflict(error, record)
     },
+    onUpdateError(error, record) {
+      coerceCustomFieldDefinitionConflict(error, record)
+    },
   })
 
   return {
@@ -280,6 +341,17 @@ export function createPostgresCustomFieldDefinitionRepository(
     },
     async get(ctx, id) {
       return base.get(ctx, id)
+    },
+    async update(ctx, id, patch) {
+      const current = await base.get(ctx, id)
+      if (!current) return null
+      return base.update(ctx, id, {
+        ...patch,
+        organizationId: current.organizationId,
+      })
+    },
+    async delete(ctx, id) {
+      return base.delete(ctx, id)
     },
     async list(ctx, query) {
       return base.list(ctx, query)

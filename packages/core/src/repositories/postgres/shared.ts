@@ -32,6 +32,7 @@ interface PostgresRepositoryConfig<TRecord extends { id: string } & Record<strin
   serialize(record: TRecord): Record<string, PostgresPrimitive>
   deserialize(row: Record<string, unknown>): TRecord
   onCreateError?(error: unknown, record: TRecord): never
+  onUpdateError?(error: unknown, record: TRecord): never
 }
 
 function buildInsertStatement(
@@ -150,7 +151,12 @@ export function createTenantPostgresRepository<
         } as TRecord
         const row = config.serialize(next)
 
-        await db.execute(buildUpdateStatement(config.tableName, row, config.columns, buildTenantPredicate(ctx, id)))
+        try {
+          await db.execute(buildUpdateStatement(config.tableName, row, config.columns, buildTenantPredicate(ctx, id)))
+        } catch (error) {
+          config.onUpdateError?.(error, next)
+          throw error
+        }
         return next
       })
     },

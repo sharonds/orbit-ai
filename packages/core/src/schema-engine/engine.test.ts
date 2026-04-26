@@ -136,6 +136,19 @@ function createInMemoryCustomFieldRepo(
       })
       return { data, hasMore: false, nextCursor: null }
     },
+    async update(requestCtx, id, patch) {
+      const current = rows.get(id)
+      if (!current || current.organizationId !== requestCtx.orgId) return null
+      const next = { ...current, ...patch } as CustomFieldDefinitionRecord
+      rows.set(id, next)
+      return next
+    },
+    async delete(requestCtx, id) {
+      const current = rows.get(id)
+      if (!current || current.organizationId !== requestCtx.orgId) return false
+      rows.delete(id)
+      return true
+    },
   }
 
   return { ...repository, ...overrides }
@@ -1578,7 +1591,7 @@ describe('OrbitSchemaEngine', () => {
     expect(authority.run).not.toHaveBeenCalled()
   })
 
-  it('fails closed for direct custom field delete apply without reverse metadata proof', async () => {
+  it('applies confirmed custom field delete migrations after metadata proof', async () => {
     const authority = makeAuthority()
     const migrationLedger = trackingLedger()
     const operations: SchemaMigrationPublicForwardOperation[] = [{
@@ -1600,14 +1613,14 @@ describe('OrbitSchemaEngine', () => {
         checksum,
         confirmedAt: '2026-04-26T12:00:00.000Z',
       },
-    })).rejects.toMatchObject({
-      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+    })).resolves.toMatchObject({
+      status: 'applied',
+      appliedOperations: operations,
     })
     expect(authority.run).toHaveBeenCalledTimes(1)
     expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
-      status: 'failed',
-      errorCode: 'MIGRATION_OPERATION_UNSUPPORTED',
-      errorMessage: expect.stringContaining('phase=apply'),
+      status: 'applied',
+      appliedAt: expect.any(Date),
     }))
   })
 
@@ -1731,7 +1744,7 @@ describe('OrbitSchemaEngine', () => {
     })
 
     expect(authority.run).toHaveBeenCalledTimes(1)
-    expect(migrationDb.execute).toHaveBeenCalledTimes(1)
+    expect(migrationDb.execute).toHaveBeenCalledTimes(2)
     expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, migrationId, expect.objectContaining({
       status: 'rolled_back',
       rolledBackAt: expect.any(Date),
@@ -1986,7 +1999,7 @@ describe('OrbitSchemaEngine', () => {
     expect(authority.run).not.toHaveBeenCalled()
   })
 
-  it('rejects destructive field placeholders as unsupported after confirmation without authority execution', async () => {
+  it('routes confirmed destructive field updates through authority and applies confirmed deletes', async () => {
     const authority = makeAuthority()
     const updateOperations: SchemaMigrationPublicForwardOperation[] = [{
       type: 'custom_field.update',
@@ -2014,7 +2027,7 @@ describe('OrbitSchemaEngine', () => {
         }
       },
     }
-    const engine = makeEngine(repo, authority)
+    const engine = makeEngine(repo, authority, ledger(), undefined, 'development')
 
     await expect(engine.updateField(ctx, 'contacts', 'linkedin_url', {
       fieldType: 'number',
@@ -2032,10 +2045,8 @@ describe('OrbitSchemaEngine', () => {
         checksum: checksumFor(deleteOperations),
         confirmedAt: '2026-04-26T12:00:00.000Z',
       },
-    })).rejects.toMatchObject({
-      code: 'MIGRATION_OPERATION_UNSUPPORTED',
-    })
-    expect(authority.run).not.toHaveBeenCalled()
+    })).resolves.toBeUndefined()
+    expect(authority.run).toHaveBeenCalledTimes(2)
   })
 
   it('does not let deleteField body override the path target used for confirmation', async () => {
@@ -2060,7 +2071,7 @@ describe('OrbitSchemaEngine', () => {
         }
       },
     }
-    const engine = makeEngine(repo, authority)
+    const engine = makeEngine(repo, authority, ledger(), undefined, 'development')
 
     await expect(engine.deleteField(ctx, 'contacts', 'linkedin_url', {
       entityType: 'companies',
@@ -2070,9 +2081,247 @@ describe('OrbitSchemaEngine', () => {
         checksum: checksumFor(operations),
         confirmedAt: '2026-04-26T12:00:00.000Z',
       },
+    })).resolves.toBeUndefined()
+    expect(authority.run).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects custom field rename when the new name already exists on the same entity', async () => {
+    const authority = makeAuthority()
+    const migrationLedger = trackingLedger()
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.rename',
+      entityType: 'contacts',
+      fieldName: 'linkedin',
+      newFieldName: 'linkedin_url',
+    }]
+    const checksum = checksumFor(operations)
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000044', 'linkedin'),
+      field('field_01J00000000000000000000045', 'linkedin_url'),
+      field('field_01J00000000000000000000046', 'linkedin_url', ctx.orgId, { entityType: 'companies' }),
+      field('field_01J00000000000000000000047', 'linkedin_url', betaCtx.orgId),
+    ])
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.apply(ctx, {
+      operations,
+      checksum,
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
     })).rejects.toMatchObject({
-      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+      code: 'CONFLICT',
+      field: 'newFieldName',
     })
     expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('updates safe custom field metadata without migration authority', async () => {
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000040', 'linkedin_url', ctx.orgId, {
+        label: 'LinkedIn',
+        description: 'Old description',
+      }),
+    ])
+    const authority = makeAuthority()
+    const engine = makeEngine(repo, authority)
+
+    await expect(engine.updateField(ctx, 'contacts', 'linkedin_url', {
+      label: 'LinkedIn URL',
+      description: 'Profile URL',
+    })).resolves.toMatchObject({
+      id: 'field_01J00000000000000000000040',
+      fieldName: 'linkedin_url',
+      fieldType: 'text',
+      label: 'LinkedIn URL',
+      description: 'Profile URL',
+    })
+    await expect(repo.get(ctx, 'field_01J00000000000000000000040')).resolves.toMatchObject({
+      fieldName: 'linkedin_url',
+      label: 'LinkedIn URL',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('rejects destructive custom field updates without confirmation before authority', async () => {
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000041', 'linkedin_url'),
+    ])
+    const authority = makeAuthority()
+    const engine = makeEngine(repo, authority)
+
+    await expect(engine.updateField(ctx, 'contacts', 'linkedin_url', {
+      fieldType: 'number',
+    })).rejects.toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('applies confirmed custom field rename through authority and migrates values', async () => {
+    const migrationDb = makeMigrationDb()
+    const authority = makeAuthority(migrationDb)
+    const migrationLedger = trackingLedger()
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.rename',
+      entityType: 'contacts',
+      fieldName: 'linkedin',
+      newFieldName: 'linkedin_url',
+    }]
+    const checksum = checksumFor(operations)
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000042', 'linkedin'),
+    ])
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.apply(ctx, {
+      operations,
+      checksum,
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).resolves.toMatchObject({
+      status: 'applied',
+      appliedOperations: operations,
+    })
+    expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(migrationDb.execute).toHaveBeenCalledTimes(2)
+  })
+
+  it('applies confirmed custom field delete through authority and removes values', async () => {
+    const migrationDb = makeMigrationDb()
+    const authority = makeAuthority(migrationDb)
+    const migrationLedger = trackingLedger()
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: 'contacts',
+      fieldName: 'linkedin_url',
+    }]
+    const checksum = checksumFor(operations)
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000043', 'linkedin_url'),
+    ])
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.apply(ctx, {
+      operations,
+      checksum,
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).resolves.toMatchObject({
+      status: 'applied',
+      appliedOperations: operations,
+    })
+    expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(migrationDb.execute).toHaveBeenCalledTimes(2)
+  })
+
+  it('supports delete value migration for every custom_fields table and rejects unsupported entity types before authority', async () => {
+    const extensibleEntityTypes = [
+      'companies',
+      'contacts',
+      'deals',
+      'activities',
+      'tasks',
+      'notes',
+      'products',
+      'payments',
+      'contracts',
+      'sequences',
+    ]
+
+    for (const entityType of extensibleEntityTypes) {
+      const migrationDb = makeMigrationDb()
+      const authority = makeAuthority(migrationDb)
+      const operations: SchemaMigrationPublicForwardOperation[] = [{
+        type: 'custom_field.delete',
+        entityType,
+        fieldName: 'priority',
+      }]
+      const checksum = checksumFor(operations)
+      const repo = createInMemoryCustomFieldRepo([
+        field(`field_01J00000000000000000${entityType.padEnd(8, '0').slice(0, 8)}`, 'priority', ctx.orgId, {
+          entityType,
+        }),
+      ])
+      const engine = makeEngine(repo, authority, trackingLedger(), undefined, 'development')
+
+      await expect(engine.apply(ctx, {
+        operations,
+        checksum,
+        confirmation: {
+          destructive: true,
+          checksum,
+          confirmedAt: '2026-04-26T12:00:00.000Z',
+        },
+      })).resolves.toMatchObject({
+        status: 'applied',
+      })
+      expect(authority.run).toHaveBeenCalledTimes(1)
+      expect(migrationDb.execute).toHaveBeenCalledTimes(2)
+    }
+
+    const authority = makeAuthority()
+    const unsupportedOperations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: 'pipelines',
+      fieldName: 'priority',
+    }]
+    const checksum = checksumFor(unsupportedOperations)
+    const engine = makeEngine(createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000048', 'priority', ctx.orgId, { entityType: 'pipelines' }),
+    ]), authority, trackingLedger(), undefined, 'development')
+
+    await expect(engine.apply(ctx, {
+      operations: unsupportedOperations,
+      checksum,
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      field: 'entityType',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('renames only the targeted entity type when another entity has the same custom field key', async () => {
+    const migrationDb = makeMigrationDb()
+    const authority = makeAuthority(migrationDb)
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.rename',
+      entityType: 'contacts',
+      fieldName: 'linkedin',
+      newFieldName: 'linkedin_url',
+    }]
+    const checksum = checksumFor(operations)
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000049', 'linkedin'),
+      field('field_01J00000000000000000000050', 'linkedin_url', ctx.orgId, { entityType: 'companies' }),
+    ])
+    const engine = makeEngine(repo, authority, trackingLedger(), undefined, 'development')
+
+    await expect(engine.apply(ctx, {
+      operations,
+      checksum,
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).resolves.toMatchObject({
+      status: 'applied',
+    })
+    expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(migrationDb.execute).toHaveBeenCalledTimes(2)
   })
 })

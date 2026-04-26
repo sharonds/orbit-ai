@@ -32,6 +32,7 @@ interface SqliteRepositoryConfig<TRecord extends { id: string } & Record<string,
   serialize(record: TRecord): Record<string, SqlitePrimitive>
   deserialize(row: Record<string, unknown>): TRecord
   onCreateError?(error: unknown, record: TRecord): never
+  onUpdateError?(error: unknown, record: TRecord): never
 }
 
 function buildInsertStatement(
@@ -148,7 +149,12 @@ export function createTenantSqliteRepository<TRecord extends { id: string } & Re
         } as TRecord
         const row = config.serialize(next)
 
-        await db.execute(buildUpdateStatement(config.tableName, row, config.columns, buildTenantPredicate(ctx, id)))
+        try {
+          await db.execute(buildUpdateStatement(config.tableName, row, config.columns, buildTenantPredicate(ctx, id)))
+        } catch (error) {
+          config.onUpdateError?.(error, next)
+          throw error
+        }
         return next
       })
     },
