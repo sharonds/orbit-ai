@@ -75,7 +75,7 @@ de88dcf docs: implementation plans B/C/C.5/D and Codex review for cloud executio
 
 | Task | Status | Subagent/session ID | Implementation commit SHA(s) | Changed files | Validation commands | Review evidence | Notes |
 |---|---|---|---|---|---|---|---|
-| 1 Create Worktree And Execution Ledger | In review | Codex session: pending final ID | Pending commit | `PLAN-C5-EXECUTION-LEDGER.md` | `git status --short --branch`; `git log --oneline -5` | Process review pending final verification | Worktree already existed per coordinator instruction; verified branch baseline and Plan C merge evidence. |
+| 1 Create Worktree And Execution Ledger | Complete | Worker `019dc967-ac8a-7550-b393-911eeb19b210`; parent review | `79f637ee349b9585cd1c01d093c204496c04c171` | `PLAN-C5-EXECUTION-LEDGER.md` | `git status --short --branch`; `git log --oneline -5`; parent `git show --stat --oneline HEAD`; parent `sed -n '1,240p' PLAN-C5-EXECUTION-LEDGER.md` | Process review complete: parent verified ledger structure, baseline evidence, Plan C merge evidence, and commit scope. | Worktree already existed per coordinator instruction; verified branch baseline and Plan C merge evidence. |
 | 2 Define Migration Domain Contracts | Pending | TBD | TBD | TBD | TBD | Schema-change review; code review |  |
 | 3 Strengthen Migration Ledger Persistence | Pending | TBD | TBD | TBD | TBD | Schema-change review; tenant-safety review; database review |  |
 | 4 Inject Migration Authority Into Schema Engine | Pending | TBD | TBD | TBD | TBD | Schema-change review; tenant-safety review; security review |  |
@@ -97,7 +97,7 @@ de88dcf docs: implementation plans B/C/C.5/D and Codex review for cloud executio
 
 | Gate | Required before | Evidence placeholder |
 |---|---|---|
-| Process review | Task 1 commit | TBD |
+| Process review | Task 1 commit | Complete for Task 1: parent verified commit `79f637e` changes only `PLAN-C5-EXECUTION-LEDGER.md` and contains required baseline/worktree evidence. |
 | Schema-change review | Tasks 2, 3, 4, 6, 8, 9 | TBD |
 | Code review | Each implementation commit | TBD |
 | Security review | Tasks 4, 7, 8, 10, 12, 16, final PR | TBD |
@@ -137,7 +137,7 @@ de88dcf docs: implementation plans B/C/C.5/D and Codex review for cloud executio
 
 | Commit | Task(s) | Summary | Validation |
 |---|---|---|---|
-| TBD | TBD | TBD | TBD |
+| `79f637ee349b9585cd1c01d093c204496c04c171` | 1 | Started Plan C5 execution ledger with baseline, scope rules, review gates, deferred items, and concordance placeholders. | `git status --short --branch`; `git log --oneline -5` |
 
 ## Final Concordance Placeholder
 
@@ -151,7 +151,7 @@ to task IDs:
 
 | Path | Task ID(s) | Rationale | Validation | Review evidence |
 |---|---|---|---|---|
-| `PLAN-C5-EXECUTION-LEDGER.md` | 1, 17 | Execution ledger and final concordance | `git status --short --branch`; `git log --oneline -5`; final `git diff --name-only origin/main...HEAD` TBD | Process review TBD |
+| `PLAN-C5-EXECUTION-LEDGER.md` | 1, 17 | Execution ledger and final concordance | `git status --short --branch`; `git log --oneline -5`; final `git diff --name-only origin/main...HEAD` TBD | Task 1 process review complete; final concordance review TBD |
 
 ## Acceptance Criteria Checklist
 
