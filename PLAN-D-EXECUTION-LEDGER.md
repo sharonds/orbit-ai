@@ -62,7 +62,7 @@ Note: the Plan D execution contract was supplied from the parent workspace path 
 | 9. Update Create-Orbit-App User Documentation | Complete | `25927e8` | This commit | Implementation subagent `019dc9a7-d604-7d52-ac6b-841bfcf9a572`; reviews `019dc9a9-831a-74e2-9523-92f215968ea9`, `019dc9a9-8357-70a0-92d2-c4145ca21b38` |
 | 10. Align Release And Repo Documentation With Scoped Package Reality | Complete | `438089a`, `3dce243` | This commit | Implementation subagent `019dc9aa-d5d2-7583-8489-e0988d6902f2`; reviews `019dc9ac-79b2-7ea3-a43e-129e8caf7073`, `019dc9ac-7a1d-7af2-8620-5918d0d4ccbc`, re-review `019dc9ae-5fbd-7a22-ae68-d0a1288f3cd2` |
 | 11. Changeset And Package Artifact Readiness | Complete | `15101ab` | This commit | Implementation subagent `019dc9b0-0754-7e02-ad54-a55784722678`; package/release review `019dc9b1-d1cc-7330-a398-d06e1ab8df46` |
-| 12. Final Verification, Reviews, And Concordance | Pending | Pending | Pending | Pending |
+| 12. Final Verification, Reviews, And Concordance | Complete | `187e5ed` | This commit | Final reviews `019dc9b6-db8b-7d22-9f17-0d89630c567d`, `019dc9b6-dbcc-73b2-a876-d8c532bfe811`, `019dc9b6-dc35-7f51-bcde-995e366d8ef4`, `019dc9b6-dc69-7532-975e-c7e0ee17784d`; final re-reviews `019dc9be-8a16-7973-9e9a-3c0035869e72`, `019dc9be-8ab6-7190-9948-e552b69e507e`, `019dc9c0-4bb8-7892-b057-8fc46b673c23`, `019dc9c0-4c4a-7261-9e80-cd38b78b2750` |
 
 ## Baseline Gate
 
@@ -589,6 +589,109 @@ Named review lenses:
 
 Result: no unresolved Critical/High/Medium Task 11 findings remain.
 
+### Task 12 Final Verification And Reviews
+
+Implementation/final-fix commit:
+
+- `187e5ed fix(create-orbit-app): address final release review findings`
+
+Final focused gates after final review fixes:
+
+```text
+$ corepack pnpm -F @orbit-ai/create-orbit-app test
+Test Files  14 passed (14)
+Tests       70 passed (70)
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app typecheck
+tsc -p tsconfig.json --noEmit
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app build
+rm -rf dist && tsc
+exit 0
+
+$ node scripts/verify-package-artifacts.mjs
+Package artifact verification passed.
+exit 0
+
+$ node --test scripts/release-workflow.test.mjs
+1..39
+# tests 39
+# pass 39
+# fail 0
+exit 0
+```
+
+Final security grep:
+
+```text
+$ rg -n "shell:\\s*true|exec\\(|spawn\\([^,]+,[^,]+,\\s*\\{[^}]*shell|npx create-orbit-app|root scope|CLAUDE|MEMORY|\\.claude" packages/create-orbit-app docs/product/release-definition-v2.md docs/releasing.md packages/demo-seed/README.md scripts/release-workflow.test.mjs .changeset/plan-d-create-orbit-app-readiness.md
+No matches.
+exit 1 (expected for no matches)
+```
+
+Final repo-level gates after final review fixes:
+
+```text
+$ corepack pnpm -r build
+Scope: 10 of 11 workspace projects
+Build completed for core, create-orbit-app, api, demo-seed, sdk, integrations, mcp, cli.
+exit 0
+
+$ corepack pnpm -r typecheck
+Scope: 10 of 11 workspace projects
+Typecheck completed for core, create-orbit-app, api, sdk, demo-seed, mcp, integrations, cli, e2e.
+exit 0
+
+$ corepack pnpm -r test
+Scope: 10 of 11 workspace projects
+create-orbit-app: 70 tests passed.
+core: 358 passed, 2 skipped.
+api: 310 passed.
+demo-seed: 47 passed.
+sdk: 232 passed.
+integrations: 452 passed.
+mcp: 186 passed.
+cli: 206 passed.
+e2e: 19 files passed; 23 passed, 3 skipped.
+exit 0
+
+$ corepack pnpm -r lint
+Scope: 10 of 11 workspace projects
+Lint/typecheck completed for create-orbit-app, core, demo-seed, sdk, api, mcp, integrations.
+exit 0
+
+$ git diff --check
+exit 0
+```
+
+Final named review lenses:
+
+- Code review subagent `019dc9b6-db8b-7d22-9f17-0d89630c567d`: Medium finding that `index.test.ts` hardcoded `0.1.0-alpha.0`; fixed in `187e5ed` by reading the package version from `package.json`. Low finding about release-workflow assertion scope also fixed in `187e5ed`.
+- Security review subagent `019dc9b6-dbcc-73b2-a876-d8c532bfe811`: Medium finding that release definition security wording was too broad; fixed in `187e5ed` by scoping the statement to scaffold-copy behavior and leaving install-time dependency/lifecycle behavior as trusted package-manager behavior covered by post-publish sanity.
+- Package/release review subagent `019dc9b6-dc35-7f51-bcde-995e366d8ef4`: Medium finding that `docs/releasing.md` lacked the post-publish generated starter proof; fixed in `187e5ed` by adding the `npx @orbit-ai/create-orbit-app@alpha my-app --yes && cd my-app && npm start` release step and required real-row output.
+- Plan-vs-execution review subagent `019dc9b6-dc69-7532-975e-c7e0ee17784d`: High finding that final concordance and Task 12 ledger evidence were pending; fixed in this ledger update before the ledger-only evidence commit.
+
+Final re-review lenses:
+
+- Code re-review subagent `019dc9be-8a16-7973-9e9a-3c0035869e72`: no unresolved Critical/High/Medium findings; verified hardcoded-version fix and passed release-workflow plus create-orbit-app tests.
+- Security re-review subagent `019dc9be-8ab6-7190-9948-e552b69e507e`: no unresolved Critical/High/Medium findings; verified no-shell install execution, timeout, option conflicts, path/template handling, symlink/special-file skipping, cleanup visibility, forbidden files untouched, and scoped release-definition wording.
+- Package/release re-review subagent `019dc9c0-4bb8-7892-b057-8fc46b673c23`: no unresolved Critical/High/Medium findings; verified `docs/releasing.md` post-publish generated starter proof and reran release-workflow, create-orbit-app tests/typecheck, and artifact verification.
+- Process/concordance re-review subagent `019dc9c0-4c4a-7261-9e80-cd38b78b2750`: High finding that the completed Task 12 ledger was still uncommitted. Fix: this ledger-only commit records final Task 12 evidence and concordance. The same review confirmed every changed file maps to a task, skipped validation is justified, forbidden files are untouched, and the C5/rebase blocker is recorded.
+
+Plan D E2E:
+
+- Packed scaffolder smoke passed in `packages/create-orbit-app/src/__tests__/smoke.test.ts` as part of `corepack pnpm -F @orbit-ai/create-orbit-app test`.
+- Generated starter runtime proof remains the documented post-publish release gate because exact `@orbit-ai/*@0.1.0-alpha.0` packages are not published yet.
+- Full Orbit E2E remains N/A under the Plan D contract because no shared runtime packages changed. It also passed as part of repo-level `corepack pnpm -r test`, but it is supporting evidence rather than Plan D's required E2E.
+
+Orbit schema/API/tenant review lenses:
+
+- N/A: no core schema, API route, SDK transport, MCP runtime, CLI runtime, adapter, auth, tenant-isolation, or shared runtime package changes were made. Tenant-isolation E2E still passed during repo-level tests.
+
+Result: no unresolved Critical/High/Medium Task 12 findings remain before ledger-only evidence commit.
+
 ## Deferred Items And Skipped Validation
 
 - Task 3 Low security review finding about malformed known-prefix package-manager user agents was deferred to Task 7 and resolved in `993a810`.
@@ -597,23 +700,104 @@ Result: no unresolved Critical/High/Medium Task 11 findings remain.
 
 ## Plan Drift Log
 
-None yet.
+- `docs/releasing.md` was outside the initial Task 10 file ownership map. KEEP decision: final package/release review found a Medium release-process gap, and this file is the canonical release checklist needed to operationalize the Task 8/10 post-publish generated starter proof.
 
 ## Final Concordance
 
-Pending. Must map every file from `git diff --name-only origin/main...HEAD` to a Plan D task before PR.
+Every changed file from `git diff --name-only origin/main...HEAD` maps to Plan D as follows:
+
+- `.changeset/plan-d-create-orbit-app-readiness.md` -> Task 11.
+- `PLAN-D-EXECUTION-LEDGER.md` -> Tasks 1-12 execution evidence, review evidence, skipped-validation rationale, and final concordance.
+- `docs/product/release-definition-v2.md` -> Task 10 scoped release documentation; Task 12 security wording fix.
+- `docs/releasing.md` -> Task 12 package/release Medium fix for post-publish generated starter proof.
+- `packages/create-orbit-app/CHANGELOG.md` -> Task 9 user-facing package documentation.
+- `packages/create-orbit-app/README.md` -> Task 9 user-facing package documentation.
+- `packages/create-orbit-app/src/__tests__/index.test.ts` -> Tasks 2 and 4 CLI behavior coverage; Task 7 package-manager behavior coverage; Task 12 hardcoded-version fix.
+- `packages/create-orbit-app/src/__tests__/smoke.test.ts` -> Tasks 6 and 8 exact version and packed scaffolder smoke coverage.
+- `packages/create-orbit-app/src/copy.test.ts` -> Tasks 4 and 5 cleanup, rollback, symlink, and special-file safety coverage.
+- `packages/create-orbit-app/src/copy.ts` -> Task 4 cleanup-failure observability.
+- `packages/create-orbit-app/src/index.ts` -> Tasks 2, 4, and 8 CLI version/conflict handling, cleanup reporting, and packed runtime lazy dependency loading.
+- `packages/create-orbit-app/src/install.test.ts` -> Tasks 3 and 7 install command parsing, timeout, and package-manager detection coverage.
+- `packages/create-orbit-app/src/install.timeout.test.ts` -> Task 3 install timeout coverage.
+- `packages/create-orbit-app/src/install.ts` -> Tasks 3, 7, and 8 no-shell install execution, timeout handling, package-manager detection, and packed runtime lazy dependency loading.
+- `packages/create-orbit-app/src/options.test.ts` -> Task 2 option validation coverage.
+- `packages/create-orbit-app/src/options.ts` -> Task 2 option validation.
+- `packages/create-orbit-app/src/packageManager.ts` -> Task 8 packed-runtime dependency split.
+- `packages/create-orbit-app/src/prompts.test.ts` -> Task 2 prompt/default option coverage.
+- `packages/create-orbit-app/src/version.test.ts` -> Task 6 exact alpha pinning coverage.
+- `packages/create-orbit-app/src/version.ts` -> Task 6 exact alpha pinning documentation and behavior.
+- `packages/demo-seed/README.md` -> Task 10 demo-seed/starter release documentation alignment.
+- `scripts/release-workflow.test.mjs` -> Task 11 package artifact readiness checks; Task 12 final code-review assertion-scope fix.
+
+Final branch diff:
+
+```text
+.changeset/plan-d-create-orbit-app-readiness.md
+PLAN-D-EXECUTION-LEDGER.md
+docs/product/release-definition-v2.md
+docs/releasing.md
+packages/create-orbit-app/CHANGELOG.md
+packages/create-orbit-app/README.md
+packages/create-orbit-app/src/__tests__/index.test.ts
+packages/create-orbit-app/src/__tests__/smoke.test.ts
+packages/create-orbit-app/src/copy.test.ts
+packages/create-orbit-app/src/copy.ts
+packages/create-orbit-app/src/index.ts
+packages/create-orbit-app/src/install.test.ts
+packages/create-orbit-app/src/install.timeout.test.ts
+packages/create-orbit-app/src/install.ts
+packages/create-orbit-app/src/options.test.ts
+packages/create-orbit-app/src/options.ts
+packages/create-orbit-app/src/packageManager.ts
+packages/create-orbit-app/src/prompts.test.ts
+packages/create-orbit-app/src/version.test.ts
+packages/create-orbit-app/src/version.ts
+packages/demo-seed/README.md
+scripts/release-workflow.test.mjs
+```
+
+Final branch commits:
+
+```text
+187e5ed fix(create-orbit-app): address final release review findings
+6bdfbdc docs: record Plan D task 11 evidence
+15101ab changeset: record create-orbit-app follow-up hardening
+321f9a6 docs: record Plan D task 10 evidence
+3dce243 docs(release): fix alpha package count and demo seed usage
+438089a docs(release): align alpha scaffolder package scope
+9b9551e docs: record Plan D task 9 evidence
+25927e8 docs(create-orbit-app): document scoped alpha usage and install command trust
+093ce22 docs: record Plan D task 8 evidence
+aa578a6 test(create-orbit-app): remove fake starter runtime proof
+2f260b6 test(create-orbit-app): record starter runtime proof gate
+4667ef7 test(create-orbit-app): smoke packed scaffolder tarball
+aae257b docs: record Plan D task 7 evidence
+993a810 test(create-orbit-app): strengthen package manager detection coverage
+c459af2 docs: record Plan D task 6 evidence
+36cabb4 fix(create-orbit-app): document and test exact alpha version pinning
+7874596 docs: record Plan D task 5 evidence
+156adac test(create-orbit-app): tighten special-file safety proof
+75e3075 test(create-orbit-app): prove atomic rollback and template symlink safety
+f9e1d60 docs: record Plan D task 4 evidence
+83ca615 fix(create-orbit-app): log cleanup failures during scaffold rollback
+2100bbb docs: record Plan D task 3 evidence
+78fcf20 fix(create-orbit-app): bound install execution and command parsing
+1c84287 docs: record Plan D task 2 evidence
+def8680 feat(create-orbit-app): add version flag and option conflict checks
+f9525ad docs: start Plan D execution ledger
+```
 
 ## Acceptance Checklist
 
-- [ ] Worktree starts from `origin/main`.
-- [ ] `PLAN-D-EXECUTION-LEDGER.md` final concordance complete.
-- [ ] Every changed file mapped to a task.
-- [ ] All task focused validations complete or explicitly skipped with replacement.
-- [ ] Final focused gates complete.
-- [ ] Final repo-level gates complete.
-- [ ] Final code review has no unresolved Critical/High/Medium findings.
-- [ ] Final security review has no unresolved Critical/High/Medium findings.
-- [ ] Final package/release review has no unresolved Critical/High/Medium findings.
-- [ ] Final plan-vs-execution review has no unresolved Critical/High/Medium findings.
-- [ ] Orbit schema/API/tenant reviews recorded as N/A unless shared runtime packages changed.
-- [ ] C5 merge/rebase blocker recorded before merge.
+- [x] Worktree starts from `origin/main`.
+- [x] `PLAN-D-EXECUTION-LEDGER.md` final concordance complete.
+- [x] Every changed file mapped to a task.
+- [x] All task focused validations complete or explicitly skipped with replacement.
+- [x] Final focused gates complete.
+- [x] Final repo-level gates complete.
+- [x] Final code review has no unresolved Critical/High/Medium findings.
+- [x] Final security review has no unresolved Critical/High/Medium findings.
+- [x] Final package/release review has no unresolved Critical/High/Medium findings.
+- [x] Final plan-vs-execution review has no unresolved Critical/High/Medium findings.
+- [x] Orbit schema/API/tenant reviews recorded as N/A unless shared runtime packages changed.
+- [x] C5 merge/rebase blocker recorded before merge: do not merge or PR-merge this branch until C5 is merged, this branch is rebased onto fresh `origin/main`, and final focused/repo-level gates are rerun.
