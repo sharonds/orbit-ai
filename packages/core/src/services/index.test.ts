@@ -36,6 +36,7 @@ import { createInMemoryCustomFieldDefinitionRepository } from '../entities/custo
 import { createInMemoryAuditLogRepository } from '../entities/audit-logs/repository.js'
 import { createInMemorySchemaMigrationRepository } from '../entities/schema-migrations/repository.js'
 import { createInMemoryIdempotencyKeyRepository } from '../entities/idempotency-keys/repository.js'
+import { computeSchemaMigrationChecksum, type SchemaMigrationPublicForwardOperation } from '../schema-engine/migrations.js'
 import { createPostgresActivityRepository } from '../entities/activities/repository.js'
 import { createPostgresCompanyRepository } from '../entities/companies/repository.js'
 import { createPostgresContractRepository } from '../entities/contracts/repository.js'
@@ -163,15 +164,21 @@ function createRequiredRepositoryOverrides() {
   }
 }
 
+const MIGRATION_APPLY_OPERATIONS: SchemaMigrationPublicForwardOperation[] = [
+  {
+    type: 'custom_field.add',
+    entityType: 'contacts',
+    fieldName: 'linkedin_url',
+    fieldType: 'url',
+  },
+]
 const MIGRATION_APPLY_INPUT = {
-  operations: [
-    {
-      type: 'custom_field.promote',
-      entityType: 'contacts',
-      fieldName: 'linkedin_url',
-    },
-  ],
-  checksum: 'a'.repeat(64),
+  operations: MIGRATION_APPLY_OPERATIONS,
+  checksum: computeSchemaMigrationChecksum({
+    adapter: { name: 'sqlite', dialect: 'sqlite' },
+    orgId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
+    operations: MIGRATION_APPLY_OPERATIONS,
+  }),
 }
 
 describe('core services registry', () => {
