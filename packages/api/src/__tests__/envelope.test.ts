@@ -183,6 +183,7 @@ describe('errorHandlerMiddleware', () => {
         code: 'RESOURCE_NOT_FOUND',
         message: 'Contact not found',
         hint: 'Check the ID',
+        details: { entity: 'contacts', id: 'contact_missing' },
       })
     })
 
@@ -197,12 +198,14 @@ describe('errorHandlerMiddleware', () => {
         request_id: string
         hint: string
         retryable: boolean
+        details: Record<string, unknown>
       }
     }
     expect(body.error.code).toBe('RESOURCE_NOT_FOUND')
     expect(body.error.message).toBe('Contact not found')
     expect(body.error.request_id).toBe('req_boom1')
     expect(body.error.hint).toBe('Check the ID')
+    expect(body.error.details).toEqual({ entity: 'contacts', id: 'contact_missing' })
     expect(body.error.retryable).toBe(false)
   })
 

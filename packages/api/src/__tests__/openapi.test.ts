@@ -100,6 +100,7 @@ describe('OpenAPI spec', () => {
     expect(applyResponse.required).toEqual(expect.arrayContaining(['rollbackable', 'rollbackDecision']))
     expect(applyResponse.properties.rollbackable).toEqual({ type: 'boolean' })
     expect(applyResponse.properties.rollbackDecision.$ref).toBe('#/components/schemas/DestructiveRollbackDecision')
+    expect(spec.components.schemas.DestructiveRollbackDecision.oneOf).toHaveLength(2)
   })
 
   it('contacts emits full CRUD (proves gating does not over-restrict)', () => {

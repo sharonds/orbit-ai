@@ -853,6 +853,27 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
             expiresAt: { type: 'string', format: 'date-time' },
           },
         },
+        DestructiveRollbackDecision: {
+          oneOf: [
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: ['decision'],
+              properties: {
+                decision: { const: 'rollbackable' },
+              },
+            },
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: ['decision', 'reason'],
+              properties: {
+                decision: { const: 'non_rollbackable' },
+                reason: { type: 'string', minLength: 1 },
+              },
+            },
+          ],
+        },
         SchemaMigrationPreviewRequest: {
           type: 'object',
           additionalProperties: false,

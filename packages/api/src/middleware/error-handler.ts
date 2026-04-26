@@ -18,6 +18,7 @@ export const orbitErrorHandler: ErrorHandler = (err, c) => {
           hint: err.hint,
           recovery: err.recovery,
           retryable: err.retryable ?? false,
+          details: err.details,
         },
       },
       status as Parameters<typeof c.json>[1],

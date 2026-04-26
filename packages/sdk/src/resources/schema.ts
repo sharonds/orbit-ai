@@ -3,6 +3,7 @@ import type {
   DestructiveConfirmation,
   OrbitEnvelope,
   SchemaMigrationApplyInput,
+  SchemaMigrationApplyOutput,
   SchemaMigrationPreviewInput,
   SchemaMigrationRollbackInput,
   SchemaMigrationUpdateFieldRequestInput,
@@ -40,6 +41,7 @@ export type SchemaDeleteFieldInput = {
   confirmation?: DestructiveConfirmation
 }
 
+export type SchemaUpdateFieldResult = CustomFieldDefinition | SchemaMigrationApplyOutput
 export type SchemaRollbackMigrationInput = Omit<SchemaMigrationRollbackInput, 'migrationId'>
 
 export class SchemaResource {
@@ -74,8 +76,8 @@ export class SchemaResource {
     type: string,
     fieldName: string,
     body: SchemaMigrationUpdateFieldRequestInput,
-  ): Promise<CustomFieldDefinition> {
-    const r = await this.transport.request<CustomFieldDefinition>({
+  ): Promise<SchemaUpdateFieldResult> {
+    const r = await this.transport.request<SchemaUpdateFieldResult>({
       method: 'PATCH',
       path: `/v1/objects/${type}/fields/${fieldName}`,
       body,
@@ -131,7 +133,7 @@ export class SchemaResource {
       type: string,
       fieldName: string,
       body: SchemaMigrationUpdateFieldRequestInput,
-    ) => Promise<OrbitEnvelope<CustomFieldDefinition>>
+    ) => Promise<OrbitEnvelope<SchemaUpdateFieldResult>>
     deleteField: (
       type: string,
       fieldName: string,
@@ -159,7 +161,7 @@ export class SchemaResource {
           body,
         }),
       updateField: (type, fieldName, body) =>
-        this.transport.rawRequest<CustomFieldDefinition>({
+        this.transport.rawRequest<SchemaUpdateFieldResult>({
           method: 'PATCH',
           path: `/v1/objects/${type}/fields/${fieldName}`,
           body,

@@ -556,6 +556,34 @@ describe('SchemaResource', () => {
     })
   })
 
+  it('updateField() can return a migration apply result for destructive updates', async () => {
+    const body = { fieldType: 'number' }
+    transport.request.mockResolvedValue(makeEnvelope({
+      migrationId: 'migration_01',
+      checksum: 'a'.repeat(64),
+      status: 'applied',
+      appliedOperations: [],
+      rollbackable: false,
+      rollbackDecision: {
+        decision: 'non_rollbackable',
+        reason: 'No complete reverse operations are available for this migration.',
+      },
+    }))
+
+    const result = await schema.updateField('contacts', 'birthday', body)
+
+    expect(result).toMatchObject({
+      migrationId: 'migration_01',
+      status: 'applied',
+      rollbackable: false,
+    })
+    expect(transport.request).toHaveBeenCalledWith({
+      method: 'PATCH',
+      path: '/v1/objects/contacts/fields/birthday',
+      body,
+    })
+  })
+
   it('deleteField() calls DELETE /v1/objects/:type/fields/:fieldName', async () => {
     const body = {
       confirmation: {
