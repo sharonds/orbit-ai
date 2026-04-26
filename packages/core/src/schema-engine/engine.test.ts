@@ -448,6 +448,40 @@ describe('OrbitSchemaEngine', () => {
     expect(result.summary).toContain('Add linkedin_url custom field to contacts')
   })
 
+  it('previews adding a custom field that already exists in metadata as destructive', async () => {
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return {
+          data: [field('field_01J00000000000000000000012', 'tier')],
+          hasMore: false,
+          nextCursor: null,
+        }
+      },
+    }
+
+    const result = await makeEngine(repo).preview(ctx, {
+      operations: [{
+        type: 'custom_field.add',
+        entityType: 'contacts',
+        fieldName: 'tier',
+        fieldType: 'text',
+      }],
+    })
+
+    expect(result.destructive).toBe(true)
+    expect(result.confirmationRequired).toBe(true)
+    expect(result.confirmationInstructions.destructiveOperations).toEqual(['custom_field.add'])
+    expect(result.warnings).toContain(
+      'Custom field contacts.tier already exists in metadata or adapter snapshot; adding it again is conflict-prone.',
+    )
+  })
+
   it('previews indexed custom field add as destructive when JSONB indexes are not supported', async () => {
     const repo: CustomFieldDefinitionRepository = {
       async create(_ctx, record) {
@@ -816,6 +850,103 @@ describe('OrbitSchemaEngine', () => {
     expect(result.destructive).toBe(true)
     expect(result.confirmationRequired).toBe(true)
     expect(result.confirmationInstructions.destructiveOperations).toEqual(['custom_field.update'])
+  })
+
+  it('preserves promoted adapter snapshot evidence when repository metadata is stale', async () => {
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return {
+          data: [field('field_01J00000000000000000000013', 'website', ctx.orgId, { fieldType: 'url' })],
+          hasMore: false,
+          nextCursor: null,
+        }
+      },
+    }
+    const adapter: SchemaEngineSchemaAdapter = {
+      name: 'sqlite',
+      dialect: 'sqlite',
+      supportsJsonbIndexes: false,
+      async getSchemaSnapshot() {
+        return {
+          tables: ['contacts'],
+          customFields: [{
+            id: 'field_01J00000000000000000000013',
+            organizationId: ctx.orgId,
+            entityType: 'contacts',
+            fieldName: 'website',
+            fieldType: 'url',
+            label: 'Website',
+            isRequired: false,
+            isIndexed: false,
+            isPromoted: true,
+            promotedColumnName: 'website',
+            options: [],
+            validation: {},
+          }],
+        }
+      },
+    }
+
+    const result = await makeEngine(repo, undefined, undefined, adapter).preview(ctx, {
+      operations: [{
+        type: 'custom_field.update',
+        entityType: 'contacts',
+        fieldName: 'website',
+        patch: { fieldType: 'text' },
+      }],
+    })
+
+    expect(result.destructive).toBe(true)
+    expect(result.confirmationRequired).toBe(true)
+    expect(result.confirmationInstructions.destructiveOperations).toEqual(['custom_field.update'])
+    expect(result.warnings).toContain(
+      'Changing promoted custom field contacts.website from url to text requires physical column migration.',
+    )
+  })
+
+  it('previews removing a default from an existing required custom field as destructive', async () => {
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return {
+          data: [
+            field('field_01J00000000000000000000014', 'tier', ctx.orgId, {
+              isRequired: true,
+              defaultValue: 'standard',
+            }),
+          ],
+          hasMore: false,
+          nextCursor: null,
+        }
+      },
+    }
+
+    const result = await makeEngine(repo).preview(ctx, {
+      operations: [{
+        type: 'custom_field.update',
+        entityType: 'contacts',
+        fieldName: 'tier',
+        patch: { defaultValue: null },
+      }],
+    })
+
+    expect(result.destructive).toBe(true)
+    expect(result.confirmationRequired).toBe(true)
+    expect(result.confirmationInstructions.destructiveOperations).toEqual(['custom_field.update'])
+    expect(result.warnings).toContain(
+      'Removing the default from required custom field contacts.tier can invalidate future records.',
+    )
   })
 
   it('does not write ledger records or execute migration authority during preview', async () => {

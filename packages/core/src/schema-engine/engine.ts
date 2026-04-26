@@ -413,10 +413,27 @@ export class OrbitSchemaEngine {
 
 interface PreviewClassificationContext {
   adapter: SchemaEngineSchemaAdapter
-  customFields: Map<string, CustomFieldDefinition | CustomFieldDefinitionRecord>
+  customFields: Map<string, CustomFieldEvidence>
   ledger: PreviewLedgerState
   snapshot: SchemaSnapshot
   warnings: string[]
+}
+
+interface CustomFieldEvidence {
+  id: string
+  organizationId: string
+  entityType: string
+  fieldName: string
+  fieldType: CustomFieldDefinition['fieldType']
+  label: string
+  description?: string | null
+  isRequired: boolean
+  isIndexed: boolean
+  isPromoted: boolean
+  promotedColumnName?: string | null
+  defaultValue?: unknown
+  options: string[]
+  validation: Record<string, unknown>
 }
 
 interface PreviewLedgerState {
@@ -430,17 +447,67 @@ function mergeCustomFieldSources(
   orgId: string,
   snapshotFields: CustomFieldDefinition[],
   repositoryFields: CustomFieldDefinitionRecord[],
-): Map<string, CustomFieldDefinition | CustomFieldDefinitionRecord> {
-  const fields = new Map<string, CustomFieldDefinition | CustomFieldDefinitionRecord>()
+): Map<string, CustomFieldEvidence> {
+  const fields = new Map<string, CustomFieldEvidence>()
   for (const field of snapshotFields) {
     if (field.organizationId === orgId) {
-      fields.set(customFieldKey(field.entityType, field.fieldName), field)
+      fields.set(customFieldKey(field.entityType, field.fieldName), toCustomFieldEvidence(field))
     }
   }
   for (const field of repositoryFields) {
-    fields.set(customFieldKey(field.entityType, field.fieldName), field)
+    const key = customFieldKey(field.entityType, field.fieldName)
+    const existing = fields.get(key)
+    const evidence = toCustomFieldEvidence(field)
+    fields.set(key, existing ? mergeCustomFieldEvidence(existing, evidence) : evidence)
   }
   return fields
+}
+
+function toCustomFieldEvidence(field: CustomFieldDefinition | CustomFieldDefinitionRecord): CustomFieldEvidence {
+  const evidence: CustomFieldEvidence = {
+    id: field.id,
+    organizationId: field.organizationId,
+    entityType: field.entityType,
+    fieldName: field.fieldName,
+    fieldType: field.fieldType,
+    label: field.label,
+    isRequired: field.isRequired,
+    isIndexed: field.isIndexed,
+    isPromoted: field.isPromoted,
+    options: field.options,
+    validation: field.validation,
+  }
+  if ('description' in field) {
+    evidence.description = field.description ?? null
+  }
+  if (field.promotedColumnName !== undefined) {
+    evidence.promotedColumnName = field.promotedColumnName
+  }
+  if (field.defaultValue !== undefined) {
+    evidence.defaultValue = field.defaultValue
+  }
+  return evidence
+}
+
+function mergeCustomFieldEvidence(a: CustomFieldEvidence, b: CustomFieldEvidence): CustomFieldEvidence {
+  const aDefault = hasNonNullDefaultValue(a) ? a.defaultValue : undefined
+  const bDefault = hasNonNullDefaultValue(b) ? b.defaultValue : undefined
+  const promotedColumnName = a.promotedColumnName ?? b.promotedColumnName
+  const defaultValue = aDefault ?? bDefault ?? b.defaultValue ?? a.defaultValue
+  const merged: CustomFieldEvidence = {
+    ...a,
+    ...b,
+    isRequired: a.isRequired || b.isRequired,
+    isIndexed: a.isIndexed || b.isIndexed,
+    isPromoted: a.isPromoted || b.isPromoted,
+  }
+  if (promotedColumnName !== undefined) {
+    merged.promotedColumnName = promotedColumnName
+  }
+  if (defaultValue !== undefined) {
+    merged.defaultValue = defaultValue
+  }
+  return merged
 }
 
 function customFieldKey(entityType: string, fieldName: string): string {
@@ -517,6 +584,12 @@ function classifyPreviewOperation(
 
   switch (operation.type) {
     case 'custom_field.add':
+      if (context.customFields.has(customFieldKey(operation.entityType, operation.fieldName))) {
+        context.warnings.push(
+          `Custom field ${operation.entityType}.${operation.fieldName} already exists in metadata or adapter snapshot; adding it again is conflict-prone.`,
+        )
+        return { destructive: true }
+      }
       if (operation.required === true && operation.defaultValue === undefined) {
         context.warnings.push(
           `Adding required custom field ${operation.entityType}.${operation.fieldName} without a default can invalidate existing records.`,
@@ -616,6 +689,18 @@ function classifyCustomFieldUpdate(
     return { destructive: true }
   }
 
+  if (
+    hasOwnProperty(operation.patch, 'defaultValue') &&
+    operation.patch.defaultValue === null &&
+    existing.isRequired &&
+    hasNonNullDefaultValue(existing)
+  ) {
+    context.warnings.push(
+      `Removing the default from required custom field ${operation.entityType}.${operation.fieldName} can invalidate future records.`,
+    )
+    return { destructive: true }
+  }
+
   if (operation.patch.fieldType && operation.patch.fieldType !== existing.fieldType) {
     if (isCompatibleCustomFieldWidening(existing.fieldType, operation.patch.fieldType)) {
       if (existing.isPromoted) {
@@ -674,6 +759,16 @@ function isCompatibleCustomFieldWidening(from: string, to: string): boolean {
 function removesCustomFieldOptions(existingOptions: string[], nextOptions: string[]): boolean {
   const next = new Set(nextOptions)
   return existingOptions.some((option) => !next.has(option))
+}
+
+function hasOwnProperty<T extends object>(value: T, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
+}
+
+function hasNonNullDefaultValue(
+  field: CustomFieldEvidence,
+): boolean {
+  return field.defaultValue !== undefined && field.defaultValue !== null
 }
 
 function customFieldOperationKey(operation: SchemaMigrationPublicForwardOperation): string | null {
