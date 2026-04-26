@@ -55,7 +55,7 @@ Note: the Plan D execution contract was supplied from the parent workspace path 
 | 2. Add `--version` And Tighten Option Validation | Complete | `def8680` | This commit | Implementation subagent `019dc982-58e2-7b23-a3e9-5e7d7992869e`; reviews `019dc985-1d85-7bf3-9782-8a11d862367d`, `019dc985-1e03-7881-9917-abc363198cc4`, `019dc985-1ebf-7513-982f-a1bc9bc6be20` |
 | 3. Bound Install Execution And Harden Command Parsing | Complete | `78fcf20` | This commit | Implementation subagent `019dc987-6ff5-73e2-8ce7-b76f62d3e99f`; reviews `019dc98a-3c01-76d2-9f67-c8b0c69b0903`, `019dc98a-3c62-7dd1-ad5e-70183958509f` |
 | 4. Make Cleanup Failures Observable | Complete | `83ca615` | This commit | Implementation subagent `019dc98c-3d47-7f52-ac86-b7574499f9b4`; reviews `019dc98f-70ea-71d2-9faf-b5c77fa4b43d`, `019dc98f-7235-7313-8bc3-45b382e79f47` |
-| 5. Prove Atomic Rollback And Template Symlink Safety | Pending | Pending | Pending | Pending |
+| 5. Prove Atomic Rollback And Template Symlink Safety | Complete | `75e3075`, `156adac` | This commit | Implementation subagent `019dc991-43af-7d63-bb95-4762c2d22a20`; reviews `019dc993-1692-7562-b9f7-c0d68ea220fa`, `019dc993-172e-7a42-a726-efb33745558c`, re-reviews `019dc994-bfba-7793-a15a-ad4129d4ca3d`, `019dc994-c014-7091-a0bb-55bad16a40f7` |
 | 6. Document And Test Exact Alpha Version Pinning | Pending | Pending | Pending | Pending |
 | 7. Strengthen Package Manager Detection Coverage | Pending | Pending | Pending | Pending |
 | 8. Add Packed Tarball Smoke Coverage | Pending | Pending | Pending | Pending |
@@ -289,6 +289,53 @@ Named review lenses:
 - Code review subagent `019dc98f-7235-7313-8bc3-45b382e79f47`: no Critical/High/Medium/Low findings. Reviewer also ran focused tests, typecheck, and `git diff --check 2100bbb..83ca615` successfully.
 
 Result: no unresolved Critical/High/Medium Task 4 findings remain.
+
+### Task 5 Reviews
+
+Implementation subagents:
+
+- `019dc991-43af-7d63-bb95-4762c2d22a20` for initial implementation.
+- Parent follow-up fix for Medium review findings.
+
+Implementation commits:
+
+- `75e3075 test(create-orbit-app): prove atomic rollback and template symlink safety`
+- `156adac test(create-orbit-app): tighten special-file safety proof`
+
+Changed files:
+
+- `packages/create-orbit-app/src/copy.test.ts`
+
+Focused validation:
+
+```text
+$ corepack pnpm -F @orbit-ai/create-orbit-app test -- src/copy.test.ts
+Test Files  1 passed (1)
+Tests       11 passed (11)
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app typecheck
+tsc -p tsconfig.json --noEmit
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app test -- src/copy.test.ts
+Test Files  1 passed (1)
+Tests       11 passed (11)
+exit 0
+
+$ corepack pnpm -F @orbit-ai/create-orbit-app typecheck
+tsc -p tsconfig.json --noEmit
+exit 0
+```
+
+Named review lenses:
+
+- Filesystem safety review subagent `019dc993-1692-7562-b9f7-c0d68ea220fa`: Medium finding that the special-file read assertion missed one-argument reads. Fixed in `156adac` by checking mock calls by first argument.
+- Code review subagent `019dc993-172e-7a42-a726-efb33745558c`: Medium finding that the special-file mock could pass without proving the special Dirent was encountered. Fixed in `156adac` by asserting `specialDirentReturned`.
+- Filesystem safety re-review subagent `019dc994-bfba-7793-a15a-ad4129d4ca3d`: no Critical/High/Medium findings after fix. Reviewer also ran copy tests and typecheck successfully.
+- Code re-review subagent `019dc994-c014-7091-a0bb-55bad16a40f7`: no Critical/High/Medium findings after fix. Reviewer also ran copy tests, typecheck, and `git diff --check f9e1d60..156adac -- packages/create-orbit-app/src/copy.test.ts` successfully.
+
+Result: no unresolved Critical/High/Medium Task 5 findings remain.
 
 ## Deferred Items And Skipped Validation
 
