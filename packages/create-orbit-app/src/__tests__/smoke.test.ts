@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as os from 'node:os'
+import { fileURLToPath } from 'node:url'
 import { run } from '../index.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const templatePackageJsonPath = path.resolve(__dirname, '..', '..', 'templates', 'default', 'package.json')
 
 describe('create-orbit-app smoke', () => {
   it('scaffolds a default project from argv without prompting', async () => {
@@ -29,4 +34,14 @@ describe('create-orbit-app smoke', () => {
       fs.rmSync(workDir, { recursive: true, force: true })
     }
   }, 60_000)
+
+  it('keeps Orbit starter dependencies on the exact version placeholder', () => {
+    const pkg = JSON.parse(fs.readFileSync(templatePackageJsonPath, 'utf8')) as {
+      dependencies: Record<string, string>
+    }
+
+    expect(pkg.dependencies['@orbit-ai/core']).toBe('__ORBIT_VERSION__')
+    expect(pkg.dependencies['@orbit-ai/sdk']).toBe('__ORBIT_VERSION__')
+    expect(pkg.dependencies['@orbit-ai/demo-seed']).toBe('__ORBIT_VERSION__')
+  })
 })

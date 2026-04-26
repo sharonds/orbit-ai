@@ -7,6 +7,8 @@ const __dirname = path.dirname(__filename)
 
 /**
  * Read our own package.json to get the pinned orbit version.
+ * Alpha starters intentionally pin the exact scaffolder package version
+ * so generated apps use the same source-built alpha package set.
  * Works from both src/version.ts (tests) and dist/version.js (runtime) —
  * both live exactly one level below the package root.
  */
