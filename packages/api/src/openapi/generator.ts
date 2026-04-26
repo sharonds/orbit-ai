@@ -882,7 +882,7 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
         SchemaMigrationApplyResponse: {
           type: 'object',
           additionalProperties: false,
-          required: ['migrationId', 'checksum', 'status', 'appliedOperations'],
+          required: ['migrationId', 'checksum', 'status', 'appliedOperations', 'rollbackable', 'rollbackDecision'],
           properties: {
             migrationId: { type: 'string', minLength: 1 },
             checksum: checksumSchema,
@@ -891,6 +891,8 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
               type: 'array',
               items: { $ref: '#/components/schemas/SchemaMigrationPublicOperation' },
             },
+            rollbackable: { type: 'boolean' },
+            rollbackDecision: { $ref: '#/components/schemas/DestructiveRollbackDecision' },
             idempotencyKey: { type: 'string', minLength: 1, maxLength: 255 },
           },
         },

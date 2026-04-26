@@ -146,7 +146,7 @@ jobs:
       - name: Build
         run: pnpm -r build
 
-      - name: Run all 14 E2E journeys (SQLite)
+      - name: Run all 16 E2E journeys (SQLite)
         run: pnpm -F @orbit-ai/e2e test
 
   journeys-postgres:
@@ -196,5 +196,5 @@ jobs:
         run: pnpm -F @orbit-ai/core test -- src/adapters/postgres/live-bootstrap.test.ts
       - name: Run Postgres-backed E2E subset
         run: |
-          pnpm -F @orbit-ai/e2e test src/journeys/02 src/journeys/03 src/journeys/04 src/journeys/05 src/journeys/06 src/journeys/07 src/journeys/08 src/journeys/09 src/journeys/10 src/journeys/11 src/journeys/12 src/journeys/15
+          pnpm -F @orbit-ai/e2e test src/journeys/02 src/journeys/03 src/journeys/04 src/journeys/05 src/journeys/06 src/journeys/07 src/journeys/08 src/journeys/09 src/journeys/10 src/journeys/11 src/journeys/12 src/journeys/15 src/journeys/16
           pnpm -F @orbit-ai/e2e test src/harness/build-stack.test.ts

@@ -86,6 +86,11 @@ describe('OpenAPI spec', () => {
     const previewResponse = spec.components.schemas.SchemaMigrationPreviewResponse
     expect(previewResponse.properties.confirmationInstructions.$ref).toBe('#/components/schemas/SchemaMigrationConfirmationInstructions')
     expect(previewResponse.properties.scope.$ref).toBe('#/components/schemas/SchemaMigrationTrustedScope')
+
+    const applyResponse = spec.components.schemas.SchemaMigrationApplyResponse
+    expect(applyResponse.required).toEqual(expect.arrayContaining(['rollbackable', 'rollbackDecision']))
+    expect(applyResponse.properties.rollbackable).toEqual({ type: 'boolean' })
+    expect(applyResponse.properties.rollbackDecision.$ref).toBe('#/components/schemas/DestructiveRollbackDecision')
   })
 
   it('contacts emits full CRUD (proves gating does not over-restrict)', () => {

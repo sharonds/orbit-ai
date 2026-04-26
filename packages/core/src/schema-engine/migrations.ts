@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import type { AdapterDialect, AdapterName } from '../adapters/interface.js'
 import {
+  destructiveRollbackDecisionSchema,
   destructiveConfirmationSchema,
   schemaMigrationChecksumSchema,
   type DestructiveConfirmation,
@@ -101,6 +102,7 @@ export const schemaMigrationTrustedScopeSchema = z.object({
 export type SchemaMigrationTrustedScope = z.infer<typeof schemaMigrationTrustedScopeSchema>
 
 export {
+  destructiveRollbackDecisionSchema,
   destructiveConfirmationSchema,
   schemaMigrationChecksumSchema,
   type DestructiveConfirmation,
@@ -316,6 +318,8 @@ export const schemaMigrationApplyOutputSchema = z.object({
   checksum: schemaMigrationChecksumSchema,
   status: z.enum(['applied', 'noop']),
   appliedOperations: z.array(schemaMigrationForwardOperationSchema),
+  rollbackable: z.boolean(),
+  rollbackDecision: destructiveRollbackDecisionSchema,
   idempotencyKey: z.string().min(1).max(255).optional(),
 }).strict()
 export type SchemaMigrationApplyOutput = z.infer<typeof schemaMigrationApplyOutputSchema>

@@ -391,6 +391,7 @@ export class OrbitSchemaEngine {
           checksum: existing.record.checksum,
           status: 'applied',
           appliedOperations: existing.record.forwardOperations,
+          ...rollbackMetadataFor(existing.record.reverseOperations),
           ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
         }
       }
@@ -408,9 +409,8 @@ export class OrbitSchemaEngine {
       requireRuntimeEnvironment: this.migrationAuthority !== undefined,
     })
 
-    const reverseOperations = buildReverseOperations(preview.operations)
     await this.assertApplyOperationPreconditions(ctx, preview.operations)
-    this.assertApplyHasReversibleOperations(preview.operations, reverseOperations)
+    const reverseOperations = await this.buildReverseOperationsForApply(ctx, preview.operations)
     const authority = this.requireMigrationAuthority()
     const migrationId = generateId('migration')
     const now = new Date()
@@ -469,6 +469,7 @@ export class OrbitSchemaEngine {
           checksum: preview.checksum,
           status: 'applied' as const,
           appliedOperations: preview.operations,
+          ...rollbackMetadataFor(reverseOperations),
           ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
         }
       } catch (error) {
@@ -642,10 +643,8 @@ export class OrbitSchemaEngine {
         }
         case 'custom_field.rename': {
           this.tableForExtensibleEntity(operation.entityType)
-          const [existing, conflict] = await Promise.all([
-            this.findCustomField(ctx, operation.entityType, operation.fieldName),
-            this.findCustomField(ctx, operation.entityType, operation.newFieldName),
-          ])
+          const existing = await this.findCustomField(ctx, operation.entityType, operation.fieldName)
+          const conflict = await this.findCustomField(ctx, operation.entityType, operation.newFieldName)
           if (!existing) {
             this.validationFailed(
               `Custom field ${operation.entityType}.${operation.fieldName} does not exist`,
@@ -668,17 +667,6 @@ export class OrbitSchemaEngine {
         default:
           break
       }
-    }
-  }
-
-  private assertApplyHasReversibleOperations(
-    operations: SchemaMigrationForwardOperation[],
-    reverseOperations: SchemaMigrationForwardOperation[],
-  ): void {
-    if (operations.some((operation) => operation.type === 'custom_field.delete') && reverseOperations.length === 0) {
-      this.unsupportedMigrationOperation(
-        'custom_field.delete requires reversible metadata and value snapshots before apply',
-      )
     }
   }
 
@@ -711,6 +699,18 @@ export class OrbitSchemaEngine {
       },
     })
     return result.data[0] ?? null
+  }
+
+  private async buildReverseOperationsForApply(
+    _ctx: OrbitAuthContext,
+    operations: SchemaMigrationForwardOperation[],
+  ): Promise<SchemaMigrationForwardOperation[]> {
+    const reverse: SchemaMigrationForwardOperation[] = []
+    for (const operation of [...operations].reverse()) {
+      const reverseOperation = reverseOperationFor(operation)
+      if (reverseOperation) reverse.push(reverseOperation)
+    }
+    return reverse
   }
 
   async updateField(
@@ -1330,6 +1330,24 @@ function reverseOperationFor(
   }
 }
 
+function rollbackMetadataFor(
+  reverseOperations: SchemaMigrationForwardOperation[],
+): Pick<SchemaMigrationApplyOutput, 'rollbackable' | 'rollbackDecision'> {
+  if (reverseOperations.length > 0) {
+    return {
+      rollbackable: true,
+      rollbackDecision: { decision: 'rollbackable' },
+    }
+  }
+  return {
+    rollbackable: false,
+    rollbackDecision: {
+      decision: 'non_rollbackable',
+      reason: 'No complete reverse operations are available for this migration.',
+    },
+  }
+}
+
 function operationTypeForRecord(operations: SchemaMigrationPublicForwardOperation[]): string {
   if (operations.length !== 1) return 'batch'
   const [domain, action] = operations[0]!.type.split('.')
@@ -1453,8 +1471,8 @@ async function executeCustomFieldAdd(
       ${record.defaultValue === null ? null : JSON.stringify(record.defaultValue)},
       ${JSON.stringify(record.options)},
       ${JSON.stringify(record.validation)},
-      ${record.createdAt},
-      ${record.updatedAt}
+      ${record.createdAt.toISOString()},
+      ${record.updatedAt.toISOString()}
     )
   `)
 }
@@ -1488,7 +1506,7 @@ async function executeCustomFieldRename(
     await tx.execute(sql`
       update custom_field_definitions
       set field_name = ${operation.newFieldName},
-          updated_at = ${new Date()}
+          updated_at = ${new Date().toISOString()}
       where organization_id = ${orgId}
         and entity_type = ${operation.entityType}
         and field_name = ${operation.fieldName}
@@ -1527,14 +1545,16 @@ function customFieldValueDeleteStatement(
       set custom_fields = custom_fields - ${fieldName},
           updated_at = now()
       where organization_id = ${orgId}
+        and custom_fields ? ${fieldName}
     `
   }
 
   return sql`
     update ${sql.raw(tableName)}
     set custom_fields = json_remove(coalesce(custom_fields, '{}'), ${sqliteJsonPath(fieldName)}),
-        updated_at = ${new Date()}
+        updated_at = ${new Date().toISOString()}
     where organization_id = ${orgId}
+      and json_type(coalesce(custom_fields, '{}'), ${sqliteJsonPath(fieldName)}) is not null
   `
 }
 
@@ -1562,7 +1582,7 @@ function customFieldValueRenameStatement(
           ${sqliteJsonPath(newFieldName)},
           json_extract(coalesce(custom_fields, '{}'), ${sqliteJsonPath(oldFieldName)})
         ),
-        updated_at = ${new Date()}
+        updated_at = ${new Date().toISOString()}
     where organization_id = ${orgId}
       and json_type(coalesce(custom_fields, '{}'), ${sqliteJsonPath(oldFieldName)}) is not null
   `

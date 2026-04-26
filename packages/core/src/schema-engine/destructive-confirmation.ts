@@ -21,7 +21,7 @@ const destructiveLedgerEvidenceSchema = z.object({
   recordedAt: z.string().datetime({ offset: true }).optional(),
 }).strict()
 
-const destructiveRollbackDecisionSchema = z.discriminatedUnion('decision', [
+export const destructiveRollbackDecisionSchema = z.discriminatedUnion('decision', [
   z.object({
     decision: z.literal('rollbackable'),
     evidenceId: z.string().min(1).optional(),

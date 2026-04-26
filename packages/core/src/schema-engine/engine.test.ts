@@ -1591,7 +1591,7 @@ describe('OrbitSchemaEngine', () => {
     expect(authority.run).not.toHaveBeenCalled()
   })
 
-  it('does not apply confirmed custom field delete migrations with empty reverse operations', async () => {
+  it('applies confirmed custom field delete migrations as non-rollbackable data removal', async () => {
     const authority = makeAuthority()
     const migrationLedger = trackingLedger()
     const operations: SchemaMigrationPublicForwardOperation[] = [{
@@ -1613,12 +1613,20 @@ describe('OrbitSchemaEngine', () => {
         checksum,
         confirmedAt: '2026-04-26T12:00:00.000Z',
       },
-    })).rejects.toMatchObject({
-      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+    })).resolves.toMatchObject({
+      status: 'applied',
+      appliedOperations: operations,
+      rollbackable: false,
+      rollbackDecision: {
+        decision: 'non_rollbackable',
+      },
     })
-    expect(migrationLedger.create).not.toHaveBeenCalled()
-    expect(migrationLedger.updateStatus).not.toHaveBeenCalled()
-    expect(authority.run).not.toHaveBeenCalled()
+    expect(migrationLedger.create).toHaveBeenCalledWith(expect.objectContaining(ctx), expect.objectContaining({
+      forwardOperations: operations,
+      reverseOperations: [],
+    }))
+    expect(migrationLedger.updateStatus).toHaveBeenCalledTimes(2)
+    expect(authority.run).toHaveBeenCalledTimes(1)
   })
 
   it('rejects batched migrations until multi-target locking is implemented', async () => {
@@ -2024,7 +2032,7 @@ describe('OrbitSchemaEngine', () => {
     expect(authority.run).not.toHaveBeenCalled()
   })
 
-  it('routes confirmed destructive field updates through authority and rejects confirmed deletes before authority', async () => {
+  it('routes confirmed destructive field updates and deletes through authority', async () => {
     const authority = makeAuthority()
     const updateOperations: SchemaMigrationPublicForwardOperation[] = [{
       type: 'custom_field.update',
@@ -2070,10 +2078,8 @@ describe('OrbitSchemaEngine', () => {
         checksum: checksumFor(deleteOperations),
         confirmedAt: '2026-04-26T12:00:00.000Z',
       },
-    })).rejects.toMatchObject({
-      code: 'MIGRATION_OPERATION_UNSUPPORTED',
-    })
-    expect(authority.run).toHaveBeenCalledTimes(1)
+    })).resolves.toBeUndefined()
+    expect(authority.run).toHaveBeenCalledTimes(2)
   })
 
   it('does not let deleteField body override the path target used for confirmation', async () => {
@@ -2108,10 +2114,8 @@ describe('OrbitSchemaEngine', () => {
         checksum: checksumFor(operations),
         confirmedAt: '2026-04-26T12:00:00.000Z',
       },
-    })).rejects.toMatchObject({
-      code: 'MIGRATION_OPERATION_UNSUPPORTED',
-    })
-    expect(authority.run).not.toHaveBeenCalled()
+    })).resolves.toBeUndefined()
+    expect(authority.run).toHaveBeenCalledTimes(1)
   })
 
   it('rejects custom field rename when the new name already exists on the same entity', async () => {
@@ -2216,12 +2220,16 @@ describe('OrbitSchemaEngine', () => {
     })).resolves.toMatchObject({
       status: 'applied',
       appliedOperations: operations,
+      rollbackable: true,
+      rollbackDecision: {
+        decision: 'rollbackable',
+      },
     })
     expect(authority.run).toHaveBeenCalledTimes(1)
     expect(migrationDb.execute).toHaveBeenCalledTimes(2)
   })
 
-  it('fails closed for confirmed custom field delete before metadata or value mutation', async () => {
+  it('applies confirmed custom field delete through authority after metadata preconditions pass', async () => {
     const migrationDb = makeMigrationDb()
     const authority = makeAuthority(migrationDb)
     const migrationLedger = trackingLedger()
@@ -2244,14 +2252,19 @@ describe('OrbitSchemaEngine', () => {
         checksum,
         confirmedAt: '2026-04-26T12:00:00.000Z',
       },
-    })).rejects.toMatchObject({
-      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+    })).resolves.toMatchObject({
+      status: 'applied',
+      appliedOperations: operations,
+      rollbackable: false,
+      rollbackDecision: {
+        decision: 'non_rollbackable',
+      },
     })
-    expect(authority.run).not.toHaveBeenCalled()
-    expect(migrationDb.execute).not.toHaveBeenCalled()
+    expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(migrationDb.execute).toHaveBeenCalledTimes(2)
   })
 
-  it('rejects direct delete for every custom_fields table and rejects unsupported entity types before authority', async () => {
+  it('applies direct delete for every custom_fields table and rejects unsupported entity types before authority', async () => {
     const extensibleEntityTypes = [
       'companies',
       'contacts',
@@ -2289,11 +2302,16 @@ describe('OrbitSchemaEngine', () => {
           checksum,
           confirmedAt: '2026-04-26T12:00:00.000Z',
         },
-      })).rejects.toMatchObject({
-        code: 'MIGRATION_OPERATION_UNSUPPORTED',
+      })).resolves.toMatchObject({
+        status: 'applied',
+        appliedOperations: operations,
+        rollbackable: false,
+        rollbackDecision: {
+          decision: 'non_rollbackable',
+        },
       })
-      expect(authority.run).not.toHaveBeenCalled()
-      expect(migrationDb.execute).not.toHaveBeenCalled()
+      expect(authority.run).toHaveBeenCalledTimes(1)
+      expect(migrationDb.execute).toHaveBeenCalledTimes(2)
     }
 
     const authority = makeAuthority()
