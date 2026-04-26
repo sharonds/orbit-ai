@@ -101,9 +101,15 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
     })
   } catch (err) {
     console.error('Failed to scaffold project:', err instanceof Error ? err.message : String(err))
-    // Best-effort cleanup of a partially-written target directory. Swallow cleanup errors —
-    // the scaffold failure is the primary signal we want to surface.
-    await rm(targetDir, { recursive: true, force: true }).catch(() => {})
+    // Best-effort cleanup of a partially-written target directory. Keep the scaffold
+    // failure primary, but surface cleanup failures for debugging.
+    await rm(targetDir, { recursive: true, force: true }).catch((cleanupErr) => {
+      console.error(
+        `Warning: failed to clean up target directory ${targetDir}: ${
+          cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
+        }`,
+      )
+    })
     process.exit(1)
   }
 

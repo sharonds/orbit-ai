@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as os from 'node:os'
@@ -78,6 +78,37 @@ describe('copyTemplate', () => {
         copyTemplate({ sourceDir: missing, targetDir: path.join(dst, 'out'), replacements: {} }),
       ).rejects.toThrow(new RegExp(`template directory ${missing.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
     } finally {
+      fs.rmSync(dst, { recursive: true, force: true })
+    }
+  })
+
+  it('prints cleanup failures to stderr while preserving the original copy error', async () => {
+    vi.resetModules()
+    const rmMock = vi.fn().mockRejectedValueOnce(new Error('cleanup denied'))
+    vi.doMock('node:fs/promises', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:fs/promises')>()
+      return {
+        ...actual,
+        rm: rmMock,
+      }
+    })
+    const { copyTemplate: copyTemplateWithMockedRm } = await import('./copy.js')
+    const dst = fs.mkdtempSync(path.join(os.tmpdir(), 'dst-'))
+    const missing = path.join(os.tmpdir(), 'missing-template-source')
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await expect(
+        copyTemplateWithMockedRm({ sourceDir: missing, targetDir: path.join(dst, 'out'), replacements: {} }),
+      ).rejects.toThrow(new RegExp(`template directory ${missing.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
+
+      expect(rmMock).toHaveBeenCalled()
+      const messages = errSpy.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
+      expect(messages).toMatch(/cleanup/i)
+      expect(messages).toMatch(/cleanup denied/)
+    } finally {
+      errSpy.mockRestore()
+      vi.doUnmock('node:fs/promises')
+      vi.resetModules()
       fs.rmSync(dst, { recursive: true, force: true })
     }
   })

@@ -26,7 +26,13 @@ export async function copyTemplate(input: CopyTemplateInput): Promise<void> {
     await walkAndCopy(input.sourceDir, tempTarget, input.replacements)
     await commitTargetDirectory(tempTarget, input.targetDir)
   } catch (err) {
-    await fs.rm(tempTarget, { recursive: true, force: true }).catch(() => {})
+    await fs.rm(tempTarget, { recursive: true, force: true }).catch((cleanupErr) => {
+      console.error(
+        `Warning: failed to clean up temporary scaffold directory ${tempTarget}: ${
+          cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
+        }`,
+      )
+    })
     throw err
   }
 }

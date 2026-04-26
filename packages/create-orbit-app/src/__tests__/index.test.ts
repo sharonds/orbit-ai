@@ -44,6 +44,9 @@ describe('run() error paths', () => {
     }
     fs.rmSync(workDir, { recursive: true, force: true })
     vi.restoreAllMocks()
+    vi.doUnmock('../copy.js')
+    vi.doUnmock('node:fs/promises')
+    vi.resetModules()
   })
 
   it('exits 1 with a TTY hint when stdin is not a TTY and prompts would be needed', async () => {
@@ -196,5 +199,29 @@ describe('run() error paths', () => {
     const messages = errSpy.mock.calls.map((c) => String(c[0])).join('\n')
     expect(messages).toMatch(/cd my-app && npm install/)
     expect(messages).not.toMatch(/pnpm install/)
+  })
+
+  it('prints cleanup failures to stderr while preserving the scaffold failure', async () => {
+    vi.doMock('../copy.js', () => ({
+      copyTemplate: vi.fn().mockRejectedValueOnce(new Error('scaffold exploded')),
+    }))
+    vi.doMock('node:fs/promises', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:fs/promises')>()
+      return {
+        ...actual,
+        rm: vi.fn().mockRejectedValueOnce(new Error('cleanup denied')),
+      }
+    })
+    const { run: runWithMocks } = await import('../index.js')
+    const exitSpy = stubExit()
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(runWithMocks(['my-app', '--yes', '--no-install'])).rejects.toThrow(/exit:1/)
+
+    expect(exitSpy).toHaveBeenCalledWith(1)
+    const messages = errSpy.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
+    expect(messages).toMatch(/Failed to scaffold project: scaffold exploded/)
+    expect(messages).toMatch(/cleanup/i)
+    expect(messages).toMatch(/cleanup denied/)
   })
 })
