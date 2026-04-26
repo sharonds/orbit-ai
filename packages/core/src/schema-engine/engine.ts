@@ -37,8 +37,17 @@ export interface SchemaObjectSummary {
   customFields: CustomFieldDefinitionRecord[]
 }
 
+export type SchemaMigrationAuthorityOperation = 'apply' | 'rollback'
+
+export interface SchemaMigrationAuthorityContext {
+  ctx: OrbitAuthContext
+  operation: SchemaMigrationAuthorityOperation
+  checksum?: string
+  migrationId?: string
+}
+
 export interface SchemaMigrationAuthority {
-  run<T>(fn: (db: MigrationDatabase) => Promise<T>): Promise<T>
+  run<T>(context: SchemaMigrationAuthorityContext, fn: (db: MigrationDatabase) => Promise<T>): Promise<T>
 }
 
 export interface OrbitSchemaEngineDependencies {
@@ -48,7 +57,13 @@ export interface OrbitSchemaEngineDependencies {
 }
 
 const ALLOWED_FIELD_TYPES = ['text', 'number', 'boolean', 'date', 'datetime', 'select', 'multi_select', 'url', 'email', 'phone', 'currency', 'relation'] as const
-const PLACEHOLDER_ROLLBACK_CHECKSUM = '0'.repeat(64)
+const DESTRUCTIVE_APPLY_OPERATION_TYPES = new Set([
+  'custom_field.delete',
+  'custom_field.rename',
+  'column.drop',
+  'column.rename',
+  'index.drop',
+])
 
 export class OrbitSchemaEngine {
   private readonly getCustomFields: () => CustomFieldDefinitionRepository
@@ -114,6 +129,17 @@ export class OrbitSchemaEngine {
       code: 'MIGRATION_OPERATION_UNSUPPORTED',
       message: `${operation} is not implemented by OrbitSchemaEngine yet`,
       details: { operation },
+    })
+  }
+
+  private destructiveConfirmationRequired(operations: string[], checksum: string): never {
+    throw createOrbitError({
+      code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
+      message: 'Destructive schema migration operations require confirmation before elevated execution',
+      details: {
+        destructiveOperations: operations,
+        checksum,
+      },
     })
   }
 
@@ -196,7 +222,18 @@ export class OrbitSchemaEngine {
     assertOrgContext(ctx)
     const input = schemaMigrationApplyInputSchema.parse(data)
     void this.ledger
-    await this.requireMigrationAuthority().run(async () => undefined)
+    const destructiveOperations = input.operations
+      .filter((operation) => DESTRUCTIVE_APPLY_OPERATION_TYPES.has(operation.type))
+      .map((operation) => operation.type)
+    if (destructiveOperations.length > 0 && !input.confirmation) {
+      this.destructiveConfirmationRequired(destructiveOperations, input.checksum)
+    }
+
+    await this.requireMigrationAuthority().run({
+      ctx,
+      operation: 'apply',
+      checksum: input.checksum,
+    }, async () => undefined)
     return {
       migrationId: generateId('migration'),
       checksum: input.checksum,
@@ -215,14 +252,13 @@ export class OrbitSchemaEngine {
       ? schemaMigrationRollbackInputSchema.parse({ migrationId: migration })
       : schemaMigrationRollbackInputSchema.parse(migration)
     void this.ledger
-    await this.requireMigrationAuthority().run(async () => undefined)
-    return {
-      migrationId: generateId('migration'),
-      rolledBackMigrationId: input.migrationId,
-      checksum: input.checksum ?? PLACEHOLDER_ROLLBACK_CHECKSUM,
-      status: 'rolled_back',
-      operations: [],
-    }
+    await this.requireMigrationAuthority().run({
+      ctx,
+      operation: 'rollback',
+      migrationId: input.migrationId,
+      ...(input.checksum ? { checksum: input.checksum } : {}),
+    }, async () => undefined)
+    this.unsupportedMigrationOperation(`rollback:${input.migrationId}`)
   }
 
   async updateField(
@@ -236,7 +272,7 @@ export class OrbitSchemaEngine {
       this.validationFailed(`Unknown entity type: ${entityType}`, 'entityType')
     }
     schemaMigrationUpdateFieldInputSchema.parse(data)
-    await this.requireMigrationAuthority().run(async () => undefined)
+    this.requireMigrationAuthority()
     this.unsupportedMigrationOperation(`custom_field.update:${entityType}.${fieldName}`)
   }
 
@@ -247,7 +283,7 @@ export class OrbitSchemaEngine {
   ): Promise<void> {
     assertOrgContext(ctx)
     schemaMigrationDeleteFieldInputSchema.parse({ entityType, fieldName })
-    await this.requireMigrationAuthority().run(async () => undefined)
+    this.requireMigrationAuthority()
     this.unsupportedMigrationOperation(`custom_field.delete:${entityType}.${fieldName}`)
   }
 }

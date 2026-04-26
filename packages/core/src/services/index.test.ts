@@ -398,7 +398,7 @@ describe('core services registry', () => {
 
   it('passes only explicit migration authority into the schema engine', async () => {
     const migrationAuthority = {
-      run: vi.fn(async <T>(fn: (db: never) => Promise<T>): Promise<T> => fn({} as never)),
+      run: vi.fn(async <T>(_context: unknown, fn: (db: never) => Promise<T>): Promise<T> => fn({} as never)),
     }
     const services = createCoreServices(createTestAdapter(), {
       ...createRequiredRepositoryOverrides(),
@@ -408,6 +408,14 @@ describe('core services registry', () => {
     await services.schema.apply(ctx, MIGRATION_APPLY_INPUT)
 
     expect(migrationAuthority.run).toHaveBeenCalledTimes(1)
+    expect(migrationAuthority.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ctx,
+        operation: 'apply',
+        checksum: MIGRATION_APPLY_INPUT.checksum,
+      }),
+      expect.any(Function),
+    )
   })
 
   it('does not derive schema engine migration authority from the runtime adapter', async () => {

@@ -79,8 +79,11 @@ function makeEngine(
 }
 
 function makeAuthority() {
-  const run = vi.fn(async <T>(fn: Parameters<SchemaMigrationAuthority['run']>[0]): Promise<T> => {
-    return fn({} as Parameters<Parameters<SchemaMigrationAuthority['run']>[0]>[0])
+  const run = vi.fn(async <T>(
+    _context: Parameters<SchemaMigrationAuthority['run']>[0],
+    fn: Parameters<SchemaMigrationAuthority['run']>[1],
+  ): Promise<T> => {
+    return fn({} as Parameters<Parameters<SchemaMigrationAuthority['run']>[1]>[0])
   })
   return { run }
 }
@@ -94,6 +97,16 @@ const APPLY_INPUT = {
     },
   ],
   checksum: 'a'.repeat(64),
+}
+const DESTRUCTIVE_APPLY_INPUT = {
+  operations: [
+    {
+      type: 'column.drop',
+      tableName: 'contacts',
+      columnName: 'legacy_score',
+    },
+  ],
+  checksum: 'b'.repeat(64),
 }
 
 describe('OrbitSchemaEngine', () => {
@@ -291,7 +304,28 @@ describe('OrbitSchemaEngine', () => {
     })
   })
 
-  it('calls migration authority visibly for apply and rollback placeholders', async () => {
+  it('does not enter migration authority for destructive apply operations without confirmation', async () => {
+    const authority = makeAuthority()
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const engine = makeEngine(repo, authority)
+
+    await expect(engine.apply(ctx, DESTRUCTIVE_APPLY_INPUT)).rejects.toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('calls migration authority with context for non-destructive apply placeholders', async () => {
     const authority = makeAuthority()
     const repo: CustomFieldDefinitionRepository = {
       async create(_ctx, record) {
@@ -311,16 +345,49 @@ describe('OrbitSchemaEngine', () => {
       status: 'noop',
       appliedOperations: [],
     })
-    await expect(engine.rollback(ctx, 'migration_01J00000000000000000000000')).resolves.toMatchObject({
-      rolledBackMigrationId: 'migration_01J00000000000000000000000',
-      status: 'rolled_back',
-      operations: [],
-    })
 
-    expect(authority.run).toHaveBeenCalledTimes(2)
+    expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(authority.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ctx,
+        operation: 'apply',
+        checksum: APPLY_INPUT.checksum,
+      }),
+      expect.any(Function),
+    )
   })
 
-  it('calls migration authority before rejecting destructive field placeholders as unsupported', async () => {
+  it('calls migration authority with context for rollback placeholders before rejecting unsupported', async () => {
+    const authority = makeAuthority()
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const engine = makeEngine(repo, authority)
+    const migrationId = 'migration_01J00000000000000000000000'
+
+    await expect(engine.rollback(ctx, migrationId)).rejects.toMatchObject({
+      code: 'MIGRATION_OPERATION_UNSUPPORTED',
+    })
+    expect(authority.run).toHaveBeenCalledTimes(1)
+    expect(authority.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ctx,
+        operation: 'rollback',
+        migrationId,
+      }),
+      expect.any(Function),
+    )
+  })
+
+  it('rejects unsupported destructive field placeholders before entering migration authority', async () => {
     const authority = makeAuthority()
     const repo: CustomFieldDefinitionRepository = {
       async create(_ctx, record) {
@@ -341,6 +408,6 @@ describe('OrbitSchemaEngine', () => {
     await expect(engine.deleteField(ctx, 'contacts', 'linkedin_url')).rejects.toMatchObject({
       code: 'MIGRATION_OPERATION_UNSUPPORTED',
     })
-    expect(authority.run).toHaveBeenCalledTimes(2)
+    expect(authority.run).not.toHaveBeenCalled()
   })
 })
