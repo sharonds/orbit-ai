@@ -232,17 +232,40 @@ test('E2E config keeps shared Postgres journeys serial', () => {
   assert.match(src, /fileParallelism:\s*false/, 'shared Postgres e2e database requires serial journey files')
 })
 
-test('create-orbit-app package declares publish metadata and prepack build hook', () => {
+test('changesets fixed group covers create-orbit-app', () => {
+  assert.ok(
+    changesetConfig.fixed.some((group) => group.includes('@orbit-ai/create-orbit-app')),
+    'create-orbit-app must stay in the fixed-version release group',
+  )
+})
+
+test('create-orbit-app package declares publish metadata and artifact contract', () => {
   assert.equal(createOrbitAppManifest.name, '@orbit-ai/create-orbit-app')
   assert.equal(createOrbitAppManifest.license, 'MIT')
   assert.equal(createOrbitAppManifest.author, 'Orbit AI Contributors')
   assert.equal(createOrbitAppManifest.repository?.directory, 'packages/create-orbit-app')
   assert.equal(createOrbitAppManifest.homepage, 'https://github.com/sharonds/orbit-ai#readme')
   assert.equal(createOrbitAppManifest.bugs?.url, 'https://github.com/sharonds/orbit-ai/issues')
+  assert.equal(createOrbitAppManifest.publishConfig?.access, 'public')
+  assert.equal(createOrbitAppManifest.bin?.['create-orbit-app'], './bin/create-orbit-app.js')
+  assert.deepEqual(createOrbitAppManifest.files, ['bin', 'dist', 'templates', 'README.md', 'LICENSE'])
   assert.ok(Array.isArray(createOrbitAppManifest.keywords))
   assert.ok(createOrbitAppManifest.keywords.includes('orbit-ai'))
   assert.equal(createOrbitAppManifest.scripts?.prepack, 'pnpm run build')
   assert.equal(createOrbitAppManifest.scripts?.prepublishOnly, 'pnpm run build && node dist/publishGuard.js')
+  assert.equal(createOrbitAppManifest.scripts?.prepare, undefined)
+})
+
+test('publish job disables lifecycle scripts for npm publish', () => {
+  const publishJobIndex = workflow.indexOf('\n  publish:')
+  const publishStepIndex = workflow.indexOf('name: Publish packages', publishJobIndex)
+  const ignoreScriptsIndex = workflow.indexOf('NPM_CONFIG_IGNORE_SCRIPTS: "true"', publishStepIndex)
+  const provenanceIndex = workflow.indexOf('NPM_CONFIG_PROVENANCE: "true"', publishStepIndex)
+
+  assert.ok(publishJobIndex > -1, 'missing publish job')
+  assert.ok(publishStepIndex > publishJobIndex, 'missing publish step')
+  assert.ok(ignoreScriptsIndex > publishStepIndex, 'publish step must set NPM_CONFIG_IGNORE_SCRIPTS')
+  assert.ok(provenanceIndex > ignoreScriptsIndex, 'ignore-scripts setting should stay in publish env')
 })
 
 test('verifier accepts string-form bin entries', () => {
