@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as os from 'node:os'
+import { fileURLToPath } from 'node:url'
 import { run } from '../index.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const packageJsonPath = path.resolve(__dirname, '..', '..', 'package.json')
 
 /**
  * The tests in this file exercise `run()` end-to-end and assert on the error paths.
@@ -80,7 +85,8 @@ describe('run() error paths', () => {
 
     await run(['--version'])
 
-    expect(logSpy).toHaveBeenCalledWith('@orbit-ai/create-orbit-app 0.1.0-alpha.0')
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as { version: string }
+    expect(logSpy).toHaveBeenCalledWith(`@orbit-ai/create-orbit-app ${pkg.version}`)
     expect(errSpy).not.toHaveBeenCalled()
     expect(fs.readdirSync(workDir)).toEqual([])
   })

@@ -258,14 +258,17 @@ test('create-orbit-app package declares publish metadata and artifact contract',
 
 test('publish job disables lifecycle scripts for npm publish', () => {
   const publishJobIndex = workflow.indexOf('\n  publish:')
-  const publishStepIndex = workflow.indexOf('name: Publish packages', publishJobIndex)
-  const ignoreScriptsIndex = workflow.indexOf('NPM_CONFIG_IGNORE_SCRIPTS: "true"', publishStepIndex)
-  const provenanceIndex = workflow.indexOf('NPM_CONFIG_PROVENANCE: "true"', publishStepIndex)
+  const publishStepIndex = workflow.indexOf('- name: Publish packages', publishJobIndex)
+  const nextStepIndex = workflow.indexOf('\n      - name:', publishStepIndex + 1)
+  const publishStep = workflow.slice(
+    publishStepIndex,
+    nextStepIndex === -1 ? undefined : nextStepIndex,
+  )
 
   assert.ok(publishJobIndex > -1, 'missing publish job')
   assert.ok(publishStepIndex > publishJobIndex, 'missing publish step')
-  assert.ok(ignoreScriptsIndex > publishStepIndex, 'publish step must set NPM_CONFIG_IGNORE_SCRIPTS')
-  assert.ok(provenanceIndex > ignoreScriptsIndex, 'ignore-scripts setting should stay in publish env')
+  assert.match(publishStep, /NPM_CONFIG_IGNORE_SCRIPTS: "true"/)
+  assert.match(publishStep, /NPM_CONFIG_PROVENANCE: "true"/)
 })
 
 test('verifier accepts string-form bin entries', () => {

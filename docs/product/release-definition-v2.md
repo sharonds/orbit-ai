@@ -128,7 +128,7 @@ alpha.1 inherits the security posture from the 2026-04-08 post-stack audit (all 
 
 New packages introduced in alpha.1:
 - `@orbit-ai/demo-seed` — data-only package, no network / no auth / no user input. Security scope: verify no hardcoded real credentials in fixtures.
-- `@orbit-ai/create-orbit-app` — scaffolder only, no network beyond npm install. Security scope: verify no arbitrary-file write outside the target directory.
+- `@orbit-ai/create-orbit-app` — scaffolder plus package-manager install. Security scope: verify the scaffold-copy phase cannot write outside the target directory; install-time dependency resolution and lifecycle behavior are trusted package-manager behavior and must be covered by the post-publish sanity gate.
 
 ## 8. Documentation Gate
 
