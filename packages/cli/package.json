@@ -54,11 +54,11 @@
     "drizzle-orm": "^0.45.2",
     "ink": "^5.0.0",
     "pg": "^8.11.0",
-    "react": "^18.0.0"
+    "react": "^19.2.5"
   },
   "devDependencies": {
     "@types/pg": "^8.15.5",
-    "@types/react": "^18.0.0",
+    "@types/react": "^19.2.14",
     "tsx": "^4.0.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
