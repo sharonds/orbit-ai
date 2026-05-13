@@ -5,6 +5,7 @@ import {
   type ContactLookupClient,
   type CompanyLookupClient,
 } from '../shared/contacts.js'
+import { extractAngleAddr } from '../shared/email-parsing.js'
 import { toIntegrationError } from '../errors.js'
 
 export interface GmailSyncContext {
@@ -73,10 +74,6 @@ export async function syncGmailMessage(
   }
 }
 
-/**
- * Extract bare email from "Display Name <email@example.com>" format.
- */
 function extractEmail(raw: string): string {
-  const match = raw.match(/<([^>]+)>/)
-  return (match ? match[1]! : raw).toLowerCase().trim()
+  return extractAngleAddr(raw)
 }

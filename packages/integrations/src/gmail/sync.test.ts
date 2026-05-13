@@ -82,6 +82,18 @@ describe('syncGmailMessage', () => {
     expect(result.contactId).toBe('created-recipient@external.com')
   })
 
+  it('rejects outbound messages with no recipients via INVALID_INPUT', async () => {
+    const context = makeContext()
+    const message = makeMessage({
+      from: 'me@mycompany.com',
+      to: [],
+    })
+
+    await expect(syncGmailMessage(context, message)).rejects.toSatisfy((err: unknown) => {
+      return isIntegrationError(err) && err.code === 'INVALID_INPUT'
+    })
+  })
+
   it('sets metadata with gmail_message_id, gmail_thread_id, gmail_labels', async () => {
     const context = makeContext()
     const message = makeMessage()

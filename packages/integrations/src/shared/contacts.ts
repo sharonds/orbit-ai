@@ -1,4 +1,5 @@
 import { createIntegrationError } from '../errors.js'
+import { extractAngleAddr } from './email-parsing.js'
 
 export interface ContactLookupClient {
   // Minimal SDK-like interface for contact operations
@@ -88,10 +89,7 @@ export async function findOrCreateContactFromEmail(
  * Detect message direction based on sender email vs org user emails.
  */
 export function detectDirection(from: string, orgUserEmails: string[]): 'inbound' | 'outbound' {
-  const fromNormalized = from.toLowerCase().trim()
-  // Extract email from "Name <email>" format
-  const emailMatch = fromNormalized.match(/<([^>]+)>/)
-  const fromEmail = emailMatch ? emailMatch[1]! : fromNormalized
+  const fromEmail = extractAngleAddr(from)
 
   for (const userEmail of orgUserEmails) {
     if (fromEmail === userEmail.toLowerCase().trim()) {

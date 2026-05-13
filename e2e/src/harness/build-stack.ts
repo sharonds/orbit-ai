@@ -41,6 +41,15 @@ async function sha256hex(input: string): Promise<string> {
     .join('')
 }
 
+function isTestLocalUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' && parsed.hostname === 'test.local'
+  } catch {
+    return false
+  }
+}
+
 function buildFetchInterceptor(api: ReturnType<typeof createApi>, previousFetch: typeof fetch): typeof fetch {
   return (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
     const url =
@@ -49,8 +58,9 @@ function buildFetchInterceptor(api: ReturnType<typeof createApi>, previousFetch:
         : input instanceof URL
           ? input.toString()
           : (input as Request).url
-    if (url.startsWith('http://test.local')) {
-      const path = url.replace('http://test.local', '')
+    if (isTestLocalUrl(url)) {
+      const parsed = new URL(url)
+      const path = `${parsed.pathname}${parsed.search}`
       return api.fetch(new Request(`http://test.local${path}`, init))
     }
     return previousFetch(input, init)
