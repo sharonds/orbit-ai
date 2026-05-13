@@ -5,11 +5,11 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  fast-uri: '>=3.1.2'
-  hono: '>=4.12.18'
-  ip-address: '>=10.1.1'
+  fast-uri: ^3.1.2
+  hono: ^4.12.18
+  ip-address: ^10.1.1
   vite: ^7.3.2
-  postcss: '>=8.5.10'
+  postcss: ^8.5.10
 
 importers:
 
@@ -105,7 +105,7 @@ importers:
         specifier: workspace:*
         version: link:../core
       hono:
-        specifier: '>=4.12.18'
+        specifier: ^4.12.18
         version: 4.12.18
       zod:
         specifier: ^4.1.11
@@ -516,7 +516,7 @@ packages:
     resolution: {integrity: sha512-TsQLe4i2gvoTtrHje625ngThGBySOgSK3Xo2XRYOdqGN1teR8+I7vchQC46uLJi8OF62YTYA3AhSpumtkhsaKQ==}
     engines: {node: '>=18.14.1'}
     peerDependencies:
-      hono: '>=4.12.18'
+      hono: ^4.12.18
 
   '@inquirer/external-editor@1.0.3':
     resolution: {integrity: sha512-RWbSrDiYmO4LbejWY7ttpxczuwQyZLBUyygsA9Nsv95hpzUWwnNTVQmAq3xuh7vNwCp07UTmE5i11XAEExx4RA==}
