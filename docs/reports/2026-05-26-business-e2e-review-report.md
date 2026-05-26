@@ -93,8 +93,9 @@ before build because package entrypoints in `dist` were absent. After
 
 - CLI graph isolation remains deferred.
 - MCP stdio wire behavior remains deferred.
-- Broader security E2E files for scope boundaries, graph isolation, redaction,
-  idempotency, payload limits, rate limits, and webhook SSRF remain deferred.
+- Broader security E2E files for scope-boundary update/delete cases, broader
+  graph isolation, redaction, idempotency, payload limits, rate limits, and
+  webhook SSRF remain deferred.
 - Postgres/RLS proof remains deferred by design for this SQLite-only pass.
 
 ## Confidence
@@ -110,6 +111,6 @@ are still planned follow-up work.
 
 ## Recommended Next Slice
 
-Implement Renewal/Expansion next, then add compact CLI business-surface smoke
-and broader auth/scope/redaction security files before moving to any UI
-prototype.
+Add integration event simulation with fake Gmail/Calendar/Stripe payloads and
+idempotent replay checks, then add broader auth/scope/redaction security files
+before moving to any UI prototype.
