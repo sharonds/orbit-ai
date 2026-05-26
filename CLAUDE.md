@@ -113,12 +113,12 @@ Every feature follows this pipeline — no skipping steps:
 ```
 1. BRAINSTORM   superpowers:brainstorming
                 → Collaborative spec with explicit approval gate before any code
-                → Output: docs/superpowers/specs/YYYY-MM-DD-<name>.md
+                → Output: archive repo `sharonds/orbit-ai-knowledge`
 
 2. PLAN         superpowers:writing-plans
                 → Converts spec into step-by-step impl plan with exact file paths,
                   full code blocks, TDD steps, and expected command output
-                → Output: docs/superpowers/plans/YYYY-MM-DD-<name>.md
+                → Output: archive repo `sharonds/orbit-ai-knowledge`
 
 3. WORKTREE     superpowers:using-git-worktrees
                 → Isolated branch; verifies baseline tests pass before any changes

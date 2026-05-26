@@ -12,8 +12,9 @@
     "release": "changeset publish --tag alpha",
     "release:dry-run": "pnpm -r build && node scripts/release-dry-run.mjs",
     "release:verify-artifacts": "node scripts/verify-package-artifacts.mjs",
+    "test:doc-hygiene": "node scripts/check-doc-hygiene.mjs",
     "test:release-workflow": "node --test scripts/release-workflow.test.mjs",
-    "test": "pnpm test:release-workflow && turbo run test",
+    "test": "pnpm test:doc-hygiene && pnpm test:release-workflow && turbo run test",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean"
   },
