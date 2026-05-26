@@ -60,11 +60,15 @@ pnpm -F @orbit-ai/e2e test -- src/business-journeys/04-renewal-expansion.test.ts
 # Run the CLI business-surface smoke.
 pnpm -F @orbit-ai/e2e test -- src/business-journeys/05-cli-business-surface.test.ts
 
+# Run the fake integration event simulation journey.
+pnpm -F @orbit-ai/e2e test -- src/business-journeys/06-integration-event-simulation.test.ts
+
 # Run the focused tenant graph isolation security journey.
 pnpm -F @orbit-ai/e2e test -- src/security/tenant-graph-isolation.test.ts
 
-# Run the focused API scope-boundary security journey.
-pnpm -F @orbit-ai/e2e test -- src/security/scope-boundary.test.ts
+# Run focused business security smokes.
+pnpm -F @orbit-ai/e2e test -- src/security/auth-boundary.test.ts src/security/scope-boundary.test.ts src/security/cli-graph-isolation.test.ts
+pnpm -F @orbit-ai/e2e test -- src/security/redaction.test.ts src/security/payload-limit.test.ts src/security/rate-limit.test.ts src/security/webhook-ssrf.test.ts
 
 # Run all business journeys currently implemented.
 pnpm -F @orbit-ai/e2e test -- src/business-journeys
@@ -81,7 +85,9 @@ pnpm -F @orbit-ai/e2e test -- src/business-journeys
 - Journeys 3–5 include read-after-update assertions for CRUD parity.
 - Journey 8 only verifies current alpha stub passthrough behavior. Real migration safety is deferred to Plan C.5.
 - Journey 11 does not cover MCP stdio wire behavior.
-- Journey 15 covers contacts and deals only. Broader entity isolation and restricted-role Postgres RLS proof are deferred.
+- Journey 15 covers contacts and deals only; focused security files cover the
+  Account 360 graph across additional entities. Restricted-role Postgres RLS
+  proof is deferred.
 - DirectTransport custom-field `PATCH`/`DELETE` remains deferred until Plan C.5 implements `engine.updateField` and `engine.deleteField`.
 - Connector journeys persist and redact Gmail, Google Calendar, and Stripe credentials only; they do not prove live provider dispatch.
 - Business Journey 1 proves the deterministic Lead Qualification scenario
@@ -102,13 +108,27 @@ pnpm -F @orbit-ai/e2e test -- src/business-journeys
   verification, and Beta tenant exclusion.
 - `e2e/src/security/tenant-graph-isolation.test.ts` expands tenant isolation
   beyond contacts/deals for the Account 360 graph across SDK direct, SDK HTTP,
-  raw API, and MCP. CLI graph isolation and restricted-role Postgres RLS remain
-  separate follow-ups.
+  raw API, and MCP. `e2e/src/security/cli-graph-isolation.test.ts` covers CLI
+  API-mode graph reads. Restricted-role Postgres RLS remains a separate
+  follow-up.
 - Business Journey 4 proves the deterministic Renewal/Expansion scenario through
   SDK direct answers, SDK HTTP reads, raw API deal fetch, MCP read/search, SDK
   HTTP task creation, SDK direct verification, and Beta tenant exclusion.
 - Business Journey 5 proves representative business records are fetchable
   through CLI API mode without rebuilding the full CRUD matrix.
+- Business Journey 6 proves deterministic fake Gmail, Google Calendar, and
+  Stripe event application and idempotent replay using SQLite only. It does not
+  call live providers.
 - `e2e/src/security/scope-boundary.test.ts` proves a `contacts:read` key can
-  read contacts but cannot create contacts, list deals, or create tasks.
+  read contacts but cannot create, update, or delete contacts, list deals, or
+  create tasks.
+- `e2e/src/security/auth-boundary.test.ts` proves missing and invalid API keys
+  fail with `AUTH_INVALID_API_KEY`.
+- `e2e/src/security/cli-graph-isolation.test.ts` proves Acme CLI API mode cannot
+  fetch Beta Account 360 company, contact, deal, activity, note, or task IDs.
+- `e2e/src/security/redaction.test.ts` proves connector credential sentinels do
+  not leak in CLI configure/status stdout or stderr.
+- `e2e/src/security/payload-limit.test.ts`, `rate-limit.test.ts`, and
+  `webhook-ssrf.test.ts` cover oversized body rejection, default per-key rate
+  limiting, and webhook private-address rejection.
 - npm Trusted Publishing, Dependabot, and `pnpm audit` gating remain deferred per Plan B follow-ups.

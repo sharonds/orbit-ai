@@ -35,6 +35,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the implemented business scenarios.
 - **Added**: Focused API scope-boundary E2E proving a `contacts:read` key can
   read contacts but cannot create contacts, list deals, or create tasks.
+- **Added**: Fake integration event scenario and business journey proving
+  deterministic Gmail thread, Google Calendar event, and Stripe payment
+  simulation plus idempotent replay on SQLite.
+- **Added**: Expanded security E2E coverage for missing/invalid API keys,
+  contact update/delete scope denial, CLI Account 360 graph isolation,
+  connector credential redaction, oversized payload rejection, default per-key
+  rate limiting, and webhook SSRF private-address rejection.
+- **Changed**: SQLite E2E harness API key IDs are now unique per stack so
+  rate-limit buckets do not collide across E2E files.
 - **Fixed**: API and SDK direct deserializers now coerce known public date/time
   fields before core validation, keeping HTTP and direct transports aligned for
   task due dates, activity timestamps, and related entity date fields.

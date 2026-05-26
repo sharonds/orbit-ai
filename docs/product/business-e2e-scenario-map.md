@@ -1,8 +1,9 @@
 # Orbit AI Business E2E Scenario Map
 
 **Date:** 2026-05-24
-**Status:** Lead Qualification, Stalled Pipeline, Account 360, and
-Renewal/Expansion implemented; broader business E2E catalog remains proposed
+**Status:** Lead Qualification, Stalled Pipeline, Account 360,
+Renewal/Expansion, and fake Integration Event Simulation implemented; broader
+agent/UI catalog remains proposed
 
 ## Purpose
 
@@ -24,7 +25,7 @@ agent/chat demo without depending on live integrations.
 | Pipeline movement | Journey 6 moves a deal between stages | Does not test stage policy, stalled deals, next actions, or reporting |
 | Schema/custom fields | Journey 7 creates a field | Does not test custom field use inside business workflows |
 | MCP | Journey 11 invokes core tool subset | Does not prove agent questions or all business-facing tools |
-| Integrations | Journeys 12-14 configure credentials/status | Does not simulate provider events or resulting CRM state |
+| Integrations | Journeys 12-14 configure credentials/status; Business Journey 6 simulates fake provider events | Does not call live providers |
 | Tenant isolation | Journey 15 covers contacts and deals | Does not cover all seeded entities, relationships, schema metadata, and integration records |
 | Demo seed | Acme/Beta tenants with realistic rows | No named case-study scenarios or expected business answers |
 
@@ -121,10 +122,14 @@ API company fetch, MCP `get_record`/`search_records`, and Beta tenant exclusion.
 - No live Stripe dependency is required in this phase.
 
 **Surfaces:** SDK direct expected answer, SDK HTTP reads/writes, raw API deal
-fetch, MCP `get_record`/`search_records`, and Beta tenant exclusion. Live
-integration simulation remains later.
+fetch, MCP `get_record`/`search_records`, and Beta tenant exclusion. Fake
+integration simulation is covered by Scenario E.
 
 ### Scenario E: Integration Event Simulation
+
+**Implementation status:** Active fifth scenario slice. Implemented in
+`packages/demo-seed/src/scenarios/integration-events.ts` with E2E coverage in
+`e2e/src/business-journeys/06-integration-event-simulation.test.ts`.
 
 **Question:** "What changed after this Gmail/Calendar/Stripe event?"
 
@@ -135,11 +140,12 @@ integration simulation remains later.
 
 **Expected behavior:**
 - Gmail event logs an email activity and links it to the contact.
-- Calendar event logs a meeting activity and optional task.
-- Stripe event creates/updates payment state without leaking credentials.
+- Calendar event logs a meeting activity and links it to the company.
+- Stripe event creates payment state without leaking credentials.
 - Idempotent replay does not duplicate records.
 
-**Surfaces:** integrations package unit/integration harness first; then e2e.
+**Surfaces:** demo-seed scenario helper, SDK HTTP reads, SDK direct verification,
+and SQLite E2E. Live provider integrations remain out of scope for this pass.
 
 ### Scenario F: Agent Q&A Smoke
 
@@ -182,8 +188,9 @@ e2e/src/business-journeys/
 ├── 02-stalled-pipeline.test.ts
 ├── 03-account-360.test.ts
 ├── 04-renewal-expansion.test.ts
-├── 05-integration-event-simulation.test.ts
-└── 06-agent-qa-smoke.test.ts
+├── 05-cli-business-surface.test.ts
+├── 06-integration-event-simulation.test.ts
+└── 07-agent-qa-smoke.test.ts
 ```
 
 ## Phase-One Acceptance Criteria
@@ -212,10 +219,14 @@ e2e/src/business-journeys/
   exclusion using SQLite.
 - CLI business-surface smoke complete: representative records from implemented
   scenarios are fetched through CLI API mode.
+- Fifth scenario complete: Integration Event Simulation validates fake Gmail,
+  Google Calendar, and Stripe event application plus idempotent replay using
+  SQLite.
 - First slice complete: Beta tenant exclusion is asserted for the Lead
   Qualification answer.
-- Security slice partial: tenant graph isolation covers the Account 360 graph
-  across SDK direct, SDK HTTP, raw API, and MCP.
-- Deferred: generated UI, live integration simulation, CLI graph isolation,
-  broader auth/scope/redaction/idempotency security files, and Postgres/RLS
-  proof.
+- Security slice complete for SQLite controls in this pass: tenant graph
+  isolation, CLI graph isolation, auth/scope boundaries, redaction, fake event
+  idempotency, payload limits, rate limits, and webhook SSRF all have focused
+  E2E files.
+- Deferred: generated UI, live integration calls, MCP stdio wire smoke, and
+  Postgres/RLS proof.

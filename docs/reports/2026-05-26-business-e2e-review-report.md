@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-26
 **Database:** SQLite only
-**Scope:** Lead Qualification, Stalled Pipeline, Account 360, and Renewal/Expansion business E2E slices
+**Scope:** Lead Qualification, Stalled Pipeline, Account 360, Renewal/Expansion, and coverage-closure business E2E slices
 
 ## Summary
 
@@ -38,6 +38,9 @@ harness.
   E2E verifies Beta Account 360 IDs are not readable through Acme-bound SDK
   direct, SDK HTTP, raw API, or MCP. The scope-boundary E2E verifies a
   `contacts:read` API key cannot write contacts, list deals, or create tasks.
+  The coverage-closure round added fake integration event replay, CLI graph
+  isolation, missing/invalid auth checks, credential redaction, payload and
+  rate-limit smokes, and webhook SSRF coverage.
 - Database review: SQLite remains the only required database, no schema or
   migration changes were introduced, and all scenario writes go through core
   services so tenant context and validation stay centralized. Scenario answer
@@ -91,26 +94,26 @@ before build because package entrypoints in `dist` were absent. After
 
 ## Remaining Gaps
 
-- CLI graph isolation remains deferred.
 - MCP stdio wire behavior remains deferred.
-- Broader security E2E files for scope-boundary update/delete cases, broader
-  graph isolation, redaction, idempotency, payload limits, rate limits, and
-  webhook SSRF remain deferred.
+- Revoked/expired API-key E2E cases and broader multi-scope matrices remain
+  deferred until the harness exposes deterministic setup for those key states.
+- MCP/API redaction cases for future credential-adjacent read surfaces remain
+  deferred; current CLI configure/status redaction is covered.
 - Postgres/RLS proof remains deferred by design for this SQLite-only pass.
 
 ## Confidence
 
-Confidence after review: **0.90**.
+Confidence after coverage closure: **0.93**.
 
 Confidence increased because the review passes found and fixed date-coercion,
 pagination, SQLite concurrency, and public SDK type-boundary risks. The business
-journeys now include raw REST and MCP business reads, and the security smoke
-covers Account 360 graph tenant isolation. It is capped because CLI graph
-isolation, MCP stdio, broader security matrix controls, and Postgres/RLS proof
+journeys now include raw REST and MCP business reads, fake integration event
+replay, CLI graph isolation, auth/scope smokes, redaction, payload/rate limits,
+and webhook SSRF coverage. It is capped because MCP stdio wire behavior,
+revoked/expired API-key cases, broader multi-scope cases, and Postgres/RLS proof
 are still planned follow-up work.
 
 ## Recommended Next Slice
 
-Add integration event simulation with fake Gmail/Calendar/Stripe payloads and
-idempotent replay checks, then add broader auth/scope/redaction security files
-before moving to any UI prototype.
+Move to the agent/UI prototype only after deciding whether MCP stdio wire
+coverage should be implemented first through a real `orbit mcp serve` entrypoint.

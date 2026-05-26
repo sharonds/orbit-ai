@@ -70,6 +70,11 @@ The first scenarios are:
   open expansion deal, dormant negative-control customer, follow-up task, and
   expected answers for "Which customers are likely renewal or expansion
   opportunities?"
+- `seedIntegrationEventsScenario()` — adds a known account/contact/deal target
+  for fake Gmail, Google Calendar, and Stripe payloads. The paired
+  `applyFakeGmailThread()`, `applyFakeCalendarEvent()`, and
+  `applyFakeStripePaymentEvent()` helpers write CRM state through core services
+  and return `{ created: false }` on deterministic replay.
 
 ```ts
 import {
@@ -82,6 +87,10 @@ import {
   answerAccount360Question,
   seedRenewalExpansionScenario,
   answerRenewalExpansionQuestion,
+  seedIntegrationEventsScenario,
+  applyFakeGmailThread,
+  applyFakeCalendarEvent,
+  applyFakeStripePaymentEvent,
 } from '@orbit-ai/demo-seed'
 
 const fixedNow = Date.UTC(2026, 3, 15, 12, 0, 0)
@@ -129,6 +138,30 @@ const renewalAnswer = await answerRenewalExpansionQuestion({
 })
 console.log(renewal.records.expansionDeal.id)
 console.log(renewalAnswer.candidateCompanyIds)
+
+const integration = await seedIntegrationEventsScenario({
+  adapter,
+  organizationId: base.organization.id,
+  now: fixedNow,
+})
+await applyFakeGmailThread({
+  adapter,
+  organizationId: base.organization.id,
+  now: fixedNow,
+  event: integration.events.gmailThread,
+})
+await applyFakeCalendarEvent({
+  adapter,
+  organizationId: base.organization.id,
+  now: fixedNow,
+  event: integration.events.calendarEvent,
+})
+await applyFakeStripePaymentEvent({
+  adapter,
+  organizationId: base.organization.id,
+  now: fixedNow,
+  event: integration.events.stripePayment,
+})
 ```
 
 Scenario helpers return semantic record handles, not hardcoded generated IDs.
@@ -215,5 +248,9 @@ Auto-generated IDs (ULIDs) and `created_at` values will naturally differ per run
 | `answerAccount360Question(opts)` | Computes deterministic company graph answers for the account-360 scenario. |
 | `seedRenewalExpansionScenario(opts)` | Adds the renewal/expansion business scenario overlay for a seeded organization. |
 | `answerRenewalExpansionQuestion(opts)` | Computes deterministic renewal and expansion candidate answers. |
+| `seedIntegrationEventsScenario(opts)` | Adds a deterministic fake-integration target company, contact, deal, and provider payloads. |
+| `applyFakeGmailThread(opts)` | Applies a fake Gmail thread as an email activity and returns replay status. |
+| `applyFakeCalendarEvent(opts)` | Applies a fake Calendar event as a meeting activity and returns replay status. |
+| `applyFakeStripePaymentEvent(opts)` | Applies a fake Stripe payment event as a payment record and returns replay status. |
 | `createPrng(seed)` | Internal PRNG factory (exported for advanced custom seeders). |
 | Types: `SeedOptions`, `SeedResult`, `SeedMode`, `ResetSeedOptions`, `TenantProfile`, `ProfileCounts`, `Prng` | |
