@@ -39,3 +39,15 @@ export type {
   RenewalExpansionAnswer,
   RenewalExpansionScenarioResult,
 } from './renewal-expansion.js'
+export {
+  applyFakeCalendarEvent,
+  applyFakeGmailThread,
+  applyFakeStripePaymentEvent,
+  seedIntegrationEventsScenario,
+} from './integration-events.js'
+export type {
+  FakeCalendarEvent,
+  FakeGmailThreadEvent,
+  FakeStripePaymentEvent,
+  IntegrationEventsScenarioResult,
+} from './integration-events.js'
