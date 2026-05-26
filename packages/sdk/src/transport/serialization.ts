@@ -1,3 +1,8 @@
+import {
+  deserializePublicDateInputField,
+  isPublicEntityDateInputField,
+} from '@orbit-ai/core'
+
 /**
  * Bidirectional serialization between core's camelCase records and the
  * public SDK snake_case contract.  Mirrors packages/api/src/serialization.ts
@@ -77,25 +82,6 @@ const ENTITY_INPUT_RENAMES: Record<string, Record<string, string>> = {
   },
 }
 
-const ENTITY_DATE_INPUT_FIELDS: Record<string, Set<string>> = {
-  contacts: new Set(['lastContactedAt']),
-  deals: new Set(['expectedCloseDate', 'wonAt', 'lostAt']),
-  activities: new Set(['occurredAt']),
-  tasks: new Set(['dueDate', 'completedAt']),
-  payments: new Set(['paidAt']),
-  contracts: new Set(['signedAt', 'expiresAt']),
-  sequence_enrollments: new Set(['enrolledAt', 'exitedAt']),
-  sequence_events: new Set(['occurredAt']),
-}
-
-function deserializeDateField(field: string, value: string): Date {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    throw new Error(`Invalid date string for ${field}`)
-  }
-  return date
-}
-
 function normalizeJsonValue(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString()
   if (Array.isArray(value)) return value.map((item) => normalizeJsonValue(item))
@@ -158,13 +144,14 @@ export function deserializeEntityInput(
   body: Record<string, unknown>,
 ): Record<string, unknown> {
   const renames = ENTITY_INPUT_RENAMES[entity] ?? {}
-  const dateFields = ENTITY_DATE_INPUT_FIELDS[entity] ?? new Set<string>()
   const out: Record<string, unknown> = {}
 
   for (const [k, v] of Object.entries(body)) {
     const camelKey = snakeToCamel(k)
     const coreKey = renames[camelKey] ?? camelKey
-    out[coreKey] = dateFields.has(coreKey) && typeof v === 'string' ? deserializeDateField(k, v) : v
+    out[coreKey] = isPublicEntityDateInputField(entity, coreKey) && typeof v === 'string'
+      ? deserializePublicDateInputField(k, v)
+      : v
   }
 
   return out

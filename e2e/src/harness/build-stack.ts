@@ -42,6 +42,21 @@ async function sha256hex(input: string): Promise<string> {
     .join('')
 }
 
+export function scopesJsonSemanticallyEqual(storedScopes: string, expectedScopes: readonly string[]): boolean {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(storedScopes)
+  } catch {
+    return false
+  }
+  if (!Array.isArray(parsed) || !parsed.every((scope) => typeof scope === 'string')) {
+    return false
+  }
+  const stored = [...parsed].sort()
+  const expected = [...expectedScopes].sort()
+  return stored.length === expected.length && stored.every((scope, index) => scope === expected[index])
+}
+
 function isTestLocalUrl(url: string): boolean {
   try {
     const parsed = new URL(url)
@@ -112,7 +127,7 @@ async function insertPostgresE2eApiKey(
   if (row.id !== keyId) {
     const activeHarnessKey =
       row.name === 'e2e-test-key' &&
-      row.scopes === JSON.stringify(input.scopes) &&
+      scopesJsonSemanticallyEqual(row.scopes, input.scopes) &&
       row.revoked_at === null &&
       (row.expires_at === null || Date.parse(row.expires_at) > Date.now())
     if (!activeHarnessKey) {
