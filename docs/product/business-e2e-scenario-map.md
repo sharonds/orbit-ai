@@ -1,8 +1,8 @@
 # Orbit AI Business E2E Scenario Map
 
 **Date:** 2026-05-24
-**Status:** Lead Qualification, Stalled Pipeline, and Account 360 implemented;
-broader business E2E catalog remains proposed
+**Status:** Lead Qualification, Stalled Pipeline, Account 360, and
+Renewal/Expansion implemented; broader business E2E catalog remains proposed
 
 ## Purpose
 
@@ -101,6 +101,10 @@ API company fetch, MCP `get_record`/`search_records`, and Beta tenant exclusion.
 
 ### Scenario D: Customer Renewal / Expansion
 
+**Implementation status:** Active fourth slice. Implemented in
+`packages/demo-seed/src/scenarios/renewal-expansion.ts` with E2E coverage in
+`e2e/src/business-journeys/04-renewal-expansion.test.ts`.
+
 **Question:** "Which customers are likely renewal or expansion opportunities?"
 
 **Seed state:**
@@ -116,7 +120,9 @@ API company fetch, MCP `get_record`/`search_records`, and Beta tenant exclusion.
   incomplete.
 - No live Stripe dependency is required in this phase.
 
-**Surfaces:** SDK, API, MCP; integration simulation later.
+**Surfaces:** SDK direct expected answer, SDK HTTP reads/writes, raw API deal
+fetch, MCP `get_record`/`search_records`, and Beta tenant exclusion. Live
+integration simulation remains later.
 
 ### Scenario E: Integration Event Simulation
 
@@ -188,6 +194,8 @@ e2e/src/business-journeys/
   `seedStalledPipelineScenario()` and `answerStalledPipelineQuestion()`.
 - Third slice complete: `@orbit-ai/demo-seed` exposes
   `seedAccount360Scenario()` and `answerAccount360Question()`.
+- Fourth slice complete: `@orbit-ai/demo-seed` exposes
+  `seedRenewalExpansionScenario()` and `answerRenewalExpansionQuestion()`.
 - First slice complete: Lead Qualification has deterministic expected-answer
   helpers and semantic record handles.
 - First slice complete: Business E2E validates scenario facts through SDK direct
@@ -198,6 +206,12 @@ e2e/src/business-journeys/
 - Third slice complete: Account 360 validates company graph traversal across
   contacts, deals, activities, notes, tasks, tags, raw API read, MCP read/search,
   and Beta tenant exclusion using SQLite.
+- Fourth slice complete: Renewal/Expansion validates signed contract, paid
+  historical deal, recent positive activity, open expansion deal, dormant
+  negative-control customer, raw API read, MCP read/search, and Beta tenant
+  exclusion using SQLite.
+- CLI business-surface smoke complete: representative records from implemented
+  scenarios are fetched through CLI API mode.
 - First slice complete: Beta tenant exclusion is asserted for the Lead
   Qualification answer.
 - Security slice partial: tenant graph isolation covers the Account 360 graph

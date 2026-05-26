@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-26
 **Database:** SQLite only
-**Scope:** Lead Qualification, Stalled Pipeline, and Account 360 business E2E slices
+**Scope:** Lead Qualification, Stalled Pipeline, Account 360, and Renewal/Expansion business E2E slices
 
 ## Summary
 
@@ -11,7 +11,9 @@ business logic, security, and database behavior on the business E2E changes.
 Review findings fixed before final verification include public date coercion for
 `contacts.lastContactedAt`, stalled-pipeline activity/task pagination, Account
 360 sequential SQLite reads, and narrowing SDK HTTP task creation to supported
-public fields.
+public fields. The Renewal/Expansion round added contract/payment-backed
+business logic, CLI API-mode smoke, and scoped API-key support in the E2E
+harness.
 
 ## Review Passes
 
@@ -27,12 +29,15 @@ public fields.
   detection, and cold controls; Stalled Pipeline includes stale open deals,
   high-value no-task detection, active controls, and closed controls; Account
   360 includes company graph traversal across contacts, deals, activities,
-  notes, tasks, and closed/completed controls.
+  notes, tasks, and closed/completed controls; Renewal/Expansion includes signed
+  contract, paid historical deal, recent positive activity, open expansion deal,
+  and dormant negative controls.
 - Security review: no raw SQL, no new credentials, no live connector calls, no
   deployment paths, no new dependencies, and no bypass of the existing auth
   contract beyond trusted direct SDK usage in tests. The focused graph isolation
   E2E verifies Beta Account 360 IDs are not readable through Acme-bound SDK
-  direct, SDK HTTP, raw API, or MCP.
+  direct, SDK HTTP, raw API, or MCP. The scope-boundary E2E verifies a
+  `contacts:read` API key cannot write contacts, list deals, or create tasks.
 - Database review: SQLite remains the only required database, no schema or
   migration changes were introduced, and all scenario writes go through core
   services so tenant context and validation stay centralized. Scenario answer
@@ -48,6 +53,8 @@ public fields.
   sequentially and to avoid private core task validator imports.
 - Adjusted Account 360 SDK HTTP task creation to use supported public task
   fields rather than unsupported `company_id`.
+- Added scoped API-key support to the E2E stack builder so security E2E can
+  test `AUTH_INSUFFICIENT_SCOPE` behavior.
 - Confirmed E2E package imports require rebuilt workspace package output before
   journey tests can see source changes.
 
@@ -60,9 +67,9 @@ public fields.
 - `pnpm -F @orbit-ai/sdk test`
   - Result: passed, 13 files, 233 tests.
 - `pnpm -F @orbit-ai/demo-seed test`
-  - Result: passed, 18 files, 50 tests.
+  - Result: passed, 19 files, 51 tests.
 - `pnpm -F @orbit-ai/e2e test`
-  - Result: passed, 23 files, 27 tests passed, 3 skipped.
+  - Result: passed, 26 files, 30 tests passed, 3 skipped.
 - `pnpm -F @orbit-ai/api typecheck`
   - Result: passed.
 - `pnpm -F @orbit-ai/sdk typecheck`
@@ -77,8 +84,10 @@ public fields.
 Targeted demo-seed and E2E scenario tests initially failed in the fresh worktree
 before build because package entrypoints in `dist` were absent. After
 `pnpm -r build`, the targeted scenario tests passed. The Account 360 slice also
-initially found SQLite savepoint contention from parallel helper reads and a
-typed public SDK task-field mismatch; both were fixed before final verification.
+  initially found SQLite savepoint contention from parallel helper reads and a
+  typed public SDK task-field mismatch; both were fixed before final
+  verification. The Renewal/Expansion round added scoped-key harness support and
+  verified the full test set after adding CLI and scope-boundary smoke.
 
 ## Remaining Gaps
 
@@ -90,7 +99,7 @@ typed public SDK task-field mismatch; both were fixed before final verification.
 
 ## Confidence
 
-Confidence after review: **0.88**.
+Confidence after review: **0.90**.
 
 Confidence increased because the review passes found and fixed date-coercion,
 pagination, SQLite concurrency, and public SDK type-boundary risks. The business

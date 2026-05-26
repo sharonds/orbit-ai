@@ -65,6 +65,11 @@ The first scenarios are:
   company, three contacts, open and closed-control deals, activities, notes,
   open and completed-control tasks, a scenario tag, and expected answers for
   "Show me everything important about this company."
+- `seedRenewalExpansionScenario()` — adds a marked renewal/expansion data set:
+  a signed expiring contract, paid historical deal, recent positive activity,
+  open expansion deal, dormant negative-control customer, follow-up task, and
+  expected answers for "Which customers are likely renewal or expansion
+  opportunities?"
 
 ```ts
 import {
@@ -75,6 +80,8 @@ import {
   seedStalledPipelineScenario,
   seedAccount360Scenario,
   answerAccount360Question,
+  seedRenewalExpansionScenario,
+  answerRenewalExpansionQuestion,
 } from '@orbit-ai/demo-seed'
 
 const fixedNow = Date.UTC(2026, 3, 15, 12, 0, 0)
@@ -110,6 +117,18 @@ const accountAnswer = await answerAccount360Question({
 })
 console.log(account360.records.company.id)
 console.log(accountAnswer.openDealIds)
+
+const renewal = await seedRenewalExpansionScenario({
+  adapter,
+  organizationId: base.organization.id,
+  now: fixedNow,
+})
+const renewalAnswer = await answerRenewalExpansionQuestion({
+  adapter,
+  organizationId: base.organization.id,
+})
+console.log(renewal.records.expansionDeal.id)
+console.log(renewalAnswer.candidateCompanyIds)
 ```
 
 Scenario helpers return semantic record handles, not hardcoded generated IDs.
@@ -194,5 +213,7 @@ Auto-generated IDs (ULIDs) and `created_at` values will naturally differ per run
 | `answerStalledPipelineQuestion(opts)` | Computes stuck-deal and high-value-no-task answers for the stalled-pipeline scenario. |
 | `seedAccount360Scenario(opts)` | Adds the account-360 business scenario overlay for a seeded organization. |
 | `answerAccount360Question(opts)` | Computes deterministic company graph answers for the account-360 scenario. |
+| `seedRenewalExpansionScenario(opts)` | Adds the renewal/expansion business scenario overlay for a seeded organization. |
+| `answerRenewalExpansionQuestion(opts)` | Computes deterministic renewal and expansion candidate answers. |
 | `createPrng(seed)` | Internal PRNG factory (exported for advanced custom seeders). |
 | Types: `SeedOptions`, `SeedResult`, `SeedMode`, `ResetSeedOptions`, `TenantProfile`, `ProfileCounts`, `Prng` | |

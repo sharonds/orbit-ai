@@ -1,7 +1,7 @@
 # Orbit AI Security E2E Matrix
 
 **Date:** 2026-05-24
-**Status:** Proposed expansion; Account 360 graph isolation smoke implemented
+**Status:** Proposed expansion; Account 360 graph isolation and API scope smokes implemented
 
 ## Purpose
 
@@ -15,7 +15,7 @@ journeys cannot cross tenant, scope, credential, or transport boundaries.
 | Control | Current coverage | Phase-one E2E target | Evidence artifact |
 |---|---|---|---|
 | API key required | SDK HTTP and API journeys authenticate with test key | Add missing/invalid/revoked/expired key cases against business journeys | `e2e/src/security/auth-boundary.test.ts` |
-| Scope enforcement | Unit/API middleware coverage exists | Prove read-only key cannot create/update/delete contacts, deals, tasks, notes | `e2e/src/security/scope-boundary.test.ts` |
+| Scope enforcement | Unit/API middleware coverage exists; API scope smoke proves `contacts:read` can read contacts but cannot create contacts, list deals, or create tasks | Add update/delete cases and broader notes/deals/tasks scopes | `e2e/src/security/scope-boundary.test.ts` |
 | Tenant isolation | Journey 15 covers contacts and deals; Account 360 security smoke covers companies, contacts, deals, activities, notes, and tasks across SDK direct, SDK HTTP, raw API, and MCP | Add CLI graph isolation, tags/pipelines/stages/payments/contracts where implemented, schema metadata, and integration records | `e2e/src/security/tenant-graph-isolation.test.ts` |
 | MCP tenant boundary | Journey 15 covers get/update/delete/search by beta ID for contacts/deals | Cover business tool flows and all registered MCP tools that can read/write tenant data | `e2e/src/security/mcp-boundary.test.ts` |
 | Secret redaction | Integration config journeys verify status redaction | Assert no access tokens, refresh tokens, API keys, bearer tokens, or credential sentinels appear in CLI/MCP/API outputs | `e2e/src/security/redaction.test.ts` |
@@ -77,7 +77,7 @@ and every clickable/actionable record ID belongs to the current tenant.
 - At least one security E2E file verifies Account 360 graph tenant isolation
   beyond contacts/deals.
 - Redaction assertions cover CLI, MCP, and API/SDK-visible outputs.
-- Scope-boundary tests include read-only and wrong-entity scopes.
+- Scope-boundary tests include a read-only/wrong-entity API key smoke.
 - Deferred controls are explicitly listed in docs and not described as complete.
 
 ## First-Slice Finding
@@ -99,4 +99,12 @@ creates the Account 360 scenario in Beta and verifies Acme-bound SDK direct, SDK
 HTTP, raw API, and MCP `get_record` calls cannot read Beta company, contact,
 deal, activity, note, or task IDs. CLI graph isolation, tags, pipelines/stages,
 schema metadata, integration records, and restricted-role Postgres RLS remain
+deferred.
+
+## Scope Boundary Update
+
+**2026-05-26 update:** `e2e/src/security/scope-boundary.test.ts` builds an
+Acme stack with a `contacts:read` API key. The test verifies contact reads are
+allowed while contact creation, deal listing, and task creation fail with
+`AUTH_INSUFFICIENT_SCOPE`. Broader update/delete and multi-scope cases remain
 deferred.

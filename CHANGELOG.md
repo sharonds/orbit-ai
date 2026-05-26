@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Added**: Focused Account 360 tenant graph isolation E2E covering companies,
   contacts, deals, activities, notes, and tasks across SDK direct, SDK HTTP, raw
   API, and MCP.
+- **Added**: Renewal/Expansion business scenario and E2E journey proving signed
+  contract, paid historical deal, recent positive activity, open expansion deal,
+  dormant negative-control customer, raw API read, MCP read/search, SDK HTTP
+  task creation, direct read-back, and Beta tenant exclusion.
+- **Added**: CLI API-mode business-surface smoke for representative records from
+  the implemented business scenarios.
+- **Added**: Focused API scope-boundary E2E proving a `contacts:read` key can
+  read contacts but cannot create contacts, list deals, or create tasks.
 - **Fixed**: API and SDK direct deserializers now coerce known public date/time
   fields before core validation, keeping HTTP and direct transports aligned for
   task due dates, activity timestamps, and related entity date fields.

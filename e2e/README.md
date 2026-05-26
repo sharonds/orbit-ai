@@ -54,8 +54,17 @@ pnpm -F @orbit-ai/e2e test -- src/business-journeys/02-stalled-pipeline.test.ts
 # Run the account 360 business journey.
 pnpm -F @orbit-ai/e2e test -- src/business-journeys/03-account-360.test.ts
 
+# Run the renewal/expansion business journey.
+pnpm -F @orbit-ai/e2e test -- src/business-journeys/04-renewal-expansion.test.ts
+
+# Run the CLI business-surface smoke.
+pnpm -F @orbit-ai/e2e test -- src/business-journeys/05-cli-business-surface.test.ts
+
 # Run the focused tenant graph isolation security journey.
 pnpm -F @orbit-ai/e2e test -- src/security/tenant-graph-isolation.test.ts
+
+# Run the focused API scope-boundary security journey.
+pnpm -F @orbit-ai/e2e test -- src/security/scope-boundary.test.ts
 
 # Run all business journeys currently implemented.
 pnpm -F @orbit-ai/e2e test -- src/business-journeys
@@ -95,4 +104,11 @@ pnpm -F @orbit-ai/e2e test -- src/business-journeys
   beyond contacts/deals for the Account 360 graph across SDK direct, SDK HTTP,
   raw API, and MCP. CLI graph isolation and restricted-role Postgres RLS remain
   separate follow-ups.
+- Business Journey 4 proves the deterministic Renewal/Expansion scenario through
+  SDK direct answers, SDK HTTP reads, raw API deal fetch, MCP read/search, SDK
+  HTTP task creation, SDK direct verification, and Beta tenant exclusion.
+- Business Journey 5 proves representative business records are fetchable
+  through CLI API mode without rebuilding the full CRUD matrix.
+- `e2e/src/security/scope-boundary.test.ts` proves a `contacts:read` key can
+  read contacts but cannot create contacts, list deals, or create tasks.
 - npm Trusted Publishing, Dependabot, and `pnpm audit` gating remain deferred per Plan B follow-ups.
