@@ -83,6 +83,7 @@ docs/reports/*
 !docs/reports/2026-05-26-business-e2e-renewal-expansion-report.md
 !docs/reports/2026-05-26-business-e2e-coverage-closure-report.md
 !docs/reports/2026-05-26-business-e2e-multi-domain-review.md
+!docs/reports/2026-05-26-business-e2e-mcp-agent-qa-report.md
 # Implementation plans and reviews are tracked so cloud agents can execute them
 !docs/superpowers
 docs/superpowers/*

@@ -2,8 +2,8 @@
 
 **Date:** 2026-05-24
 **Status:** Lead Qualification, Stalled Pipeline, Account 360,
-Renewal/Expansion, and fake Integration Event Simulation implemented; broader
-agent/UI catalog remains proposed
+Renewal/Expansion, fake Integration Event Simulation, and first MCP Agent Q&A
+smoke implemented; generated UI catalog remains proposed
 
 ## Purpose
 
@@ -149,7 +149,12 @@ and SQLite E2E. Live provider integrations remain out of scope for this pass.
 
 ### Scenario F: Agent Q&A Smoke
 
+**Implementation status:** Active sixth scenario slice. Implemented in
+`e2e/src/business-journeys/07-agent-qa-smoke.test.ts` using the deterministic
+Lead Qualification scenario over MCP tools.
+
 **Question examples:**
+- "Which new leads should sales qualify today?"
 - "Which deals need attention this week?"
 - "Summarize Acme Events' pipeline health."
 - "Create a follow-up task for the highest-value stalled deal."
@@ -160,7 +165,9 @@ and SQLite E2E. Live provider integrations remain out of scope for this pass.
 - Mutating actions are verified by database reads.
 - Generated UI payloads, if present, are derived from the same deterministic data.
 
-**Surfaces:** MCP first; future Next.js/Vercel AI SDK or CopilotKit prototype.
+**Surfaces:** MCP `search_records`, `list_activities`, and `create_record`
+with SDK direct persistence verification and Beta tenant exclusion. Future
+Next.js/Vercel AI SDK or CopilotKit prototype remains deferred.
 
 ## Data Principles
 
@@ -222,11 +229,14 @@ e2e/src/business-journeys/
 - Fifth scenario complete: Integration Event Simulation validates fake Gmail,
   Google Calendar, and Stripe event application plus idempotent replay using
   SQLite.
+- MCP Agent Q&A smoke complete: Lead Qualification is reconstructed through MCP
+  tools, creates a follow-up task through MCP, verifies persistence through SDK
+  direct, and excludes Beta tenant records.
 - First slice complete: Beta tenant exclusion is asserted for the Lead
   Qualification answer.
 - Security slice complete for SQLite controls in this pass: tenant graph
   isolation, CLI graph isolation, auth/scope boundaries, redaction, fake event
   idempotency, payload limits, rate limits, and webhook SSRF all have focused
   E2E files.
-- Deferred: generated UI, live integration calls, MCP stdio wire smoke, and
-  Postgres/RLS proof.
+- Deferred: generated UI, live integration calls, MCP stdio wire smoke, broader
+  natural-language agent orchestration, and Postgres/RLS proof.
