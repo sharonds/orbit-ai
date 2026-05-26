@@ -6,7 +6,7 @@ import {
 import { seed, TENANT_PROFILES } from '@orbit-ai/demo-seed'
 import { sql } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { buildStack } from './build-stack.js'
+import { buildStack, scopesJsonSemanticallyEqual } from './build-stack.js'
 import { assertSafePostgresE2eUrl } from './postgres-safety.js'
 
 type ApiKeySnapshot = {
@@ -40,6 +40,20 @@ describe('buildStack', () => {
       await stack.teardown()
     }
   }, 120_000)
+
+  it('compares stored Postgres API-key scopes semantically', () => {
+    expect(scopesJsonSemanticallyEqual('["contacts:read", "contacts:write"]', [
+      'contacts:write',
+      'contacts:read',
+    ])).toBe(true)
+    expect(scopesJsonSemanticallyEqual('[ "contacts:read" , "deals:read" ]', [
+      'contacts:read',
+      'deals:read',
+    ])).toBe(true)
+    expect(scopesJsonSemanticallyEqual('["contacts:read"]', ['contacts:write'])).toBe(false)
+    expect(scopesJsonSemanticallyEqual('not-json', ['contacts:read'])).toBe(false)
+    expect(scopesJsonSemanticallyEqual('{"scope":"contacts:read"}', ['contacts:read'])).toBe(false)
+  })
 })
 
 describePostgres('buildStack Postgres API key setup', () => {

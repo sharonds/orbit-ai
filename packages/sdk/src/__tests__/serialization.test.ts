@@ -199,4 +199,39 @@ describe('deserializeEntityInput (SDK)', () => {
     expect(result).toMatchObject({ stageOrder: 1, pipelineId: 'pip_1' })
     expect(result).not.toHaveProperty('position')
   })
+
+  it('coerces public date strings for core date fields', () => {
+    const task = deserializeEntityInput('tasks', {
+      title: 'Follow up',
+      due_date: '2026-04-17T12:00:00.000Z',
+    })
+    const activity = deserializeEntityInput('activities', {
+      type: 'email',
+      occurred_at: '2026-04-15T12:00:00.000Z',
+    })
+    const contact = deserializeEntityInput('contacts', {
+      name: 'Alice',
+      last_contacted_at: '2026-04-14T12:00:00.000Z',
+    })
+
+    expect(task).toMatchObject({
+      title: 'Follow up',
+      dueDate: new Date('2026-04-17T12:00:00.000Z'),
+    })
+    expect(activity).toMatchObject({
+      type: 'email',
+      occurredAt: new Date('2026-04-15T12:00:00.000Z'),
+    })
+    expect(contact).toMatchObject({
+      name: 'Alice',
+      lastContactedAt: new Date('2026-04-14T12:00:00.000Z'),
+    })
+  })
+
+  it('rejects invalid public date strings for core date fields', () => {
+    expect(() => deserializeEntityInput('tasks', {
+      title: 'Follow up',
+      due_date: 'not-a-date',
+    })).toThrow(/invalid date string for due_date/i)
+  })
 })

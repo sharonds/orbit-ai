@@ -16,6 +16,7 @@ export interface StackOptions {
   readonly tenant: 'acme' | 'beta' | 'both'
   readonly adapter?: 'sqlite' | 'postgres'
   readonly rawApiKey?: string
+  readonly rawApiScopes?: readonly string[]
 }
 
 export interface Stack {
@@ -39,6 +40,21 @@ async function sha256hex(input: string): Promise<string> {
   return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('')
+}
+
+export function scopesJsonSemanticallyEqual(storedScopes: string, expectedScopes: readonly string[]): boolean {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(storedScopes)
+  } catch {
+    return false
+  }
+  if (!Array.isArray(parsed) || !parsed.every((scope) => typeof scope === 'string')) {
+    return false
+  }
+  const stored = [...parsed].sort()
+  const expected = [...expectedScopes].sort()
+  return stored.length === expected.length && stored.every((scope, index) => scope === expected[index])
 }
 
 function isTestLocalUrl(url: string): boolean {
@@ -72,6 +88,7 @@ async function insertPostgresE2eApiKey(
   input: {
     readonly organizationId: string
     readonly rawApiKey: string
+    readonly scopes: readonly string[]
   },
 ): Promise<{ id: string; keyHash: string; keyPrefix: string }> {
   const keyHash = await sha256hex(input.rawApiKey)
@@ -81,7 +98,7 @@ async function insertPostgresE2eApiKey(
 
   await database.execute(sql`
     INSERT INTO api_keys (id, organization_id, name, key_hash, key_prefix, scopes, created_at, updated_at)
-    VALUES (${keyId}, ${input.organizationId}, ${'e2e-test-key'}, ${keyHash}, ${keyPrefix}, ${'["*"]'}::jsonb, ${now}::timestamptz, ${now}::timestamptz)
+    VALUES (${keyId}, ${input.organizationId}, ${'e2e-test-key'}, ${keyHash}, ${keyPrefix}, ${JSON.stringify(input.scopes)}::jsonb, ${now}::timestamptz, ${now}::timestamptz)
     ON CONFLICT (key_hash) DO NOTHING
   `)
 
@@ -110,7 +127,7 @@ async function insertPostgresE2eApiKey(
   if (row.id !== keyId) {
     const activeHarnessKey =
       row.name === 'e2e-test-key' &&
-      row.scopes === '["*"]' &&
+      scopesJsonSemanticallyEqual(row.scopes, input.scopes) &&
       row.revoked_at === null &&
       (row.expires_at === null || Date.parse(row.expires_at) > Date.now())
     if (!activeHarnessKey) {
@@ -124,6 +141,7 @@ async function insertPostgresE2eApiKey(
 export async function buildStack(opts: StackOptions): Promise<Stack> {
   const adapterType = opts.adapter ?? 'sqlite'
   const rawApiKey = opts.rawApiKey ?? createRawApiKey()
+  const rawApiScopes = [...(opts.rawApiScopes ?? ['*'])].sort()
 
   if (adapterType === 'postgres') {
     const databaseUrl = process.env.DATABASE_URL
@@ -152,6 +170,7 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
       const apiKey = await insertPostgresE2eApiKey(database, {
         organizationId: acme.organization.id,
         rawApiKey,
+        scopes: rawApiScopes,
       })
 
       const api = createApi({ adapter, version: '2026-04-01' })
@@ -228,9 +247,9 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
 
   apiKeyHash = await sha256hex(rawApiKey)
   apiKeyAuth = {
-    id: 'key_01e2e0000000000000000001',
+    id: `key_e2e_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`,
     organizationId: acme.organization.id,
-    scopes: ['*'],
+    scopes: rawApiScopes,
     revokedAt: null,
     expiresAt: null,
   }

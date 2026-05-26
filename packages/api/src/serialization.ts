@@ -1,3 +1,8 @@
+import {
+  deserializePublicDateInputField,
+  isPublicEntityDateInputField,
+} from '@orbit-ai/core'
+
 /**
  * Bidirectional serialization between core's camelCase records and the
  * public API's snake_case contract.
@@ -181,7 +186,9 @@ export function deserializeEntityInput(
   for (const [k, v] of Object.entries(body)) {
     const camelKey = snakeToCamel(k)
     const coreKey = renames[camelKey] ?? camelKey
-    out[coreKey] = v
+    out[coreKey] = isPublicEntityDateInputField(entity, coreKey) && typeof v === 'string'
+      ? deserializePublicDateInputField(k, v)
+      : v
   }
 
   return out

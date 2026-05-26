@@ -421,6 +421,30 @@ describe('DirectTransport workflow sub-routes', () => {
     expect((err as OrbitApiError).error.request_id).toMatch(/^req_/)
   })
 
+  it('maps invalid public date strings to API-shaped validation errors in direct mode', async () => {
+    const { transport } = await createWorkflowClient()
+    const err = await transport.request({
+      method: 'POST',
+      path: '/v1/tasks',
+      body: {
+        title: 'Bad due date',
+        due_date: 'not-a-date',
+      },
+    }).catch((caught: unknown) => caught)
+
+    expect(err).toBeInstanceOf(OrbitApiError)
+    expect(err).toMatchObject<Partial<OrbitApiError>>({
+      error: expect.objectContaining({
+        code: 'VALIDATION_FAILED',
+        field: 'due_date',
+        doc_url: 'https://orbit-ai.dev/docs/errors#validation_failed',
+        retryable: false,
+      }),
+      status: 400,
+    })
+    expect((err as OrbitApiError).error.request_id).toMatch(/^req_/)
+  })
+
   it('adds API-shaped metadata defaults to direct-mode OrbitApiError failures', async () => {
     const { transport } = await createWorkflowClient()
     const err = await transport.request({

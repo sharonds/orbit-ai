@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### @orbit-ai/demo-seed + @orbit-ai/e2e — Business demo gate
+
+- **Added**: Lead Qualification business scenario overlay with deterministic
+  CRM records, semantic handles, expected-answer helper, package tests, and
+  documentation.
+- **Added**: First business E2E journey on SQLite proving SDK direct business
+  answers, SDK HTTP contact reads, SDK HTTP task creation, SDK direct task
+  verification, and Beta tenant exclusion.
+- **Added**: Stalled Pipeline business scenario and E2E journey proving stuck
+  deal detection, SDK HTTP deal movement, SDK HTTP task creation with ISO
+  `due_date`, direct read-back, and Beta tenant exclusion.
+- **Added**: Account 360 business scenario and E2E journey proving company graph
+  traversal across contacts, deals, activities, notes, tasks, SDK HTTP reads,
+  raw API company fetch, MCP read/search, SDK HTTP task creation, direct
+  read-back, and Beta tenant exclusion.
+- **Added**: Focused Account 360 tenant graph isolation E2E covering companies,
+  contacts, deals, activities, notes, and tasks across SDK direct, SDK HTTP, raw
+  API, and MCP.
+- **Added**: Renewal/Expansion business scenario and E2E journey proving signed
+  contract, paid historical deal, recent positive activity, open expansion deal,
+  dormant negative-control customer, raw API read, MCP read/search, SDK HTTP
+  task creation, direct read-back, and Beta tenant exclusion.
+- **Added**: CLI API-mode business-surface smoke for representative records from
+  the implemented business scenarios.
+- **Added**: Focused API scope-boundary E2E proving a `contacts:read` key can
+  read contacts but cannot create contacts, list deals, or create tasks.
+- **Added**: Fake integration event scenario and business journey proving
+  deterministic Gmail thread, Google Calendar event, and Stripe payment
+  simulation plus idempotent replay on SQLite.
+- **Added**: Expanded security E2E coverage for missing/invalid API keys,
+  contact update/delete scope denial, CLI Account 360 graph isolation,
+  connector credential redaction, oversized payload rejection, default per-key
+  rate limiting, and webhook SSRF private-address rejection.
+- **Changed**: SQLite E2E harness API key IDs are now unique per stack so
+  rate-limit buckets do not collide across E2E files.
+- **Fixed**: API and SDK direct deserializers now coerce known public date/time
+  fields before core validation, keeping HTTP and direct transports aligned for
+  task due dates, activity timestamps, and related entity date fields.
+- **Documented**: First-slice issue report and deferred MCP/raw API/UI/Postgres
+  coverage for the business demo gate.
+
 ### @orbit-ai/api + @orbit-ai/sdk — camelCase↔snake_case serialization layer
 
 - **Fixed**: All API responses now correctly return `snake_case` field names (e.g. `stage_id`, `organization_id`, `created_at`). Previously, core's camelCase Drizzle records were returned to clients unchanged. Zod's silent `strip()` mode meant incoming `snake_case` request fields like `stage_id` were silently dropped rather than mapped to `stageId` — this fix prevents silent data loss on create/update/move operations.
@@ -181,7 +222,7 @@ First public pre-release of the Orbit AI monorepo. All 5 packages: `@orbit-ai/co
 - SQLite adapter (`SqliteStorageAdapter`) using Node.js built-in `node:sqlite` — zero
   external dependencies for local development and testing
 - Postgres adapter (`PostgresStorageAdapter`) with RLS policy support — production target
-- Supabase and Neon support via the Postgres adapter
+- Postgres-compatible managed provider support via the Postgres adapter
 - Entity services for all entities — type-safe CRUD + cursor-based paginated list with
   `orgId`-scoped queries enforced on every call
 - Tenant context isolation: `{ orgId, userId }` required on all service methods

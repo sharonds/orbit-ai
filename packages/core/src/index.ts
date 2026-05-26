@@ -92,6 +92,7 @@ export * from './types/entities.js'
 export * from './types/errors.js'
 export * from './types/pagination.js'
 export * from './types/schema.js'
+export * from './public-date-fields.js'
 export {
   PUBLIC_ENTITY_SERVICE_MAP,
   PUBLIC_ENTITIES_WITH_UNDERSCORE,

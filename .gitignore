@@ -68,6 +68,21 @@ docs/*
 docs/security/*
 !docs/security/security-architecture.md
 !docs/security/database-hardening-checklist.md
+!docs/product
+docs/product/*
+!docs/product/business-e2e-scenario-map.md
+!docs/testing
+docs/testing/*
+!docs/testing/security-e2e-matrix.md
+!docs/reports
+docs/reports/*
+!docs/reports/2026-05-25-business-e2e-lead-qualification-report.md
+!docs/reports/2026-05-25-business-e2e-stalled-pipeline-report.md
+!docs/reports/2026-05-26-business-e2e-review-report.md
+!docs/reports/2026-05-26-business-e2e-account-360-report.md
+!docs/reports/2026-05-26-business-e2e-renewal-expansion-report.md
+!docs/reports/2026-05-26-business-e2e-coverage-closure-report.md
+!docs/reports/2026-05-26-business-e2e-multi-domain-review.md
 # Implementation plans and reviews are tracked so cloud agents can execute them
 !docs/superpowers
 docs/superpowers/*
