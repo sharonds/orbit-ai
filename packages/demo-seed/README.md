@@ -61,6 +61,10 @@ The first scenarios are:
   three stale open deals, one high-value proposal without a next task, a
   closed-won negative control, an active recent-deal control, scenario tags, and
   expected answers for "Which deals are stuck and what should I do next?"
+- `seedAccount360Scenario()` — adds a marked account graph: one strategic
+  company, three contacts, open and closed-control deals, activities, notes,
+  open and completed-control tasks, a scenario tag, and expected answers for
+  "Show me everything important about this company."
 
 ```ts
 import {
@@ -69,6 +73,8 @@ import {
   seedLeadQualificationScenario,
   answerLeadQualificationQuestion,
   seedStalledPipelineScenario,
+  seedAccount360Scenario,
+  answerAccount360Question,
 } from '@orbit-ai/demo-seed'
 
 const fixedNow = Date.UTC(2026, 3, 15, 12, 0, 0)
@@ -92,6 +98,18 @@ await seedStalledPipelineScenario({
   organizationId: base.organization.id,
   now: fixedNow,
 })
+
+const account360 = await seedAccount360Scenario({
+  adapter,
+  organizationId: base.organization.id,
+  now: fixedNow,
+})
+const accountAnswer = await answerAccount360Question({
+  adapter,
+  organizationId: base.organization.id,
+})
+console.log(account360.records.company.id)
+console.log(accountAnswer.openDealIds)
 ```
 
 Scenario helpers return semantic record handles, not hardcoded generated IDs.
@@ -174,5 +192,7 @@ Auto-generated IDs (ULIDs) and `created_at` values will naturally differ per run
 | `answerLeadQualificationQuestion(opts)` | Computes the deterministic expected answer for the lead qualification scenario. |
 | `seedStalledPipelineScenario(opts)` | Adds the stalled-pipeline business scenario overlay for a seeded organization. |
 | `answerStalledPipelineQuestion(opts)` | Computes stuck-deal and high-value-no-task answers for the stalled-pipeline scenario. |
+| `seedAccount360Scenario(opts)` | Adds the account-360 business scenario overlay for a seeded organization. |
+| `answerAccount360Question(opts)` | Computes deterministic company graph answers for the account-360 scenario. |
 | `createPrng(seed)` | Internal PRNG factory (exported for advanced custom seeders). |
 | Types: `SeedOptions`, `SeedResult`, `SeedMode`, `ResetSeedOptions`, `TenantProfile`, `ProfileCounts`, `Prng` | |

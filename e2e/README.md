@@ -51,6 +51,12 @@ pnpm -F @orbit-ai/e2e test -- src/business-journeys/01-lead-qualification.test.t
 # Run the stalled pipeline business journey.
 pnpm -F @orbit-ai/e2e test -- src/business-journeys/02-stalled-pipeline.test.ts
 
+# Run the account 360 business journey.
+pnpm -F @orbit-ai/e2e test -- src/business-journeys/03-account-360.test.ts
+
+# Run the focused tenant graph isolation security journey.
+pnpm -F @orbit-ai/e2e test -- src/security/tenant-graph-isolation.test.ts
+
 # Run all business journeys currently implemented.
 pnpm -F @orbit-ai/e2e test -- src/business-journeys
 ```
@@ -81,4 +87,12 @@ pnpm -F @orbit-ai/e2e test -- src/business-journeys
   SDK direct answers, SDK HTTP deal reads, SDK HTTP deal movement, SDK HTTP task
   creation with ISO `due_date`, SDK direct verification, and a Beta tenant
   exclusion check.
+- Business Journey 3 proves the deterministic Account 360 scenario through SDK
+  direct graph answers, SDK HTTP graph reads, raw API company fetch, MCP
+  `get_record`/`search_records`, SDK HTTP task creation, SDK direct
+  verification, and Beta tenant exclusion.
+- `e2e/src/security/tenant-graph-isolation.test.ts` expands tenant isolation
+  beyond contacts/deals for the Account 360 graph across SDK direct, SDK HTTP,
+  raw API, and MCP. CLI graph isolation and restricted-role Postgres RLS remain
+  separate follow-ups.
 - npm Trusted Publishing, Dependabot, and `pnpm audit` gating remain deferred per Plan B follow-ups.

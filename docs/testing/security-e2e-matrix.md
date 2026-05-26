@@ -1,7 +1,7 @@
 # Orbit AI Security E2E Matrix
 
 **Date:** 2026-05-24
-**Status:** Proposed expansion; first business journey now includes a tenant-safety smoke
+**Status:** Proposed expansion; Account 360 graph isolation smoke implemented
 
 ## Purpose
 
@@ -16,7 +16,7 @@ journeys cannot cross tenant, scope, credential, or transport boundaries.
 |---|---|---|---|
 | API key required | SDK HTTP and API journeys authenticate with test key | Add missing/invalid/revoked/expired key cases against business journeys | `e2e/src/security/auth-boundary.test.ts` |
 | Scope enforcement | Unit/API middleware coverage exists | Prove read-only key cannot create/update/delete contacts, deals, tasks, notes | `e2e/src/security/scope-boundary.test.ts` |
-| Tenant isolation | Journey 15 covers contacts and deals | Cover companies, activities, tasks, notes, tags, pipelines/stages, payments/contracts where implemented, schema metadata, integration records | `e2e/src/security/tenant-graph-isolation.test.ts` |
+| Tenant isolation | Journey 15 covers contacts and deals; Account 360 security smoke covers companies, contacts, deals, activities, notes, and tasks across SDK direct, SDK HTTP, raw API, and MCP | Add CLI graph isolation, tags/pipelines/stages/payments/contracts where implemented, schema metadata, and integration records | `e2e/src/security/tenant-graph-isolation.test.ts` |
 | MCP tenant boundary | Journey 15 covers get/update/delete/search by beta ID for contacts/deals | Cover business tool flows and all registered MCP tools that can read/write tenant data | `e2e/src/security/mcp-boundary.test.ts` |
 | Secret redaction | Integration config journeys verify status redaction | Assert no access tokens, refresh tokens, API keys, bearer tokens, or credential sentinels appear in CLI/MCP/API outputs | `e2e/src/security/redaction.test.ts` |
 | Idempotency | API unit tests cover conflict behavior | Replay fake integration events and task creation requests; assert no duplicate activities/tasks/payments | `e2e/src/security/idempotency-business.test.ts` |
@@ -74,8 +74,8 @@ and every clickable/actionable record ID belongs to the current tenant.
   does not produce Lead Qualification scenario answers. Broader graph isolation
   remains in the dedicated security follow-up.
 - Business journeys include cross-tenant trap records by default.
-- At least one security E2E file verifies full graph tenant isolation beyond
-  contacts/deals.
+- At least one security E2E file verifies Account 360 graph tenant isolation
+  beyond contacts/deals.
 - Redaction assertions cover CLI, MCP, and API/SDK-visible outputs.
 - Scope-boundary tests include read-only and wrong-entity scopes.
 - Deferred controls are explicitly listed in docs and not described as complete.
@@ -91,3 +91,12 @@ ergonomics issue, not a proven tenant boundary issue.
 **2026-05-25 update:** API and SDK direct deserializers now coerce known public
 date/time input fields before core validation. Business Journey 2 verifies SDK
 HTTP task creation with ISO `due_date` and SDK direct read-back.
+
+## Account 360 Graph Isolation Update
+
+**2026-05-26 update:** `e2e/src/security/tenant-graph-isolation.test.ts`
+creates the Account 360 scenario in Beta and verifies Acme-bound SDK direct, SDK
+HTTP, raw API, and MCP `get_record` calls cannot read Beta company, contact,
+deal, activity, note, or task IDs. CLI graph isolation, tags, pipelines/stages,
+schema metadata, integration records, and restricted-role Postgres RLS remain
+deferred.

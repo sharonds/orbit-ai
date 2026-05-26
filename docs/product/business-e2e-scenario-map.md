@@ -1,7 +1,8 @@
 # Orbit AI Business E2E Scenario Map
 
 **Date:** 2026-05-24
-**Status:** First slice active; broader business E2E catalog remains proposed
+**Status:** Lead Qualification, Stalled Pipeline, and Account 360 implemented;
+broader business E2E catalog remains proposed
 
 ## Purpose
 
@@ -78,6 +79,10 @@ follow-ups for this business scenario.
 
 ### Scenario C: Account 360
 
+**Implementation status:** Active third slice. Implemented in
+`packages/demo-seed/src/scenarios/account-360.ts` with E2E coverage in
+`e2e/src/business-journeys/03-account-360.test.ts`.
+
 **Question:** "Show me everything important about this company."
 
 **Seed state:**
@@ -91,7 +96,8 @@ follow-ups for this business scenario.
 - Sensitive fields are redacted from MCP/tool output.
 - Cross-tenant similarly named records are excluded.
 
-**Surfaces:** SDK direct for graph verification, MCP for generated answer.
+**Surfaces:** SDK direct graph verification, SDK HTTP graph reads/writes, raw
+API company fetch, MCP `get_record`/`search_records`, and Beta tenant exclusion.
 
 ### Scenario D: Customer Renewal / Expansion
 
@@ -180,6 +186,8 @@ e2e/src/business-journeys/
   `seedLeadQualificationScenario()` and `answerLeadQualificationQuestion()`.
 - Second slice complete: `@orbit-ai/demo-seed` exposes
   `seedStalledPipelineScenario()` and `answerStalledPipelineQuestion()`.
+- Third slice complete: `@orbit-ai/demo-seed` exposes
+  `seedAccount360Scenario()` and `answerAccount360Question()`.
 - First slice complete: Lead Qualification has deterministic expected-answer
   helpers and semantic record handles.
 - First slice complete: Business E2E validates scenario facts through SDK direct
@@ -187,7 +195,13 @@ e2e/src/business-journeys/
 - Second slice complete: Stalled Pipeline validates stuck-deal facts, HTTP deal
   movement, HTTP task creation, direct verification, and Beta tenant exclusion
   using SQLite.
+- Third slice complete: Account 360 validates company graph traversal across
+  contacts, deals, activities, notes, tasks, tags, raw API read, MCP read/search,
+  and Beta tenant exclusion using SQLite.
 - First slice complete: Beta tenant exclusion is asserted for the Lead
   Qualification answer.
-- Deferred: `account360`, raw API business assertions, MCP business Q&A,
-  generated UI, live integration simulation, and Postgres/RLS proof.
+- Security slice partial: tenant graph isolation covers the Account 360 graph
+  across SDK direct, SDK HTTP, raw API, and MCP.
+- Deferred: generated UI, live integration simulation, CLI graph isolation,
+  broader auth/scope/redaction/idempotency security files, and Postgres/RLS
+  proof.

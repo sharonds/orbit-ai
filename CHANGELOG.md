@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Added**: Stalled Pipeline business scenario and E2E journey proving stuck
   deal detection, SDK HTTP deal movement, SDK HTTP task creation with ISO
   `due_date`, direct read-back, and Beta tenant exclusion.
+- **Added**: Account 360 business scenario and E2E journey proving company graph
+  traversal across contacts, deals, activities, notes, tasks, SDK HTTP reads,
+  raw API company fetch, MCP read/search, SDK HTTP task creation, direct
+  read-back, and Beta tenant exclusion.
+- **Added**: Focused Account 360 tenant graph isolation E2E covering companies,
+  contacts, deals, activities, notes, and tasks across SDK direct, SDK HTTP, raw
+  API, and MCP.
 - **Fixed**: API and SDK direct deserializers now coerce known public date/time
   fields before core validation, keeping HTTP and direct transports aligned for
   task due dates, activity timestamps, and related entity date fields.
