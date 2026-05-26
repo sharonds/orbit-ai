@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### @orbit-ai/demo-seed + @orbit-ai/e2e — Business demo gate
+
+- **Added**: Lead Qualification business scenario overlay with deterministic
+  CRM records, semantic handles, expected-answer helper, package tests, and
+  documentation.
+- **Added**: First business E2E journey on SQLite proving SDK direct business
+  answers, SDK HTTP contact reads, SDK HTTP task creation, SDK direct task
+  verification, and Beta tenant exclusion.
+- **Added**: Stalled Pipeline business scenario and E2E journey proving stuck
+  deal detection, SDK HTTP deal movement, SDK HTTP task creation with ISO
+  `due_date`, direct read-back, and Beta tenant exclusion.
+- **Fixed**: API and SDK direct deserializers now coerce known public date/time
+  fields before core validation, keeping HTTP and direct transports aligned for
+  task due dates, activity timestamps, and related entity date fields.
+- **Documented**: First-slice issue report and deferred MCP/raw API/UI/Postgres
+  coverage for the business demo gate.
+
 ### @orbit-ai/api + @orbit-ai/sdk — camelCase↔snake_case serialization layer
 
 - **Fixed**: All API responses now correctly return `snake_case` field names (e.g. `stage_id`, `organization_id`, `created_at`). Previously, core's camelCase Drizzle records were returned to clients unchanged. Zod's silent `strip()` mode meant incoming `snake_case` request fields like `stage_id` were silently dropped rather than mapped to `stageId` — this fix prevents silent data loss on create/update/move operations.
