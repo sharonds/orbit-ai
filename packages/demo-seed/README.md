@@ -43,6 +43,61 @@ console.log(result.counts)             // { contacts: 200, companies: 40, ... }
 
 Both profiles also create a default sales pipeline with 5 stages (Prospect → Qualified → Proposal → Closed-Won/Lost), 3 users, and a shared set of demo tags (`hot-lead`, `enterprise`, `eu`, `partner`, `champion`).
 
+## Business scenarios
+
+Business scenarios are deterministic overlays applied after `seed()`. They are
+synthetic case-study fixtures for business E2E tests and future demo apps; they
+do not run live Gmail, Calendar, Stripe, or enrichment integrations.
+
+The first scenarios are:
+
+- `seedLeadQualificationScenario()` — adds a marked lead-qualification data set
+  for one tenant: a scenario company, hot leads, recent inbound email
+  activities, a missing-company data-quality case, a cold negative-control lead,
+  a scenario tag, and an assigned follow-up task. The paired
+  `answerLeadQualificationQuestion()` helper returns deterministic expected
+  answers for "Which new leads should sales qualify today?"
+- `seedStalledPipelineScenario()` — adds a marked pipeline-review data set:
+  three stale open deals, one high-value proposal without a next task, a
+  closed-won negative control, an active recent-deal control, scenario tags, and
+  expected answers for "Which deals are stuck and what should I do next?"
+
+```ts
+import {
+  seed,
+  TENANT_PROFILES,
+  seedLeadQualificationScenario,
+  answerLeadQualificationQuestion,
+  seedStalledPipelineScenario,
+} from '@orbit-ai/demo-seed'
+
+const fixedNow = Date.UTC(2026, 3, 15, 12, 0, 0)
+const base = await seed(adapter, { profile: TENANT_PROFILES.acme, now: fixedNow })
+const scenario = await seedLeadQualificationScenario({
+  adapter,
+  organizationId: base.organization.id,
+  now: fixedNow,
+})
+
+const answer = await answerLeadQualificationQuestion({
+  adapter,
+  organizationId: base.organization.id,
+})
+
+console.log(scenario.records.hotInboundLead.id)
+console.log(answer.qualifiedContactIds)
+
+await seedStalledPipelineScenario({
+  adapter,
+  organizationId: base.organization.id,
+  now: fixedNow,
+})
+```
+
+Scenario helpers return semantic record handles, not hardcoded generated IDs.
+Apply scenarios only to known demo tenants; they intentionally add records on top
+of the base seed.
+
 ## Modes
 
 `seed()` takes an optional `mode` to control what happens when the target organization already has data:
@@ -115,5 +170,9 @@ Auto-generated IDs (ULIDs) and `created_at` values will naturally differ per run
 | `seed(adapter, opts)` | Top-level orchestrator. Returns `{ organization, counts }`. |
 | `resetSeed(adapter, orgId, { confirmWipeAllTenantData: true })` | **Destructive.** Wipes every row in the seeded entity types for that organization — not just demo rows. Requires explicit acknowledgement flag. See "Safety". |
 | `TENANT_PROFILES` | `{ acme, beta }` — tuned scale presets. |
+| `seedLeadQualificationScenario(opts)` | Adds the first business scenario overlay for a seeded organization. |
+| `answerLeadQualificationQuestion(opts)` | Computes the deterministic expected answer for the lead qualification scenario. |
+| `seedStalledPipelineScenario(opts)` | Adds the stalled-pipeline business scenario overlay for a seeded organization. |
+| `answerStalledPipelineQuestion(opts)` | Computes stuck-deal and high-value-no-task answers for the stalled-pipeline scenario. |
 | `createPrng(seed)` | Internal PRNG factory (exported for advanced custom seeders). |
 | Types: `SeedOptions`, `SeedResult`, `SeedMode`, `ResetSeedOptions`, `TenantProfile`, `ProfileCounts`, `Prng` | |

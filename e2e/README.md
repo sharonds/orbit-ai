@@ -38,6 +38,23 @@ pnpm -F @orbit-ai/e2e test:watch
 pnpm -F @orbit-ai/e2e typecheck
 ```
 
+Business journeys live under `e2e/src/business-journeys/` and currently run on
+SQLite only:
+
+```bash
+# Build changed workspace packages first; e2e imports package dist output.
+pnpm -F @orbit-ai/demo-seed build
+
+# Run the first business/demo gate journey.
+pnpm -F @orbit-ai/e2e test -- src/business-journeys/01-lead-qualification.test.ts
+
+# Run the stalled pipeline business journey.
+pnpm -F @orbit-ai/e2e test -- src/business-journeys/02-stalled-pipeline.test.ts
+
+# Run all business journeys currently implemented.
+pnpm -F @orbit-ai/e2e test -- src/business-journeys
+```
+
 ## Environment
 
 - **Node 22+** required (`node:sqlite` is used by the SQLite adapter)
@@ -52,4 +69,16 @@ pnpm -F @orbit-ai/e2e typecheck
 - Journey 15 covers contacts and deals only. Broader entity isolation and restricted-role Postgres RLS proof are deferred.
 - DirectTransport custom-field `PATCH`/`DELETE` remains deferred until Plan C.5 implements `engine.updateField` and `engine.deleteField`.
 - Connector journeys persist and redact Gmail, Google Calendar, and Stripe credentials only; they do not prove live provider dispatch.
+- Business Journey 1 proves the deterministic Lead Qualification scenario
+  through SDK direct answers, SDK HTTP contact reads, SDK HTTP task creation,
+  SDK direct task verification, and a Beta tenant exclusion check.
+- Business Journey 1 intentionally skips MCP because the first slice focuses on
+  scenario contracts and SDK/API surfaces. MCP business Q&A is a follow-up.
+- API and SDK direct deserializers coerce known public date/time input fields
+  before core validation. Business Journey 2 verifies SDK HTTP task creation
+  with an ISO `due_date` and SDK direct read-back.
+- Business Journey 2 proves the deterministic Stalled Pipeline scenario through
+  SDK direct answers, SDK HTTP deal reads, SDK HTTP deal movement, SDK HTTP task
+  creation with ISO `due_date`, SDK direct verification, and a Beta tenant
+  exclusion check.
 - npm Trusted Publishing, Dependabot, and `pnpm audit` gating remain deferred per Plan B follow-ups.
