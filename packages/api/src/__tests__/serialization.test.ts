@@ -342,6 +342,13 @@ describe('deserializeEntityInput', () => {
     })
   })
 
+  it('rejects invalid public date strings for core date fields', () => {
+    expect(() => deserializeEntityInput('tasks', {
+      title: 'Follow up',
+      due_date: 'not-a-date',
+    })).toThrow(/invalid date string for due_date/i)
+  })
+
   it('passes through unknown entities without change (camelCase conversion only)', () => {
     const result = deserializeEntityInput('unknown_entity', {
       foo_bar: 'baz',

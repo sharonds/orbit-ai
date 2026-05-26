@@ -126,7 +126,7 @@ async function insertPostgresE2eApiKey(
 export async function buildStack(opts: StackOptions): Promise<Stack> {
   const adapterType = opts.adapter ?? 'sqlite'
   const rawApiKey = opts.rawApiKey ?? createRawApiKey()
-  const rawApiScopes = [...(opts.rawApiScopes ?? ['*'])]
+  const rawApiScopes = [...(opts.rawApiScopes ?? ['*'])].sort()
 
   if (adapterType === 'postgres') {
     const databaseUrl = process.env.DATABASE_URL

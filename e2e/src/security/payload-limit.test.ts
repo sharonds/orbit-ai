@@ -9,7 +9,6 @@ describe('Security — payload limit', () => {
       const body = JSON.stringify({ body: 'x'.repeat(1_100_000) })
       await expectApiError(await rawApi(stack, 'notes', {
         method: 'POST',
-        headers: { 'content-length': String(Buffer.byteLength(body, 'utf8')) },
         body,
       }), {
         status: 413,

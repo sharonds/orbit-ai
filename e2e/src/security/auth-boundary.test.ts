@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { buildStack } from '../harness/build-stack.js'
 import { expectApiError } from './helpers.js'
 
@@ -21,6 +21,27 @@ describe('Security — auth boundary', () => {
         code: 'AUTH_INVALID_API_KEY',
         label: 'invalid auth',
       })
+
+      const before = await stack.sdkDirect.contacts.list({ limit: 100 })
+      await expectApiError(await stack.api.fetch(new Request('http://test.local/v1/contacts', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer sk_test_invalid',
+          'Orbit-Version': '2026-04-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Unauthorized Write Sentinel',
+          email: 'unauthorized-write@example.test',
+        }),
+      })), {
+        status: 401,
+        code: 'AUTH_INVALID_API_KEY',
+        label: 'invalid auth write',
+      })
+      const after = await stack.sdkDirect.contacts.list({ limit: 100 })
+      expect(after.data.length, 'invalid auth write must not create a contact').toBe(before.data.length)
+      expect(after.data.some((contact) => contact.email === 'unauthorized-write@example.test')).toBe(false)
     } finally {
       await stack.teardown()
     }

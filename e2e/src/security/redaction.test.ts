@@ -84,6 +84,8 @@ describe('Security — redaction', () => {
       }))
 
       const joined = outputs.join('\n')
+      expect(joined).toContain('"status"')
+      expect(joined).toContain('"configured"')
       for (const secret of Object.values(SECRET_SENTINELS)) {
         expect(joined).not.toContain(secret)
       }

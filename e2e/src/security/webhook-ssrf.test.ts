@@ -5,9 +5,15 @@ import { expectApiError, rawApi } from './helpers.js'
 const BLOCKED_URLS = [
   'https://localhost:8080/hook',
   'https://127.0.0.1/hook',
+  'https://0.0.0.0/hook',
+  'https://2130706433/hook',
+  'https://0177.0.0.1/hook',
   'https://169.254.169.254/latest/meta-data',
   'https://10.0.0.1/hook',
   'https://192.168.1.10/hook',
+  'https://metadata.google.internal/computeMetadata/v1',
+  'https://[::1]/hook',
+  'https://[fe80::1]/hook',
   'https://[::ffff:7f00:1]/hook',
 ]
 

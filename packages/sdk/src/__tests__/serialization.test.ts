@@ -227,4 +227,11 @@ describe('deserializeEntityInput (SDK)', () => {
       lastContactedAt: new Date('2026-04-14T12:00:00.000Z'),
     })
   })
+
+  it('rejects invalid public date strings for core date fields', () => {
+    expect(() => deserializeEntityInput('tasks', {
+      title: 'Follow up',
+      due_date: 'not-a-date',
+    })).toThrow(/invalid date string for due_date/i)
+  })
 })

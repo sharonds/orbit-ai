@@ -68,6 +68,22 @@ describe('Business Journey 5 — CLI business surface smoke', () => {
         expectedOrgId: stack.acmeOrgId,
         env,
       })
+      await expectCliList({
+        entity: 'contacts',
+        expectedOrgId: stack.acmeOrgId,
+        env,
+      })
+      await expectCliSearch({
+        query: lead.records.hotInboundLead.label,
+        expectedId: lead.records.hotInboundLead.id,
+        env,
+      })
+      await expectCliDealMove({
+        dealId: stalled.records.activeRecentDeal.id,
+        stageId: stalled.records.qualificationStage.id,
+        expectedOrgId: stack.acmeOrgId,
+        env,
+      })
     } finally {
       if (server) await server.close()
       await stack.teardown()
@@ -92,10 +108,66 @@ async function expectCliGet(input: {
   expect(data?.organization_id, `cli ${input.entity} get ${input.id} organization`).toBe(input.expectedOrgId)
 }
 
+async function expectCliList(input: {
+  readonly entity: string
+  readonly expectedOrgId: string
+  readonly env: Record<string, string>
+}): Promise<void> {
+  const result = await runCli({
+    args: ['--mode', 'api', '--json', input.entity, 'list', '--limit', '5'],
+    cwd: process.cwd(),
+    env: input.env,
+  })
+  expect(result.exitCode, `cli ${input.entity} list exitCode`).toBe(0)
+  const data = unwrapListData(result.json)
+  expect(data.length, `cli ${input.entity} list rows`).toBeGreaterThan(0)
+  expect(data.every((row) => row.organization_id === input.expectedOrgId), `cli ${input.entity} list org scope`).toBe(true)
+}
+
+async function expectCliSearch(input: {
+  readonly query: string
+  readonly expectedId: string
+  readonly env: Record<string, string>
+}): Promise<void> {
+  const result = await runCli({
+    args: ['--mode', 'api', '--json', 'search', input.query, '--types', 'contacts', '--limit', '10'],
+    cwd: process.cwd(),
+    env: input.env,
+  })
+  expect(result.exitCode, `cli search ${input.query} exitCode`).toBe(0)
+  const data = unwrapListData(result.json)
+  expect(data.some((row) => row.id === input.expectedId), `cli search includes ${input.expectedId}`).toBe(true)
+}
+
+async function expectCliDealMove(input: {
+  readonly dealId: string
+  readonly stageId: string
+  readonly expectedOrgId: string
+  readonly env: Record<string, string>
+}): Promise<void> {
+  const result = await runCli({
+    args: ['--mode', 'api', '--json', 'deals', 'move', input.dealId, '--stage-id', input.stageId],
+    cwd: process.cwd(),
+    env: input.env,
+  })
+  expect(result.exitCode, `cli deals move ${input.dealId} exitCode`).toBe(0)
+  const data = unwrapData(result.json)
+  expect(data?.id, `cli deals move ${input.dealId} id`).toBe(input.dealId)
+  expect(data?.organization_id, `cli deals move ${input.dealId} organization`).toBe(input.expectedOrgId)
+  expect(data?.stage_id, `cli deals move ${input.dealId} stage`).toBe(input.stageId)
+}
+
 function unwrapData(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== 'object') return undefined
   const record = value as Record<string, unknown>
   const data = record.data
   if (data && typeof data === 'object') return data as Record<string, unknown>
   return record
+}
+
+function unwrapListData(value: unknown): Array<Record<string, unknown>> {
+  if (!value || typeof value !== 'object') return []
+  const record = value as Record<string, unknown>
+  const data = record.data
+  return Array.isArray(data) ? data.filter((row): row is Record<string, unknown> => !!row && typeof row === 'object') : []
 }

@@ -78,6 +78,10 @@ The first scenarios are:
   `applyFakeStripePaymentEvent()` helpers write CRM state through core services
   and return `{ created: false }` on deterministic replay.
 
+The fake integration events are minimal deterministic stand-ins for business E2E
+tests, not exact provider webhook fixtures. Use live provider fixtures in a
+separate integration-certification pass.
+
 ```ts
 import {
   seed,
@@ -168,7 +172,8 @@ await applyFakeStripePaymentEvent({
 
 Scenario helpers return semantic record handles, not hardcoded generated IDs.
 Apply scenarios only to known demo tenants; they intentionally add records on top
-of the base seed.
+of the base seed. Only the fake integration event apply helpers are idempotent;
+the other scenario overlays are intended for fresh demo/test databases.
 
 ## Modes
 

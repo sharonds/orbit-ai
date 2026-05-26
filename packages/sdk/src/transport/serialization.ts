@@ -88,6 +88,14 @@ const ENTITY_DATE_INPUT_FIELDS: Record<string, Set<string>> = {
   sequence_events: new Set(['occurredAt']),
 }
 
+function deserializeDateField(field: string, value: string): Date {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Invalid date string for ${field}`)
+  }
+  return date
+}
+
 function normalizeJsonValue(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString()
   if (Array.isArray(value)) return value.map((item) => normalizeJsonValue(item))
@@ -156,7 +164,7 @@ export function deserializeEntityInput(
   for (const [k, v] of Object.entries(body)) {
     const camelKey = snakeToCamel(k)
     const coreKey = renames[camelKey] ?? camelKey
-    out[coreKey] = dateFields.has(coreKey) && typeof v === 'string' ? new Date(v) : v
+    out[coreKey] = dateFields.has(coreKey) && typeof v === 'string' ? deserializeDateField(k, v) : v
   }
 
   return out

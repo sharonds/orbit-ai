@@ -1,3 +1,5 @@
+import { OrbitError } from '@orbit-ai/core'
+
 /**
  * Bidirectional serialization between core's camelCase records and the
  * public API's snake_case contract.
@@ -108,6 +110,19 @@ const ENTITY_DATE_INPUT_FIELDS: Record<string, Set<string>> = {
   sequence_events: new Set(['occurredAt']),
 }
 
+function deserializeDateField(field: string, value: string): Date {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    throw new OrbitError({
+      code: 'VALIDATION_FAILED',
+      message: `Invalid date string for ${field}`,
+      field,
+      hint: 'Use an ISO 8601 date/time string with a timezone, for example 2026-04-17T12:00:00.000Z.',
+    })
+  }
+  return date
+}
+
 function normalizeJsonValue(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString()
   if (Array.isArray(value)) return value.map((item) => normalizeJsonValue(item))
@@ -193,7 +208,7 @@ export function deserializeEntityInput(
   for (const [k, v] of Object.entries(body)) {
     const camelKey = snakeToCamel(k)
     const coreKey = renames[camelKey] ?? camelKey
-    out[coreKey] = dateFields.has(coreKey) && typeof v === 'string' ? new Date(v) : v
+    out[coreKey] = dateFields.has(coreKey) && typeof v === 'string' ? deserializeDateField(k, v) : v
   }
 
   return out
