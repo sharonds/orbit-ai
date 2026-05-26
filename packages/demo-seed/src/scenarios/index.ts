@@ -30,3 +30,12 @@ export type {
   Account360Answer,
   Account360ScenarioResult,
 } from './account-360.js'
+export {
+  answerRenewalExpansionQuestion,
+  expectedRenewalExpansionAnswer,
+  seedRenewalExpansionScenario,
+} from './renewal-expansion.js'
+export type {
+  RenewalExpansionAnswer,
+  RenewalExpansionScenarioResult,
+} from './renewal-expansion.js'
