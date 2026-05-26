@@ -4,6 +4,11 @@
 **Database:** SQLite only
 **Scope:** First business E2E demo gate slice
 
+**Superseded status note:** This is a point-in-time slice report. Later slices
+completed Stalled Pipeline, Account 360, Renewal/Expansion, fake integration
+event simulation, and the SQLite security coverage closure. MCP stdio wire and
+Postgres/RLS remain deferred.
+
 ## Summary
 
 Implemented the Lead Qualification business scenario as a deterministic
@@ -83,12 +88,12 @@ added.
 
 ## Remaining Gaps
 
-- MCP business assertion is deferred.
-- Raw API business assertion is deferred.
-- Stalled Pipeline and Account 360 scenarios are deferred.
-- Dedicated security E2E files for scope boundaries, full graph tenant
-  isolation, redaction, idempotency, payload limits, rate limits, and webhook
-  SSRF remain deferred.
+- Current status: later slices added Stalled Pipeline, Account 360,
+  Renewal/Expansion, fake integration event simulation, raw API/MCP business
+  reads where supported, and focused SQLite security E2E files for auth/scope,
+  graph isolation, redaction, idempotency, payload limits, rate limits, and
+  webhook SSRF.
+- MCP stdio wire behavior remains deferred.
 - Postgres/RLS proof remains deferred.
 - No generated UI or Vercel/CopilotKit prototype was added in this pass.
 
@@ -97,12 +102,13 @@ added.
 Confidence after this slice: **0.78**.
 
 The first business scenario is deterministic and covered by focused package and
-E2E tests on SQLite. Confidence is not higher because MCP/raw API business
-coverage, broader security matrix tests, and HTTP date coercion are still open.
+E2E tests on SQLite. At the time, confidence was not higher because MCP/raw API
+business coverage, broader security matrix tests, and HTTP date coercion were
+still open. Later slices closed HTTP date coercion, added raw API/MCP business
+reads where supported, and completed the focused SQLite security matrix.
 
 ## Recommended Next Slice
 
-Fix public API date coercion for date/time fields, then add the Stalled Pipeline
-business scenario with SDK HTTP deal movement and follow-up task behavior. That
-will broaden proof from lead qualification into pipeline management before
-building any UI prototype.
+Current recommendation: decide whether MCP stdio wire coverage should be
+implemented before shaping the agent/UI prototype against the stable scenario
+helpers.

@@ -41,7 +41,9 @@ console.log(result.counts)             // { contacts: 200, companies: 40, ... }
 | `acme`  | 200      | 40        | 15    | 300        | 50    | 30 days |
 | `beta`  | 50       | 10        | 3     | 50         | 10    | 14 days |
 
-Both profiles also create a default sales pipeline with 5 stages (Prospect → Qualified → Proposal → Closed-Won/Lost), 3 users, and a shared set of demo tags (`hot-lead`, `enterprise`, `eu`, `partner`, `champion`).
+Both profiles also create a default sales pipeline with 5 stages (Prospecting →
+Qualification → Proposal → Closed Won/Closed Lost), 3 users, and a shared set of
+demo tags (`hot-lead`, `enterprise`, `eu`, `partner`, `champion`).
 
 ## Business scenarios
 

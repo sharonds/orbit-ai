@@ -211,8 +211,8 @@ e2e/src/business-journeys/
   movement, HTTP task creation, direct verification, and Beta tenant exclusion
   using SQLite.
 - Third slice complete: Account 360 validates company graph traversal across
-  contacts, deals, activities, notes, tasks, tags, raw API read, MCP read/search,
-  and Beta tenant exclusion using SQLite.
+  contacts, deals, activities, notes, tasks, raw API read, MCP read/search, and
+  Beta tenant exclusion using SQLite.
 - Fourth slice complete: Renewal/Expansion validates signed contract, paid
   historical deal, recent positive activity, open expansion deal, dormant
   negative-control customer, raw API read, MCP read/search, and Beta tenant

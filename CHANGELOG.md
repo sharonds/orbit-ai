@@ -222,7 +222,7 @@ First public pre-release of the Orbit AI monorepo. All 5 packages: `@orbit-ai/co
 - SQLite adapter (`SqliteStorageAdapter`) using Node.js built-in `node:sqlite` — zero
   external dependencies for local development and testing
 - Postgres adapter (`PostgresStorageAdapter`) with RLS policy support — production target
-- Supabase and Neon support via the Postgres adapter
+- Postgres-compatible managed provider support via the Postgres adapter
 - Entity services for all entities — type-safe CRUD + cursor-based paginated list with
   `orgId`-scoped queries enforced on every call
 - Tenant context isolation: `{ orgId, userId }` required on all service methods

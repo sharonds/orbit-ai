@@ -4,6 +4,12 @@
 **Database:** SQLite only
 **Scope:** Third business E2E demo gate slice plus focused graph isolation smoke
 
+**Superseded status note:** This is a point-in-time slice report. Later coverage
+closure in
+`docs/reports/2026-05-26-business-e2e-coverage-closure-report.md` completed CLI
+graph isolation and fake integration event simulation. MCP stdio wire and
+Postgres/RLS remain deferred.
+
 ## Summary
 
 Implemented the Account 360 business scenario as a deterministic
@@ -100,13 +106,13 @@ added.
 
 ## Remaining Gaps
 
-- CLI graph isolation remains deferred.
-- Tags, pipelines/stages, schema metadata, integration records, payments, and
-  contracts are not included in the focused graph isolation smoke.
-- MCP stdio wire behavior remains deferred; the E2E uses the existing in-process
-  MCP transport harness.
-- Renewal/Expansion, integration event simulation, and agent Q&A smoke scenarios
-  remain deferred.
+- Current status: later slices added CLI graph isolation, Renewal/Expansion,
+  fake integration event simulation, and focused security smokes for auth/scope,
+  redaction, payload limits, rate limits, and webhook SSRF.
+- Tags, pipelines/stages, schema metadata, and integration records are not
+  included in the focused graph isolation smoke.
+- MCP stdio wire behavior remains deferred; E2E uses the existing in-process MCP
+  transport harness.
 - Postgres/RLS proof remains deferred by design for this SQLite-only pass.
 - No generated UI or Vercel/CopilotKit prototype was added in this pass.
 
@@ -116,11 +122,13 @@ Confidence after this slice: **0.88**.
 
 Confidence increased because Account 360 proves multi-entity graph traversal,
 adds real raw API/MCP business assertions, adds graph isolation coverage, and the
-full package verification set passed. Confidence is still capped by deferred CLI
-graph isolation, MCP stdio, broader security matrix controls, and Postgres/RLS
-proof.
+full package verification set passed. At the time of this slice, confidence was
+capped by CLI graph isolation, MCP stdio, broader security matrix controls, and
+Postgres/RLS proof. Later coverage closure completed CLI graph isolation and the
+focused SQLite security matrix.
 
 ## Recommended Next Slice
 
-Add Renewal/Expansion next, then add a compact raw API/MCP/CLI surface parity
-smoke across all implemented business scenarios before building any UI prototype.
+Current recommendation: decide whether MCP stdio wire coverage should be
+implemented before shaping the agent/UI prototype against the stable scenario
+helpers.

@@ -70,9 +70,9 @@ harness.
 - `pnpm -F @orbit-ai/sdk test`
   - Result: passed, 13 files, 233 tests.
 - `pnpm -F @orbit-ai/demo-seed test`
-  - Result: passed, 19 files, 51 tests.
+  - Result: passed, 20 files, 52 tests.
 - `pnpm -F @orbit-ai/e2e test`
-  - Result: passed, 26 files, 30 tests passed, 3 skipped.
+  - Result: passed, 33 files, 37 tests passed, 3 skipped.
 - `pnpm -F @orbit-ai/api typecheck`
   - Result: passed.
 - `pnpm -F @orbit-ai/sdk typecheck`
@@ -90,7 +90,9 @@ before build because package entrypoints in `dist` were absent. After
   initially found SQLite savepoint contention from parallel helper reads and a
   typed public SDK task-field mismatch; both were fixed before final
   verification. The Renewal/Expansion round added scoped-key harness support and
-  verified the full test set after adding CLI and scope-boundary smoke.
+  verified the full test set after adding CLI and scope-boundary smoke. The
+  coverage-closure round verified the expanded full test set after fake
+  integration events and the focused security smokes were added.
 
 ## Remaining Gaps
 

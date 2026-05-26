@@ -13,8 +13,8 @@
 - **Schema definitions** — Drizzle ORM table definitions for all 12 base CRM entities
   (contacts, companies, deals, pipelines, stages, activities, tasks, notes, products,
   payments, contracts, sequences, tags, and more)
-- **Storage adapters** — plug-in adapters for SQLite (`node:sqlite`), Postgres (raw `pg`),
-  Supabase, and Neon; share a common `StorageAdapter` interface
+- **Storage adapters** — plug-in adapters for SQLite (`node:sqlite`) and Postgres
+  (`pg`) that share a common `StorageAdapter` interface
 - **Entity services** — type-safe CRUD + list services for every entity, with tenant-scoped
   queries and cursor-based pagination
 - **Tenant context** — every write and read is scoped to `{ orgId, userId }` at the

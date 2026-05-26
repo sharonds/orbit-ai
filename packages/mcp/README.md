@@ -18,13 +18,20 @@ Requires **Node.js 22+**.
 
 ### stdio transport (Claude Desktop, Cursor, Copilot)
 
-Start the server in stdio mode via the CLI:
+Start the server programmatically in stdio mode:
 
-```bash
-ORBIT_API_KEY=your-key ORBIT_BASE_URL=https://api.yourapp.com orbit mcp serve
+```typescript
+import { OrbitClient } from '@orbit-ai/sdk'
+import { startMcpServer } from '@orbit-ai/mcp'
+
+await startMcpServer({
+  client: new OrbitClient({ apiKey: process.env.ORBIT_API_KEY!, baseUrl: process.env.ORBIT_BASE_URL! }),
+  transport: 'stdio',
+})
 ```
 
-Or start it programmatically in HTTP mode and point your MCP host at the HTTP endpoint (see HTTP transport below).
+The `orbit mcp serve` CLI command is reserved but not wired in this alpha.
+Programmatic stdio and HTTP transports are the supported package surfaces.
 
 ### Configuring Claude Desktop
 
@@ -45,19 +52,22 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 }
 ```
 
+This CLI example is the intended final shape. In the current alpha, use a small
+Node.js wrapper that calls `startMcpServer({ transport: 'stdio', ... })` instead.
+
 ### HTTP transport (remote or multi-tenant)
 
 ```typescript
-import { startHttpTransport } from '@orbit-ai/mcp'
+import { OrbitClient } from '@orbit-ai/sdk'
+import { startMcpServer } from '@orbit-ai/mcp'
 
-const runtime = await startHttpTransport({
+await startMcpServer({
   adapter,           // RuntimeApiAdapter with lookupApiKeyForAuth wired up
-  client,            // OrbitClient template (per-request clients are created from this)
+  client: new OrbitClient({ apiKey: process.env.ORBIT_API_KEY!, baseUrl: process.env.ORBIT_BASE_URL! }),
   port: 3001,        // default
   bindAddress: '127.0.0.1',  // default; use '0.0.0.0' only with network controls
+  transport: 'http',
 })
-
-console.log(`MCP HTTP server listening on ${runtime.address}:${runtime.port}`)
 ```
 
 HTTP transport requires `Authorization: Bearer <api-key>` on every request. The API key is resolved via `adapter.lookupApiKeyForAuth()` — the same lookup used by `@orbit-ai/api`.

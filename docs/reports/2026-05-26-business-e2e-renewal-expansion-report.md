@@ -4,6 +4,13 @@
 **Database:** SQLite only
 **Scope:** Fourth business E2E demo gate slice plus CLI and scope-boundary smoke
 
+**Superseded status note:** This is a point-in-time slice report. Later coverage
+closure in
+`docs/reports/2026-05-26-business-e2e-coverage-closure-report.md` completed CLI
+graph isolation, scope update/delete coverage, credential redaction, fake event
+idempotency, payload/rate-limit smokes, and webhook SSRF. MCP stdio wire and
+Postgres/RLS remain deferred.
+
 ## Summary
 
 Implemented the Renewal/Expansion business scenario as a deterministic
@@ -65,6 +72,10 @@ added.
 - `pnpm -F @orbit-ai/sdk typecheck`
   - Result: passed.
 
+These counts are the historical Renewal/Expansion slice results. The later
+coverage-closure report records the current aggregate package counts after the
+fake integration-event and security-smoke additions.
+
 ## Issues Found
 
 - The current E2E harness only supported all-scope API keys. A narrowly scoped
@@ -82,13 +93,13 @@ added.
 
 ## Remaining Gaps
 
-- CLI graph isolation remains deferred.
-- Scope-boundary update/delete and broader entity-scope cases remain deferred.
-- Redaction, idempotency, payload-limit, rate-limit, and webhook SSRF security
-  files remain deferred.
-- Integration event simulation remains deferred.
-- MCP stdio wire behavior remains deferred; E2E uses the existing in-process
-  MCP transport harness.
+- Current status: later coverage closure added CLI graph isolation,
+  scope-boundary update/delete coverage, credential redaction, fake event
+  idempotency, payload/rate-limit smokes, and webhook SSRF.
+- Broader multi-scope matrices remain deferred until product scope contracts
+  require them.
+- MCP stdio wire behavior remains deferred; E2E uses the existing in-process MCP
+  transport harness.
 - Postgres/RLS proof remains deferred by design for this SQLite-only pass.
 - No generated UI or Vercel/CopilotKit prototype was added in this pass.
 
@@ -98,12 +109,12 @@ Confidence after this slice: **0.90**.
 
 Confidence increased because Renewal/Expansion covers contract/payment-backed
 business logic, CLI API-mode smoke, API scope-boundary smoke, and the full
-verification set passed. Confidence is capped by deferred full security matrix,
-CLI graph isolation, integration-event simulation, MCP stdio, and Postgres/RLS
-proof.
+verification set passed. At the time, confidence was capped by the deferred
+security matrix, MCP stdio, and Postgres/RLS proof. Later coverage closure raised
+the aggregate confidence after closing the SQLite security matrix gaps.
 
 ## Recommended Next Slice
 
-Add integration event simulation with fake Gmail/Calendar/Stripe payloads and
-idempotent replay checks, then start shaping the agent/UI prototype against the
-stable scenario helpers.
+Current recommendation: decide whether MCP stdio wire coverage should be
+implemented before shaping the agent/UI prototype against the stable scenario
+helpers.

@@ -4,6 +4,11 @@
 **Database:** SQLite only
 **Scope:** Second business E2E demo gate slice
 
+**Superseded status note:** This is a point-in-time slice report. Later slices
+completed Account 360, Renewal/Expansion, fake integration event simulation,
+and the SQLite security coverage closure. MCP stdio wire and Postgres/RLS
+remain deferred.
+
 ## Summary
 
 Implemented the Stalled Pipeline business scenario as a deterministic
@@ -98,12 +103,11 @@ added.
 
 ## Remaining Gaps
 
-- MCP business assertion is deferred.
-- Raw API business assertion is deferred.
-- Account 360 scenario is deferred.
-- Dedicated security E2E files for broader graph isolation, scope boundaries,
-  redaction, idempotency, payload limits, rate limits, and webhook SSRF remain
-  deferred.
+- Current status: later slices added Account 360, Renewal/Expansion, fake
+  integration event simulation, raw API/MCP business reads where supported, and
+  focused SQLite security E2E files for auth/scope, graph isolation, redaction,
+  idempotency, payload limits, rate limits, and webhook SSRF.
+- MCP stdio wire behavior remains deferred.
 - Postgres/RLS proof remains deferred.
 - No generated UI or Vercel/CopilotKit prototype was added in this pass.
 
@@ -114,10 +118,12 @@ Confidence after this slice: **0.82**.
 The second business workflow is deterministic and covered by focused package and
 E2E tests on SQLite, and the previously discovered date coercion issue is fixed
 with parity tests. Confidence is capped because MCP/raw API business coverage,
-Account 360, and the broader security matrix are still open.
+Account 360, and the broader security matrix were still open at the time. Later
+slices added Account 360, raw API/MCP business reads where supported, and the
+focused SQLite security matrix.
 
 ## Recommended Next Slice
 
-Implement Account 360 next. That should verify traversal across company,
-contacts, deals, notes, activities, tasks, and tags before building a UI or
-agent chat prototype.
+Current recommendation: decide whether MCP stdio wire coverage should be
+implemented before shaping the agent/UI prototype against the stable scenario
+helpers.
