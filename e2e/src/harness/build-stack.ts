@@ -232,7 +232,7 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
 
   apiKeyHash = await sha256hex(rawApiKey)
   apiKeyAuth = {
-    id: 'key_01e2e0000000000000000001',
+    id: `key_e2e_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`,
     organizationId: acme.organization.id,
     scopes: rawApiScopes,
     revokedAt: null,
