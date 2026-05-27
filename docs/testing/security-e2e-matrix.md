@@ -1,6 +1,6 @@
 # Orbit AI Security E2E Matrix
 
-**Date:** 2026-05-24
+**Date:** 2026-05-26
 **Status:** SQLite security coverage expanded; MCP stdio wire and Postgres/RLS remain deferred
 
 ## Purpose
