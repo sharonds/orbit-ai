@@ -170,6 +170,15 @@ Extension tools must be registered by the consuming application — they are not
 
 **HTTP mode**: each request requires a valid Bearer token. Auth, scopes, and revocation are enforced per request. Binding to non-localhost emits a stderr warning.
 
+## Business E2E Coverage
+
+The SQLite business E2E suite includes an MCP-first agent Q&A smoke at
+`e2e/src/business-journeys/07-agent-qa-smoke.test.ts`. It uses deterministic
+Lead Qualification data, derives the qualified lead answer with
+`search_records`, verifies email activity grounding with `list_activities`,
+creates a follow-up task with `create_record`, and checks that Beta tenant
+records do not appear in Acme MCP results.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

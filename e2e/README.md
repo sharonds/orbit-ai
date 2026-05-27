@@ -63,6 +63,9 @@ pnpm -F @orbit-ai/e2e test -- src/business-journeys/05-cli-business-surface.test
 # Run the fake integration event simulation journey.
 pnpm -F @orbit-ai/e2e test -- src/business-journeys/06-integration-event-simulation.test.ts
 
+# Run the MCP agent Q&A smoke.
+pnpm -F @orbit-ai/e2e test -- src/business-journeys/07-agent-qa-smoke.test.ts
+
 # Run the focused tenant graph isolation security journey.
 pnpm -F @orbit-ai/e2e test -- src/security/tenant-graph-isolation.test.ts
 
@@ -93,8 +96,6 @@ pnpm -F @orbit-ai/e2e test -- src/business-journeys
 - Business Journey 1 proves the deterministic Lead Qualification scenario
   through SDK direct answers, SDK HTTP contact reads, SDK HTTP task creation,
   SDK direct task verification, and a Beta tenant exclusion check.
-- Business Journey 1 intentionally skips MCP because the first slice focuses on
-  scenario contracts and SDK/API surfaces. MCP business Q&A is a follow-up.
 - API and SDK direct deserializers coerce known public date/time input fields
   before core validation. Business Journey 2 verifies SDK HTTP task creation
   with an ISO `due_date` and SDK direct read-back.
@@ -119,6 +120,11 @@ pnpm -F @orbit-ai/e2e test -- src/business-journeys
 - Business Journey 6 proves deterministic fake Gmail, Google Calendar, and
   Stripe event application and idempotent replay using SQLite only. It does not
   call live providers.
+- Business Journey 7 proves a first MCP agent-style Q&A path over Lead
+  Qualification using `search_records`, `list_activities`, and `create_record`.
+  It verifies the MCP-derived answer against the deterministic expected answer,
+  persists a follow-up task, and excludes Beta tenant records. It does not prove
+  natural-language planning or MCP stdio wire startup.
 - `e2e/src/security/scope-boundary.test.ts` proves a `contacts:read` key can
   read contacts but cannot create, update, or delete contacts, list deals, or
   create tasks.

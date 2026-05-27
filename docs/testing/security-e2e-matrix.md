@@ -1,6 +1,6 @@
 # Orbit AI Security E2E Matrix
 
-**Date:** 2026-05-24
+**Date:** 2026-05-26
 **Status:** SQLite security coverage expanded; MCP stdio wire and Postgres/RLS remain deferred
 
 ## Purpose
@@ -17,7 +17,7 @@ journeys cannot cross tenant, scope, credential, or transport boundaries.
 | API key required | SDK HTTP and API journeys authenticate with test key; missing/invalid key smoke now exists | Add revoked/expired key cases if the public admin API exposes deterministic setup | `e2e/src/security/auth-boundary.test.ts` |
 | Scope enforcement | API scope smoke proves `contacts:read` can read contacts but cannot create/update/delete contacts, list deals, or create tasks | Add broader notes/deals/tasks multi-scope matrix later if needed | `e2e/src/security/scope-boundary.test.ts` |
 | Tenant isolation | Journey 15 covers contacts and deals; Account 360 security smoke covers companies, contacts, deals, activities, notes, and tasks across SDK direct, SDK HTTP, raw API, MCP, and CLI API mode | Add tags/pipelines/stages/payments/contracts where a scenario requires them, schema metadata, and integration records | `e2e/src/security/tenant-graph-isolation.test.ts`, `e2e/src/security/cli-graph-isolation.test.ts` |
-| MCP tenant boundary | Journey 15 covers get/update/delete/search by beta ID for contacts/deals | Cover business tool flows and all registered MCP tools that can read/write tenant data | `e2e/src/security/mcp-boundary.test.ts` |
+| MCP tenant boundary | Journey 15 covers get/update/delete/search by beta ID for contacts/deals; Business Journey 7 covers Lead Qualification MCP business search/create with a Beta trap | Cover all registered MCP tools that can read/write tenant data and HTTP MCP auth/scope behavior | `e2e/src/business-journeys/07-agent-qa-smoke.test.ts`, future `e2e/src/security/mcp-boundary.test.ts` |
 | Secret redaction | Integration config journeys verify basic status redaction; focused smoke checks Gmail, Calendar, and Stripe credential sentinels across configure/status stdout and stderr | Add MCP/API redaction cases when connector read surfaces expose credential-adjacent records | `e2e/src/security/redaction.test.ts` |
 | Idempotency | API unit tests cover conflict behavior; fake integration scenario proves Gmail, Calendar, and Stripe replay returns the same record without duplicate writes | Add HTTP idempotency-key task replay if needed | `packages/demo-seed/src/scenarios/integration-events.test.ts`, `e2e/src/business-journeys/06-integration-event-simulation.test.ts` |
 | Payload size | API middleware/unit coverage exists; E2E rejects oversized note payload with `PAYLOAD_TOO_LARGE` | Add import/activity payload variants if those paths gain special parsing | `e2e/src/security/payload-limit.test.ts` |
@@ -130,3 +130,13 @@ MCP stdio wire coverage remains deferred because `packages/mcp/package.json` has
 no `bin` entry and `packages/cli/src/commands/mcp.ts` still throws
 `DEPENDENCY_NOT_AVAILABLE` for `orbit mcp serve`. Restricted-role Postgres/RLS
 proof remains outside this SQLite-only gate.
+
+## MCP Agent Q&A Update
+
+**2026-05-26 update:** `e2e/src/business-journeys/07-agent-qa-smoke.test.ts`
+uses the Lead Qualification scenario to prove an MCP-first business path:
+Acme-scoped MCP `search_records` derives the qualified lead answer,
+`list_activities` grounds the hot email leads, `create_record` persists a
+follow-up task, and a Beta tenant trap is excluded from Acme MCP results. This
+does not cover MCP stdio process startup, natural-language planning, or HTTP MCP
+auth/scope behavior.
