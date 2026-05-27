@@ -96,8 +96,9 @@ describe('AesGcmEncryptionProvider', () => {
     const provider = new AesGcmEncryptionProvider(VALID_KEY)
     const ciphertext = await provider.encrypt('sensitive-data')
     const parts = ciphertext.split(':')
-    // Flip first byte of data
-    const tamperedData = 'ff' + parts[1]!.slice(2)
+    const firstByte = Number.parseInt(parts[1]!.slice(0, 2), 16)
+    const tamperedFirstByte = (firstByte ^ 0xff).toString(16).padStart(2, '0')
+    const tamperedData = tamperedFirstByte + parts[1]!.slice(2)
     const tampered = [parts[0], tamperedData, parts[2]].join(':')
     await expect(provider.decrypt(tampered)).rejects.toThrow()
   })
