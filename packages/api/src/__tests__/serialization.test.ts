@@ -54,6 +54,12 @@ describe('serializeEntityRecord', () => {
     expect(serializeEntityRecord('deals', { id: 'deal_1' })).toMatchObject({ object: 'deal' })
     expect(serializeEntityRecord('stages', { id: 'stg_1' })).toMatchObject({ object: 'stage' })
     expect(serializeEntityRecord('pipelines', { id: 'pip_1' })).toMatchObject({ object: 'pipeline' })
+    expect(serializeEntityRecord('custom_field_definitions', { id: 'cfd_1' })).toMatchObject({
+      object: 'custom_field_definition',
+    })
+    expect(serializeEntityRecord('schema_migrations', { id: 'sm_1' })).toMatchObject({
+      object: 'schema_migration',
+    })
   })
 
   it('renames deal.title → name', () => {
@@ -213,6 +219,29 @@ describe('serializeEntityRecord', () => {
     expect(result).not.toHaveProperty('secret_last_four')
     expect(result).not.toHaveProperty('secretCreatedAt')
     expect(result).not.toHaveProperty('secret_created_at')
+  })
+
+  it('strips schema migration SQL statements defensively', () => {
+    const result = serializeEntityRecord('schema_migrations', {
+      id: 'sm_1',
+      organizationId: 'org_1',
+      status: 'pending',
+      sqlStatements: ['ALTER TABLE contacts ADD COLUMN tier TEXT'],
+      rollbackStatements: ['ALTER TABLE contacts DROP COLUMN tier'],
+      sql_statements: ['ALTER TABLE companies ADD COLUMN tier TEXT'],
+      rollback_statements: ['ALTER TABLE companies DROP COLUMN tier'],
+    })
+
+    expect(result).toMatchObject({
+      object: 'schema_migration',
+      id: 'sm_1',
+      organization_id: 'org_1',
+      status: 'pending',
+    })
+    expect(result).not.toHaveProperty('sqlStatements')
+    expect(result).not.toHaveProperty('rollbackStatements')
+    expect(result).not.toHaveProperty('sql_statements')
+    expect(result).not.toHaveProperty('rollback_statements')
   })
 })
 

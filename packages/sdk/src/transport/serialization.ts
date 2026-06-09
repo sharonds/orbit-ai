@@ -36,6 +36,8 @@ const ENTITY_OBJECT_TYPES: Record<string, string> = {
   imports: 'import',
   entity_tags: 'entity_tag',
   webhooks: 'webhook',
+  custom_field_definitions: 'custom_field_definition',
+  schema_migrations: 'schema_migration',
 }
 
 /** camelCase core field → target camelCase before camelToSnake. */
@@ -61,6 +63,7 @@ const ENTITY_STRIP_FIELDS: Record<string, Set<string>> = {
   deals: new Set(['wonAt', 'lostAt', 'lostReason', 'probability']),
   stages: new Set(['probability', 'color', 'isWon', 'isLost']),
   webhooks: new Set(['secretEncrypted']),
+  schema_migrations: new Set(['sqlStatements', 'rollbackStatements', 'sql_statements', 'rollback_statements']),
 }
 
 /** post-snakeToCamel camelCase field → core camelCase field. */

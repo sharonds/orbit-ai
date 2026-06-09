@@ -161,7 +161,7 @@ function parseOperationsRequest(value: string | undefined): { operations: unknow
   let parsed: unknown
   try {
     parsed = JSON.parse(value)
-  } catch {
+  } catch (_err) {
     throw new CliValidationError('--operations must be valid JSON.', {
       code: 'INVALID_JSON',
       path: 'operations',

@@ -40,15 +40,17 @@ function coerceCustomFieldDefinitionConflict(
       : null
 
   if (
-    error instanceof Error &&
+    code === '23505' ||
     (
-      code === '23505' ||
-      message.includes('custom_fields_unique_idx') ||
+      error instanceof Error &&
       (
-        message.toLowerCase().includes('unique constraint failed') &&
-        message.includes('custom_field_definitions.organization_id') &&
-        message.includes('custom_field_definitions.entity_type') &&
-        message.includes('custom_field_definitions.field_name')
+        message.includes('custom_fields_unique_idx') ||
+        (
+          message.toLowerCase().includes('unique constraint failed') &&
+          message.includes('custom_field_definitions.organization_id') &&
+          message.includes('custom_field_definitions.entity_type') &&
+          message.includes('custom_field_definitions.field_name')
+        )
       )
     )
   ) {

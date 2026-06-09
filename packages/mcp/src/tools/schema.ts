@@ -40,7 +40,7 @@ export const createCustomFieldTool = defineTool({
 export const updateCustomFieldTool = defineTool({
   name: 'update_custom_field',
   title: 'Update an Orbit custom field',
-  description: 'Use this when a custom field already exists and needs metadata changes. Do not use it to create a new field.',
+  description: 'Use this only for safe custom field metadata changes: label and description. Do not use it to create, rename, delete, promote, or type-change a field.',
   inputSchema: CustomFieldInput.extend({ field_name: z.string() }),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
 })

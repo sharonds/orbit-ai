@@ -52,6 +52,15 @@ describe('serializeEntityRecord (SDK)', () => {
     })
   })
 
+  it('injects system object discriminators', () => {
+    expect(serializeEntityRecord('custom_field_definitions', { id: 'cfd_1' })).toMatchObject({
+      object: 'custom_field_definition',
+    })
+    expect(serializeEntityRecord('schema_migrations', { id: 'sm_1' })).toMatchObject({
+      object: 'schema_migration',
+    })
+  })
+
   it('renames deal title → name', () => {
     const result = serializeEntityRecord('deals', {
       id: 'deal_1',
@@ -111,6 +120,29 @@ describe('serializeEntityRecord (SDK)', () => {
     expect(result).not.toHaveProperty('secret_encrypted')
     expect(result).not.toHaveProperty('secretLastFour')
     expect(result).not.toHaveProperty('secret_last_four')
+  })
+
+  it('strips schema migration SQL statements defensively', () => {
+    const result = serializeEntityRecord('schema_migrations', {
+      id: 'sm_1',
+      organizationId: 'org_1',
+      status: 'pending',
+      sqlStatements: ['ALTER TABLE contacts ADD COLUMN tier TEXT'],
+      rollbackStatements: ['ALTER TABLE contacts DROP COLUMN tier'],
+      sql_statements: ['ALTER TABLE companies ADD COLUMN tier TEXT'],
+      rollback_statements: ['ALTER TABLE companies DROP COLUMN tier'],
+    })
+
+    expect(result).toMatchObject({
+      object: 'schema_migration',
+      id: 'sm_1',
+      organization_id: 'org_1',
+      status: 'pending',
+    })
+    expect(result).not.toHaveProperty('sqlStatements')
+    expect(result).not.toHaveProperty('rollbackStatements')
+    expect(result).not.toHaveProperty('sql_statements')
+    expect(result).not.toHaveProperty('rollback_statements')
   })
 
   it('serializes Date values to ISO strings', () => {

@@ -44,6 +44,15 @@ describe('registry', () => {
     expect(bulkOperation.annotations?.destructiveHint).toBe(true)
   })
 
+  it('describes the safe keys accepted by update_custom_field', () => {
+    const tools = Object.fromEntries(buildTools().map((tool) => [tool.name, tool]))
+    const updateCustomField = tools.update_custom_field!
+
+    expect(updateCustomField.description).toContain('label')
+    expect(updateCustomField.description).toContain('description')
+    expect(updateCustomField.description).toContain('only')
+  })
+
   it('returns the same tool names across successive calls', () => {
     expect(buildTools().map((tool) => tool.name)).toEqual(buildTools().map((tool) => tool.name))
   })

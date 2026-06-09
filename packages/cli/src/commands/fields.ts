@@ -225,7 +225,7 @@ function buildUpdatePatch(opts: {
 function parseJsonOption(value: string, option: string): unknown {
   try {
     return JSON.parse(value)
-  } catch {
+  } catch (_err) {
     throw new CliValidationError(`--${option} must be valid JSON.`, {
       code: 'INVALID_JSON',
       path: option,
