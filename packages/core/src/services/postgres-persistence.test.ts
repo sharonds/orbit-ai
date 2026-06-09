@@ -103,7 +103,11 @@ async function createPostgresAdapter() {
   return { adapter, pool }
 }
 
-describe('postgres persistence bridge', () => {
+// Each test boots a full pg-mem instance through the real slice E bootstrap.
+// That is <1s warm but can exceed the 5s default when vitest runs the other
+// pg-mem-backed files (adapter, schema upgrade, services registry) in
+// parallel on a loaded machine.
+describe('postgres persistence bridge', { timeout: 30_000 }, () => {
   it('persists Slice D records across fresh service registries', async () => {
     const { adapter, pool } = await createPostgresAdapter()
     const organizations = createPostgresOrganizationRepository(adapter)
