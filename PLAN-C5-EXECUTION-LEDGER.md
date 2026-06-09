@@ -355,6 +355,27 @@ Result: 69 changed paths. Every path is mapped to task IDs below. Final review r
 | `packages/core/src/adapters/sqlite/adapter.test.ts` | 3, 5 | Task 3 ledger column coverage; Task 5 migration-database handle-selection sentinel and cleanup coverage. | Task 5 validation. | Code review APPROVED; database review PASS. |
 | `packages/core/src/services/sqlite-persistence.test.ts` | 5 | Updated SQLite schema migration fixture for current ledger record shape and sanitization. | Task 5 validation. | Code review APPROVED; database review PASS. |
 
+## Task 18 — Pre-merge remediation pass (2026-06-09)
+
+Four parallel reviews (code, security, database, business-logic) were run on the full
+`origin/main...HEAD` delta plus pending working-tree changes before the merge-conflict
+resolution against main. Verdicts: security PASS, business-logic PASS (3/3 ledger
+spot-checks verified), code review and database review each surfaced findings — all
+fixed on this branch in commits `4273f04` and the commit following it:
+
+| Finding | Severity | Fix |
+|---|---|---|
+| `schema_migrations_target_idx` emitted before the upgrade ALTERs add `status` — pre-C5 Postgres bootstrap aborts | HIGH | Index DDL moved after `POSTGRES_SCHEMA_MIGRATIONS_UPGRADE_STATEMENTS`; pg-mem upgrade-path test + ordering test added (`packages/core/src/adapters/postgres/schema.ts`, `schema.test.ts`) |
+| Migration authority connection runs org-scoped DML without tenant context on Postgres — RLS-enforced authority roles silently match zero rows while ledger records `applied` | MEDIUM | `set_config('app.current_org_id', orgId, true)` set transaction-locally before migration DML; engine + neon-authority tests updated (`packages/core/src/schema-engine/engine.ts`) |
+| `invalidIdempotencyMarker` swallowed parse errors without logging | HIGH (convention) | Logs via `console.error` with defensive message cast before returning null |
+| Ledger repo paths `updateStatus`/`assertRollbackPreconditions`/`withMigrationLock` untested | MEDIUM | Behavior tests added (`packages/core/src/entities/schema-migrations/repository.test.ts`) |
+| Serialization boundary missing `schema_migrations`/`custom_field_definitions`; raw `sqlStatements`/`rollbackStatements` not stripped | (carried from post-PR review) | Registered in `ENTITY_OBJECT_TYPES` + `ENTITY_STRIP_FIELDS` in both API and SDK serialization files with unit tests (`4273f04`) |
+
+Validation: core 453 passed, api 336, sdk 256, cli 211, mcp 197; E2E journeys 08 + 16
+pass (6/6); `pnpm -r lint` passes. LOW/cosmetic review notes (confirmation expiry
+window, pool-size doc line, 412 over-documentation on preview/apply, missing public
+rollback-execution journey) are tracked for follow-up issues, not blocking.
+
 ## Acceptance Criteria Checklist
 
 - [x] Every changed file maps to one or more task IDs.
