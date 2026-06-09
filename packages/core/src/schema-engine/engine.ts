@@ -604,7 +604,7 @@ export class OrbitSchemaEngine {
   ): Promise<void> {
     switch (operation.type) {
       case 'custom_field.add':
-        await executeCustomFieldAdd(db, assertOrgContext(ctx), operation)
+        await executeCustomFieldAdd(db, assertOrgContext(ctx), operation, this.schemaAdapter.dialect)
         return
       case 'custom_field.delete':
         await executeCustomFieldDelete(db, assertOrgContext(ctx), operation, this.schemaAdapter.dialect)
@@ -622,6 +622,8 @@ export class OrbitSchemaEngine {
         this.unsupportedMigrationOperation(operation.type)
       case 'adapter.semantic':
         this.unsupportedMigrationOperation(`adapter.semantic:${operation.operation}`)
+      default:
+        assertNeverForwardOperation(operation)
     }
   }
 
@@ -788,6 +790,7 @@ export class OrbitSchemaEngine {
       checksum,
       confirmation: input.confirmation,
       runtimeEnvironment: this.destructiveMigrationEnvironment,
+      requireRuntimeEnvironment: this.migrationAuthority !== undefined,
     })
     await this.apply(ctx, {
       operations,
@@ -1397,10 +1400,26 @@ function parseIdempotencyMarker(description: string): string | null {
     ) {
       return parsed.idempotencyKey
     }
-  } catch {
-    return null
+  } catch (error) {
+    return invalidIdempotencyMarker(error)
   }
   return null
+}
+
+function invalidIdempotencyMarker(error: unknown): null {
+  console.error(
+    '[orbit] Ignoring malformed idempotency marker in migration description:',
+    error instanceof Error ? error.message : String(error),
+  )
+  return null
+}
+
+function assertNeverForwardOperation(operation: never): never {
+  throw createOrbitError({
+    code: 'MIGRATION_OPERATION_UNSUPPORTED',
+    message: `Unhandled schema migration operation: ${JSON.stringify(operation)}`,
+    details: { operation },
+  })
 }
 
 function customFieldRecordFromAddOperation(
@@ -1444,13 +1463,34 @@ function toCustomFieldDefinitionPatch(
   }
 }
 
+/**
+ * The migration authority connection may be an RLS-enforced Postgres role
+ * with no tenant context set (e.g. CLI direct mode defaults the migration
+ * database to the runtime database). Without `app.current_org_id`, the
+ * org-scoped UPDATE/DELETE statements below silently match zero rows and
+ * the ledger would still record the migration as applied. Setting the
+ * transaction-local tenant context makes the DML behave identically for
+ * owner roles (RLS bypassed, set_config harmless) and RLS-enforced roles.
+ */
+async function setAuthorityTenantContext(
+  tx: Pick<MigrationDatabase, 'execute'>,
+  dialect: SchemaEngineSchemaAdapter['dialect'],
+  orgId: string,
+): Promise<void> {
+  if (dialect !== 'postgres') return
+  await tx.execute(sql`select set_config('app.current_org_id', ${orgId}, true)`)
+}
+
 async function executeCustomFieldAdd(
   db: MigrationDatabase,
   orgId: string,
   operation: Extract<SchemaMigrationForwardOperation, { type: 'custom_field.add' }>,
+  dialect: SchemaEngineSchemaAdapter['dialect'],
 ): Promise<void> {
   const record = customFieldRecordFromAddOperation(orgId, operation)
-  await db.execute(sql`
+  await db.transaction(async (tx) => {
+    await setAuthorityTenantContext(tx, dialect, orgId)
+    await tx.execute(sql`
     insert into custom_field_definitions (
       id,
       organization_id,
@@ -1487,6 +1527,7 @@ async function executeCustomFieldAdd(
       ${record.updatedAt.toISOString()}
     )
   `)
+  })
 }
 
 async function executeCustomFieldDelete(
@@ -1497,6 +1538,7 @@ async function executeCustomFieldDelete(
 ): Promise<void> {
   const tableName = tableNameForCustomFieldOperation(operation.entityType)
   await db.transaction(async (tx) => {
+    await setAuthorityTenantContext(tx, dialect, orgId)
     await tx.execute(customFieldValueDeleteStatement(dialect, tableName, orgId, operation.fieldName))
     await tx.execute(sql`
       delete from custom_field_definitions
@@ -1515,6 +1557,7 @@ async function executeCustomFieldRename(
 ): Promise<void> {
   const tableName = tableNameForCustomFieldOperation(operation.entityType)
   await db.transaction(async (tx) => {
+    await setAuthorityTenantContext(tx, dialect, orgId)
     await tx.execute(sql`
       update custom_field_definitions
       set field_name = ${operation.newFieldName},

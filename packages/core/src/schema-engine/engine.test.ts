@@ -490,6 +490,20 @@ describe('OrbitSchemaEngine', () => {
       code: 'VALIDATION_FAILED',
       field: 'name',
     })
+    await expect(makeEngine(repo).addField(ctx, 'contacts', {
+      name: 'bad_type',
+      type: 'unsupported',
+    })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      field: 'type',
+    })
+    await expect(makeEngine(repo).addField(ctx, 'accounts', {
+      name: 'customer_tier',
+      type: 'text',
+    })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      field: 'entityType',
+    })
   })
 
   it('does not call migration authority for reads, preview, or safe addField', async () => {
@@ -2389,8 +2403,13 @@ describe('OrbitSchemaEngine', () => {
       },
     })
     expect(authority.run).toHaveBeenCalledTimes(1)
-    expect(migrationDb.execute).toHaveBeenCalledTimes(2)
-    const valueRenameSql = renderSql(vi.mocked(migrationDb.execute).mock.calls[1]![0])
+    expect(migrationDb.execute).toHaveBeenCalledTimes(3)
+    // The authority connection may be an RLS-enforced role with no tenant
+    // context (CLI direct mode defaults migration db to the runtime db);
+    // without set_config the org-scoped DML silently matches zero rows.
+    const tenantContextSql = renderSql(vi.mocked(migrationDb.execute).mock.calls[0]![0])
+    expect(tenantContextSql).toContain("set_config('app.current_org_id'")
+    const valueRenameSql = renderSql(vi.mocked(migrationDb.execute).mock.calls[2]![0])
     expect(valueRenameSql).toContain('jsonb_build_object($2::text, custom_fields -> $3::text)')
     expect(valueRenameSql).toContain('custom_fields ? $5::text')
   })

@@ -462,8 +462,6 @@ const POSTGRES_WAVE_2_SLICE_E_SCHEMA_STATEMENTS = [
     created_at timestamptz not null,
     updated_at timestamptz not null
   )`,
-  `create index if not exists schema_migrations_target_idx on schema_migrations (organization_id, status, applied_at)`,
-  `create index if not exists schema_migrations_applied_at_idx on schema_migrations (applied_at)`,
   `create table if not exists idempotency_keys (
     id text primary key,
     organization_id text not null references organizations(id),
@@ -520,6 +518,16 @@ const POSTGRES_SCHEMA_MIGRATIONS_UPGRADE_STATEMENTS = [
     alter column sql_statements set not null,
     alter column rollback_statements set default '[]'::jsonb,
     alter column rollback_statements set not null`,
+] as const
+
+// Index statements for schema_migrations MUST run after the upgrade ALTERs:
+// schema_migrations_target_idx references the `status` column, which does not
+// exist on pre-C5 databases until POSTGRES_SCHEMA_MIGRATIONS_UPGRADE_STATEMENTS
+// adds it. Emitting these in the base block aborts the whole bootstrap
+// transaction on upgraded databases (column "status" does not exist).
+const POSTGRES_SCHEMA_MIGRATIONS_INDEX_STATEMENTS = [
+  `create index if not exists schema_migrations_target_idx on schema_migrations (organization_id, status, applied_at)`,
+  `create index if not exists schema_migrations_applied_at_idx on schema_migrations (applied_at)`,
 ] as const
 
 function buildCreateSchemaStatement() {
@@ -588,6 +596,10 @@ export async function initializePostgresWave2SliceESchema(
     }
 
     for (const statement of POSTGRES_SCHEMA_MIGRATIONS_UPGRADE_STATEMENTS) {
+      await tx.execute(sql.raw(statement))
+    }
+
+    for (const statement of POSTGRES_SCHEMA_MIGRATIONS_INDEX_STATEMENTS) {
       await tx.execute(sql.raw(statement))
     }
 

@@ -86,7 +86,13 @@ describe('Neon migration authority boundary', () => {
       appliedOperations: [addLinkedInField],
     })
 
-    expect(events).toEqual(['neon:create-branch', 'migration:execute', 'neon:promote-branch'])
+    // Two executes: transaction-local tenant context (set_config) + the insert.
+    expect(events).toEqual([
+      'neon:create-branch',
+      'migration:execute',
+      'migration:execute',
+      'neon:promote-branch',
+    ])
     expect(authority.run).toHaveBeenCalledWith(
       expect.objectContaining({
         ctx,
