@@ -108,7 +108,8 @@ orbit integrations google-calendar status
 orbit integrations stripe configure
 ```
 
-Enter the secret key when prompted. It is stored encrypted at `.orbit/integrations.json`.
+Enter the secret key when prompted. It is stored encrypted in the
+`integration_connections` table when the integration schema is installed.
 
 4. (Optional) Set up a webhook endpoint so Stripe checkout events are synced to Orbit payment records:
 
@@ -122,7 +123,8 @@ orbit integrations stripe sync --webhook-url https://api.yourapp.com/webhooks/st
 orbit integrations stripe link-create --amount 2999 --currency eur --name "Consulting Call"
 ```
 
-**API access level:** Secret key (full write access). Store securely — never commit `.orbit/integrations.json`.
+**API access level:** Secret key (full write access). Store securely and avoid
+passing it through argv in shared environments.
 
 ---
 

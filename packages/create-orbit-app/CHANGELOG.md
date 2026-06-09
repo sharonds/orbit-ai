@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Documented the `--version` flag and the `--install-cmd` hardening model: caller-provided install commands are trusted input, parsed into argv, executed without a shell, and mutually exclusive with `--no-install`.
+
 ### Initial release
 
 - Zero-config scaffolder for Orbit AI starters (`npx @orbit-ai/create-orbit-app@alpha my-app`).

@@ -7,7 +7,7 @@ Not yet published to npm. Alpha status. MIT license.
 
 ## Packages
 
-- @orbit-ai/core    — schema engine, Drizzle ORM entities, storage adapters (SQLite/Postgres/Supabase/Neon), migrations, tenant isolation
+- @orbit-ai/core    — schema engine, Drizzle ORM entities, storage adapters (SQLite/Postgres), migrations, tenant isolation
 - @orbit-ai/api     — Hono REST server, /v1/* routes, API-key auth, idempotency, rate limiting
 - @orbit-ai/sdk     — TypeScript client, HTTP transport, DirectTransport (in-process)
 - @orbit-ai/cli     — terminal interface, orbit <entity> <verb>, --mode api|direct

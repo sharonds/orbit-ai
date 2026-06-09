@@ -3,9 +3,8 @@ import { rm } from 'node:fs/promises'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseOptions, type Options } from './options.js'
-import { runInteractivePrompts } from './prompts.js'
 import { copyTemplate } from './copy.js'
-import { detectPackageManager, inferPackageManagerFromCommand, installCommandFor, runInstall, type PackageManager } from './install.js'
+import { detectPackageManager, inferPackageManagerFromCommand, installCommandFor, type PackageManager } from './packageManager.js'
 import { getOrbitVersion } from './version.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -21,6 +20,7 @@ Options:
   --yes, -y             Non-interactive; accept all defaults
   --no-install          Skip package-manager install after scaffold
   --install-cmd <cmd>   Custom install command (e.g., 'pnpm install')
+  --version, -v         Show create-orbit-app version
   --help, -h            Show this help
 
 Examples:
@@ -38,6 +38,10 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
   }
   if (opts.help) {
     console.log(HELP)
+    return
+  }
+  if (opts.version) {
+    console.log(`@orbit-ai/create-orbit-app ${getOrbitVersion()}`)
     return
   }
 
@@ -61,7 +65,7 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
 
   const resolved = optsWithDefaults.yes && optsWithDefaults.projectName && optsWithDefaults.template
     ? { ...optsWithDefaults, projectName: optsWithDefaults.projectName, template: optsWithDefaults.template }
-    : await runInteractivePrompts(optsWithDefaults)
+    : await import('./prompts.js').then(({ runInteractivePrompts }) => runInteractivePrompts(optsWithDefaults))
 
   const targetDir = path.resolve(process.cwd(), resolved.projectName)
   if (fs.existsSync(targetDir)) {
@@ -96,9 +100,15 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
     })
   } catch (err) {
     console.error('Failed to scaffold project:', err instanceof Error ? err.message : String(err))
-    // Best-effort cleanup of a partially-written target directory. Swallow cleanup errors —
-    // the scaffold failure is the primary signal we want to surface.
-    await rm(targetDir, { recursive: true, force: true }).catch(() => {})
+    // Best-effort cleanup of a partially-written target directory. Keep the scaffold
+    // failure primary, but surface cleanup failures for debugging.
+    await rm(targetDir, { recursive: true, force: true }).catch((cleanupErr) => {
+      console.error(
+        `Warning: failed to clean up target directory ${targetDir}: ${
+          cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
+        }`,
+      )
+    })
     process.exit(1)
   }
 
@@ -108,6 +118,7 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
   if (resolved.install) {
     console.log('\nInstalling dependencies…')
     try {
+      const { runInstall } = await import('./install.js')
       packageManager = await runInstall({
         cwd: targetDir,
         ...(resolved.installCmd !== undefined ? { customCmd: resolved.installCmd } : {}),

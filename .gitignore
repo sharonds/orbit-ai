@@ -68,8 +68,15 @@ docs/*
 docs/security/*
 !docs/security/security-architecture.md
 !docs/security/database-hardening-checklist.md
-# Implementation plans and reviews are tracked so cloud agents can execute them
-!docs/superpowers
-docs/superpowers/*
-!docs/superpowers/plans
-!docs/superpowers/reviews
+!docs/product
+docs/product/*
+!docs/product/business-e2e-scenario-map.md
+!docs/testing
+docs/testing/*
+!docs/testing/security-e2e-matrix.md
+!docs/internal-knowledge.md
+docs/reports/
+docs/superpowers/
+PLAN-*-EXECUTION-LEDGER.md
+REVIEW-*.md
+CODEX-PLAN-*.md

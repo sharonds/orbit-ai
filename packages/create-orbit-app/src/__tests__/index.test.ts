@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as os from 'node:os'
+import { fileURLToPath } from 'node:url'
 import { run } from '../index.js'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const packageJsonPath = path.resolve(__dirname, '..', '..', 'package.json')
 
 /**
  * The tests in this file exercise `run()` end-to-end and assert on the error paths.
@@ -44,6 +49,9 @@ describe('run() error paths', () => {
     }
     fs.rmSync(workDir, { recursive: true, force: true })
     vi.restoreAllMocks()
+    vi.doUnmock('../copy.js')
+    vi.doUnmock('node:fs/promises')
+    vi.resetModules()
   })
 
   it('exits 1 with a TTY hint when stdin is not a TTY and prompts would be needed', async () => {
@@ -68,6 +76,34 @@ describe('run() error paths', () => {
     expect(exitSpy).toHaveBeenCalledWith(2)
     const messages = errSpy.mock.calls.map((c) => String(c[0])).join('\n')
     expect(messages).toMatch(/project name is required/i)
+  })
+
+  it('prints version and returns without prompting or touching the filesystem', async () => {
+    process.stdin.isTTY = false
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await run(['--version'])
+
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as { version: string }
+    expect(logSpy).toHaveBeenCalledWith(`@orbit-ai/create-orbit-app ${pkg.version}`)
+    expect(errSpy).not.toHaveBeenCalled()
+    expect(fs.readdirSync(workDir)).toEqual([])
+  })
+
+  it('exits 2 for parser conflicts before prompting or touching the filesystem', async () => {
+    process.stdin.isTTY = true
+    const exitSpy = stubExit()
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(
+      run(['my-app', '--no-install', '--install-cmd', 'pnpm install']),
+    ).rejects.toThrow(/exit:2/)
+
+    expect(exitSpy).toHaveBeenCalledWith(2)
+    const messages = errSpy.mock.calls.map((c) => String(c[0])).join('\n')
+    expect(messages).toMatch(/--install-cmd cannot be used with --no-install/i)
+    expect(fs.readdirSync(workDir)).toEqual([])
   })
 
   it('exits 1 when the target directory exists and is not empty', async () => {
@@ -148,8 +184,7 @@ describe('run() error paths', () => {
       expect(messages).toMatch(/cd my-app/)
       expect(messages).toMatch(/install/i)
 
-      // Avoid an unused-var lint complaint from strict tsc settings.
-      expect(logSpy).toBeDefined()
+      expect(logSpy).toHaveBeenCalledWith('\nInstalling dependencies…')
     } finally {
       fs.rmSync(scriptDir, { recursive: true, force: true })
     }
@@ -169,5 +204,29 @@ describe('run() error paths', () => {
     const messages = errSpy.mock.calls.map((c) => String(c[0])).join('\n')
     expect(messages).toMatch(/cd my-app && npm install/)
     expect(messages).not.toMatch(/pnpm install/)
+  })
+
+  it('prints cleanup failures to stderr while preserving the scaffold failure', async () => {
+    vi.doMock('../copy.js', () => ({
+      copyTemplate: vi.fn().mockRejectedValueOnce(new Error('scaffold exploded')),
+    }))
+    vi.doMock('node:fs/promises', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('node:fs/promises')>()
+      return {
+        ...actual,
+        rm: vi.fn().mockRejectedValueOnce(new Error('cleanup denied')),
+      }
+    })
+    const { run: runWithMocks } = await import('../index.js')
+    const exitSpy = stubExit()
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(runWithMocks(['my-app', '--yes', '--no-install'])).rejects.toThrow(/exit:1/)
+
+    expect(exitSpy).toHaveBeenCalledWith(1)
+    const messages = errSpy.mock.calls.map((c) => c.map(String).join(' ')).join('\n')
+    expect(messages).toMatch(/Failed to scaffold project: scaffold exploded/)
+    expect(messages).toMatch(/cleanup/i)
+    expect(messages).toMatch(/cleanup denied/)
   })
 })

@@ -186,6 +186,18 @@ try {
 
 ---
 
+## Documentation Hygiene
+
+Operational implementation plans, execution ledgers, review reports, and
+findings reports belong in the private archive repo `sharonds/orbit-ai-knowledge`,
+not in this product repo. Keep durable product, package, security, release, and
+testing docs here. Summarize durable conclusions from reports into current docs
+before archiving the full report externally.
+
+Run `pnpm test:doc-hygiene` before opening PRs that touch documentation.
+
+---
+
 ## Key Files
 
 ```
@@ -200,5 +212,6 @@ packages/mcp/README.md           — tool reference, server setup, transports
 packages/integrations/README.md  — Gmail, Calendar, Stripe setup guides
 packages/demo-seed/README.md     — deterministic demo data package
 e2e/README.md                    — launch-gate journey tests
+docs/internal-knowledge.md       — archive policy and pointer
 examples/nodejs-quickstart/      — runnable end-to-end example
 ```

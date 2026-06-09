@@ -46,6 +46,17 @@ Releases are driven from `main`.
    merged same-repo `changeset-release/main` PR opened by `github-actions[bot]`
    is allowed to publish packages to npm with provenance enabled and create
    GitHub releases.
+6. After publish, verify the starter uses the published packages on a clean
+   machine:
+
+   ```bash
+   npx @orbit-ai/create-orbit-app@alpha my-app --yes
+   cd my-app
+   npm start
+   ```
+
+   The run must install published dependencies, seed the demo data, and print
+   real rows from the generated app.
 
 Do not publish from feature branches. The supported path is changeset PRs into
 `main`, then the generated version PR, then publish after that PR is merged.
