@@ -2,14 +2,14 @@
 
 ## Project
 
-Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). All 8 public packages implemented: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`, `@orbit-ai/integrations`, `@orbit-ai/demo-seed`, `@orbit-ai/create-orbit-app`; `@orbit-ai/e2e` is a private launch-gate test package. 1,871 package tests passing. Not yet published to npm.
+Orbit AI — CRM infrastructure for AI agents and developers. TypeScript monorepo (Turborepo + pnpm). All 8 public packages implemented: `@orbit-ai/core`, `@orbit-ai/api`, `@orbit-ai/sdk`, `@orbit-ai/cli`, `@orbit-ai/mcp`, `@orbit-ai/integrations`, `@orbit-ai/demo-seed`, `@orbit-ai/create-orbit-app`; `@orbit-ai/e2e` is a private launch-gate test package. 2,086 package tests passing. Not yet published to npm.
 
 ## Commands
 
 ```bash
 pnpm install              # Install all workspace dependencies
 pnpm -r build             # Build all packages (core must build first)
-pnpm -r test              # Run all package tests (vitest) — expect 1871 passing
+pnpm -r test              # Run all package tests (vitest) — expect 2086 passing
 pnpm -r typecheck         # TypeScript type checking
 pnpm -r lint              # Lint all packages
 
@@ -175,7 +175,7 @@ pnpm -r test        # must be ≥ current baseline (update baseline below after 
 pnpm -r lint
 ```
 
-**Test baseline**: 1871 package tests (update this number after each merge to main)
+**Test baseline**: 2086 package tests (update this number after each merge to main)
 
 **Before any npm-publish branch**: verify `CHANGELOG.md` is updated and `files` field in each `package.json` is correct (`dist/`, `README.md`, `LICENSE` only).
 
@@ -225,3 +225,5 @@ When updating, keep sections concise. Prefer tables and numbered lists over pros
 - Key docs: `docs/META-PLAN.md` (master plan), `docs/IMPLEMENTATION-PLAN.md` (execution baseline), `docs/product/release-definition-v1.md` (v1 GA gates), `docs/review/2026-04-08-post-stack-audit.md` (alpha audit).
 - Drizzle ORM returns camelCase JavaScript field names (e.g. `stageId`, not `stage_id`). The public API and SDK contract is snake_case. Zod strips unknown fields silently — passing `stage_id` to a schema expecting `stageId` drops the field with no error. Always pass through the serialization layer at the API/SDK boundary.
 - DirectTransport dispatch handles 2-segment paths (entity + id) for CRUD and 3-segment paths (entity + id + verb) for workflow routes. If you add a new workflow verb (e.g. `/v1/deals/:id/archive`), add it to the `verb` dispatch block in `packages/sdk/src/transport/direct-transport.ts`.
+- pg-mem-backed core tests (postgres-persistence, schema upgrade-path) need explicit `{ timeout: 30_000 }` — they pass in <1s solo but exceed vitest's 5s default when the whole workspace suite runs in parallel on a loaded machine. For a deterministic local full-suite run, use `pnpm -r --workspace-concurrency=1 test`.
+- Postgres bootstrap ordering: any index on `schema_migrations` columns added by `POSTGRES_SCHEMA_MIGRATIONS_UPGRADE_STATEMENTS` must be emitted AFTER the upgrade loop in `initializePostgresWave2SliceESchema`, never in the base statement array — pre-C5 databases gain those columns only via the ALTERs.
