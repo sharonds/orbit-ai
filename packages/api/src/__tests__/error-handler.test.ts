@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { OrbitError } from '@orbit-ai/core'
+import { OrbitError, type OrbitErrorCode } from '@orbit-ai/core'
 import { orbitErrorHandler } from '../middleware/error-handler.js'
 import { requestIdMiddleware } from '../middleware/request-id.js'
 import '../context.js'
+
+const MIGRATION_ERROR_STATUS_CASES: Array<[OrbitErrorCode, number]> = [
+  ['MIGRATION_AUTHORITY_UNAVAILABLE', 503],
+  ['DESTRUCTIVE_CONFIRMATION_REQUIRED', 409],
+  ['DESTRUCTIVE_CONFIRMATION_STALE', 409],
+  ['MIGRATION_CONFLICT', 409],
+  ['ROLLBACK_PRECONDITION_FAILED', 412],
+  ['MIGRATION_OPERATION_UNSUPPORTED', 400],
+]
 
 describe('orbitErrorHandler logging', () => {
   afterEach(() => {
@@ -106,4 +115,22 @@ describe('orbitErrorHandler logging', () => {
     // ZodError is a client-caused validation error — not a server bug, should NOT be logged
     expect(spy).not.toHaveBeenCalled()
   })
+
+  it.each(MIGRATION_ERROR_STATUS_CASES)(
+    'maps %s to HTTP %i',
+    async (code, status) => {
+      const app = new Hono()
+      app.use('*', requestIdMiddleware())
+      app.onError(orbitErrorHandler)
+      app.get('/migration-error', () => {
+        throw new OrbitError({ code, message: code })
+      })
+
+      const res = await app.request('/migration-error', { method: 'GET' })
+      const body = (await res.json()) as { error: { code: string } }
+
+      expect(res.status).toBe(status)
+      expect(body.error.code).toBe(code)
+    },
+  )
 })

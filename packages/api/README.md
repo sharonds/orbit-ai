@@ -87,9 +87,13 @@ DELETE /v1/contacts/:id
 # activities, tasks, notes, products, payments, contracts,
 # sequences, sequence-steps, sequence-enrollments, sequence-events,
 # tags, webhooks, imports
+
+POST   /v1/schema/migrations/preview
+POST   /v1/schema/migrations/apply
+POST   /v1/schema/migrations/:id/rollback
 ```
 
-**Field naming convention:** all request bodies and response records use `snake_case` (e.g. `stage_id`, `organization_id`). The API layer converts to/from the internal camelCase Drizzle representation automatically — consumers never see camelCase field names. Some entities have additional semantic renames: `deal.name` (public) ↔ `deal.title` (internal), `stage.position` ↔ `stage.stageOrder`, `note.body` ↔ `note.content`, `note.user_id` ↔ `note.createdByUserId`.
+**Field naming convention:** entity request bodies and response records use `snake_case` (e.g. `stage_id`, `organization_id`). The API layer converts to/from the internal camelCase Drizzle representation automatically — entity consumers never see camelCase field names. Schema migration operation payloads are the exception: they use strict semantic camelCase keys such as `entityType`, `fieldName`, and `newFieldName` so API, SDK, DirectTransport, and CLI use one checksum-canonical shape. Some entities have additional semantic renames: `deal.name` (public) ↔ `deal.title` (internal), `stage.position` ↔ `stage.stageOrder`, `note.body` ↔ `note.content`, `note.user_id` ↔ `note.createdByUserId`.
 
 All responses follow the `OrbitEnvelope` shape:
 
@@ -99,6 +103,49 @@ All responses follow the `OrbitEnvelope` shape:
   "meta": { "request_id": "req_...", "version": "2026-04-01", "has_more": false, "next_cursor": null }
 }
 ```
+
+## Schema migrations
+
+Migration preview/apply/rollback is available under `/v1/schema/migrations/*`.
+Preview requires `schema:read`; apply and rollback require `schema:apply`.
+
+```json
+{
+  "operations": [
+    { "type": "custom_field.delete", "entityType": "contacts", "fieldName": "legacy_status" }
+  ]
+}
+```
+
+Preview returns a checksum bound to the authenticated org, adapter dialect, and
+normalized operations. Destructive apply must echo that checksum and include:
+
+```json
+{
+  "operations": [
+    { "type": "custom_field.delete", "entityType": "contacts", "fieldName": "legacy_status" }
+  ],
+  "checksum": "64-hex-character-checksum",
+  "confirmation": {
+    "destructive": true,
+    "checksum": "64-hex-character-checksum",
+    "confirmedAt": "2026-04-26T00:00:00.000Z"
+  }
+}
+```
+
+Apply responses include `migrationId`, `checksum`, `status`,
+`appliedOperations`, `rollbackable`, and `rollbackDecision`. `custom_field.delete`
+is executable but non-rollbackable unless future value snapshots exist;
+`custom_field.rename` is rollbackable. Rollback uses
+`POST /v1/schema/migrations/:id/rollback` with the expected rollback checksum and
+the same confirmation shape when confirming destructive rollback.
+
+The minimal confirmation shape above is sufficient only outside production-like
+environments. When `destructiveMigrationEnvironment` is `staging` or
+`production`, core also requires safeguard evidence in
+`confirmation.safeguards`: environment acknowledgement, backup or snapshot
+evidence, ledger evidence, and a rollback or non-rollbackable decision.
 
 Errors follow:
 
@@ -122,10 +169,20 @@ interface CreateApiOptions {
   adapter: RuntimeApiAdapter   // StorageAdapter minus migrate/runWithMigrationAuthority
   version: string              // Returned in every response's meta.version
   services?: CoreServices      // Optional: pre-built services (useful for tests)
+  migrationAuthority?: SchemaMigrationAuthority // Required for apply/rollback execution
+  destructiveMigrationEnvironment?: DestructiveMigrationEnvironment // e.g. test/staging/production
   maxRequestBodySize?: number  // Bytes. Default: 1_048_576 (1 MB)
   idempotencyStore?: IdempotencyStore // Optional: custom store for multi-instance
 }
 ```
+
+`migrationAuthority` is intentionally explicit. `createApi` never recovers
+elevated migration credentials from the runtime adapter, so an API process that
+omits this option can still serve normal requests and previews but returns
+`MIGRATION_AUTHORITY_UNAVAILABLE` for migration execution.
+Set `destructiveMigrationEnvironment` from trusted process configuration, not
+from request bodies; production-like values enforce the safeguard evidence above
+before elevated execution.
 
 ## Known alpha limitations
 

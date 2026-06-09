@@ -72,6 +72,7 @@ export async function prepareCliWorkspace(opts: {
         ORBIT_ORG_ID: result.organization.id,
         ORBIT_USER_ID: 'cli-user',
         ORBIT_ADAPTER: 'postgres',
+        ORBIT_DESTRUCTIVE_MIGRATION_ENVIRONMENT: 'test',
         DATABASE_URL: databaseUrl,
         ...postgresClientEnv(databaseUrl),
       },
@@ -100,6 +101,7 @@ export async function prepareCliWorkspace(opts: {
     ORBIT_ORG_ID: result.organization.id,
     ORBIT_USER_ID: 'cli-user',
     ORBIT_ADAPTER: 'sqlite',
+    ORBIT_DESTRUCTIVE_MIGRATION_ENVIRONMENT: 'test',
     DATABASE_URL: databaseUrl,
   }
 

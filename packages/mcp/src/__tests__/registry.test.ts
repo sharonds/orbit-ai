@@ -13,6 +13,19 @@ describe('registry', () => {
     expect(buildTools()).toHaveLength(23)
   })
 
+  it('intentionally excludes destructive schema migration tools', () => {
+    const names = buildTools().map((tool) => tool.name)
+
+    expect(names).not.toEqual(expect.arrayContaining([
+      'preview_schema_migration',
+      'apply_schema_migration',
+      'rollback_schema_migration',
+      'delete_custom_field',
+      'rename_custom_field',
+      'promote_custom_field',
+    ]))
+  })
+
   it('has non-empty unique tool names', () => {
     const names = buildTools().map((tool) => tool.name)
     expect(names.every((name) => typeof name === 'string' && name.length > 0)).toBe(true)
@@ -29,6 +42,15 @@ describe('registry', () => {
     expect(searchRecords.annotations?.readOnlyHint).toBe(true)
     expect(getRecord.annotations?.readOnlyHint).toBe(true)
     expect(bulkOperation.annotations?.destructiveHint).toBe(true)
+  })
+
+  it('describes the safe keys accepted by update_custom_field', () => {
+    const tools = Object.fromEntries(buildTools().map((tool) => [tool.name, tool]))
+    const updateCustomField = tools.update_custom_field!
+
+    expect(updateCustomField.description).toContain('label')
+    expect(updateCustomField.description).toContain('description')
+    expect(updateCustomField.description).toContain('only')
   })
 
   it('returns the same tool names across successive calls', () => {

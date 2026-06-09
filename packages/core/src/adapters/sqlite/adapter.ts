@@ -58,7 +58,9 @@ export class SqliteStorageAdapter implements StorageAdapter {
     this.connectImpl = config.connect ?? (async () => undefined)
     this.disconnectImpl = config.disconnect ?? (async () => undefined)
     this.migrateImpl = config.migrate ?? (async () => {
-      await initializeAllSqliteSchemas(this.unsafeRawDatabase)
+      await this.runWithMigrationAuthority(async (db) => {
+        await initializeAllSqliteSchemas(db)
+      })
     })
     this.getSchemaSnapshotImpl =
       config.getSchemaSnapshot ??

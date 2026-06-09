@@ -7,6 +7,7 @@ import { initializeSqliteWave2SliceESchema } from '../adapters/sqlite/schema.js'
 import { createSqliteApiKeyRepository } from '../entities/api-keys/repository.js'
 import { createSqliteOrganizationMembershipRepository } from '../entities/organization-memberships/repository.js'
 import { createSqliteOrganizationRepository } from '../entities/organizations/repository.js'
+import { computeSchemaMigrationChecksum, type SchemaMigrationForwardOperation } from '../schema-engine/migrations.js'
 import { createCoreServices } from './index.js'
 
 const ctxA = {
@@ -519,17 +520,46 @@ describe('sqlite persistence bridge', () => {
       updatedAt: now,
     })
 
+    const forwardOperations = [{
+      type: 'custom_field.add',
+      entityType: 'contacts',
+      fieldName: 'industry',
+      fieldType: 'text',
+    }] satisfies SchemaMigrationForwardOperation[]
+    const reverseOperations = [{
+      type: 'custom_field.delete',
+      entityType: 'contacts',
+      fieldName: 'industry',
+    }] satisfies SchemaMigrationForwardOperation[]
+    const adapterScope = { name: 'sqlite', dialect: 'sqlite' } as const
+
     const schemaMigration = await schemaMigrationRepo.create(ctxA, {
       id: generateId('migration'),
       organizationId: ctxA.orgId,
+      checksum: computeSchemaMigrationChecksum({
+        adapter: adapterScope,
+        orgId: ctxA.orgId,
+        operations: forwardOperations,
+      }),
+      adapter: adapterScope,
       description: 'Add industry field',
       entityType: 'contacts',
       operationType: 'add_column',
+      forwardOperations,
+      reverseOperations,
+      destructive: false,
+      status: 'applied',
       sqlStatements: ['ALTER TABLE contacts ADD COLUMN industry TEXT'],
       rollbackStatements: ['ALTER TABLE contacts DROP COLUMN industry'],
+      appliedBy: ctxA.userId,
       appliedByUserId: null,
       approvedByUserId: null,
+      startedAt: now,
       appliedAt: now,
+      rolledBackAt: null,
+      failedAt: null,
+      errorCode: null,
+      errorMessage: null,
       createdAt: now,
       updatedAt: now,
     })
@@ -577,9 +607,14 @@ describe('sqlite persistence bridge', () => {
       organizationId: ctxA.orgId,
       description: 'Add industry field',
       operationType: 'add_column',
+      checksum: schemaMigration.checksum,
+      status: 'applied',
     })
     expect('sqlStatements' in (fetchedSchemaMigration ?? {})).toBe(false)
     expect('rollbackStatements' in (fetchedSchemaMigration ?? {})).toBe(false)
+    expect('forwardOperations' in (fetchedSchemaMigration ?? {})).toBe(false)
+    expect('reverseOperations' in (fetchedSchemaMigration ?? {})).toBe(false)
+    expect('errorMessage' in (fetchedSchemaMigration ?? {})).toBe(false)
 
     // idempotencyKeys: requestHash/responseBody are stripped by sanitization
     const fetchedIdempotencyKey = await servicesB.system.idempotencyKeys.get(ctxA, idempotencyKey.id)

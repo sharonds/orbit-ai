@@ -29,6 +29,23 @@ function envelopeResponse(description: string): Record<string, unknown> {
   return { description, content: jsonContent(ENVELOPE_REF) }
 }
 
+function envelopeDataResponse(description: string, dataSchemaRef: Record<string, unknown>): Record<string, unknown> {
+  return {
+    description,
+    content: jsonContent({
+      allOf: [
+        ENVELOPE_REF,
+        {
+          type: 'object',
+          properties: {
+            data: dataSchemaRef,
+          },
+        },
+      ],
+    }),
+  }
+}
+
 function paginatedResponse(description: string): Record<string, unknown> {
   return { description, content: jsonContent(ENVELOPE_PAGINATED_REF) }
 }
@@ -53,6 +70,217 @@ const STANDARD_WRITE_ERRORS = {
 const STANDARD_GET_ERRORS = {
   ...STANDARD_AUTH_ERRORS,
   '404': errorResponse('Not found'),
+}
+
+const STANDARD_MIGRATION_ERRORS = {
+  '400': errorResponse('Validation error — request body failed strict schema validation'),
+  '409': errorResponse('Conflict — confirmation, checksum, idempotency, or migration precondition failure'),
+  '412': errorResponse('Rollback precondition failed'),
+  '503': errorResponse('Migration authority unavailable in this API process'),
+  ...STANDARD_AUTH_ERRORS,
+}
+
+const checksumSchema = {
+  type: 'string',
+  pattern: '^[a-f0-9]{64}$',
+  description: 'Checksum computed from adapter, authenticated org scope, and migration operations.',
+}
+
+const semanticValueSchema = {
+  description: 'JSON-compatible semantic value.',
+  oneOf: [
+    { type: 'string' },
+    { type: 'number' },
+    { type: 'boolean' },
+    { type: 'object', additionalProperties: true },
+    { type: 'array', items: {} },
+    { type: 'null' },
+  ],
+}
+
+const validationSchema = {
+  type: 'object',
+  additionalProperties: semanticValueSchema,
+}
+
+const customFieldTypeSchema = {
+  type: 'string',
+  enum: ['text', 'number', 'boolean', 'date', 'datetime', 'select', 'multi_select', 'url', 'email', 'phone', 'currency', 'relation'],
+}
+
+const fieldPatchProperties = {
+  label: { type: 'string', minLength: 1 },
+  description: { type: ['string', 'null'] },
+  fieldType: customFieldTypeSchema,
+  required: { type: 'boolean' },
+  indexed: { type: 'boolean' },
+  defaultValue: semanticValueSchema,
+  options: { type: 'array', items: { type: 'string' } },
+  validation: validationSchema,
+}
+
+const operationBaseProperties = {
+  entityType: { type: 'string' },
+  fieldName: { type: 'string' },
+}
+
+const schemaMigrationPublicOperationSchema = {
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'entityType', 'fieldName', 'fieldType'],
+      properties: {
+        type: { const: 'custom_field.add' },
+        ...operationBaseProperties,
+        fieldType: customFieldTypeSchema,
+        label: { type: 'string', minLength: 1 },
+        description: { type: ['string', 'null'] },
+        required: { type: 'boolean' },
+        indexed: { type: 'boolean' },
+        defaultValue: semanticValueSchema,
+        options: { type: 'array', items: { type: 'string' } },
+        validation: validationSchema,
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'entityType', 'fieldName', 'patch'],
+      properties: {
+        type: { const: 'custom_field.update' },
+        ...operationBaseProperties,
+        patch: {
+          type: 'object',
+          additionalProperties: false,
+          properties: fieldPatchProperties,
+        },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'entityType', 'fieldName'],
+      properties: {
+        type: { const: 'custom_field.delete' },
+        ...operationBaseProperties,
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'entityType', 'fieldName', 'newFieldName'],
+      properties: {
+        type: { const: 'custom_field.rename' },
+        ...operationBaseProperties,
+        newFieldName: { type: 'string' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'entityType', 'fieldName'],
+      properties: {
+        type: { const: 'custom_field.promote' },
+        ...operationBaseProperties,
+        columnName: { type: 'string' },
+        indexed: { type: 'boolean' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'tableName', 'columnName', 'columnType'],
+      properties: {
+        type: { const: 'column.add' },
+        tableName: { type: 'string' },
+        columnName: { type: 'string' },
+        columnType: { type: 'string' },
+        nullable: { type: 'boolean' },
+        defaultValue: semanticValueSchema,
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'tableName', 'columnName'],
+      properties: {
+        type: { const: 'column.drop' },
+        tableName: { type: 'string' },
+        columnName: { type: 'string' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'tableName', 'columnName', 'newColumnName'],
+      properties: {
+        type: { const: 'column.rename' },
+        tableName: { type: 'string' },
+        columnName: { type: 'string' },
+        newColumnName: { type: 'string' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'tableName', 'indexName', 'columns'],
+      properties: {
+        type: { const: 'index.add' },
+        tableName: { type: 'string' },
+        indexName: { type: 'string' },
+        columns: { type: 'array', minItems: 1, items: { type: 'string' } },
+        unique: { type: 'boolean' },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'tableName', 'indexName'],
+      properties: {
+        type: { const: 'index.drop' },
+        tableName: { type: 'string' },
+        indexName: { type: 'string' },
+      },
+    },
+  ],
+}
+
+const schemaMigrationForwardOperationSchema = {
+  oneOf: [
+    ...schemaMigrationPublicOperationSchema.oneOf,
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'operation'],
+      properties: {
+        type: { const: 'adapter.semantic' },
+        adapter: { type: 'string', enum: ['supabase', 'neon', 'postgres', 'sqlite'] },
+        operation: {
+          type: 'string',
+          enum: [
+            'copy_column_values',
+            'rebuild_table',
+            'refresh_rls',
+            'sync_custom_field_metadata',
+            'validate_constraints',
+          ],
+        },
+        parameters: {
+          type: 'object',
+          additionalProperties: {
+            oneOf: [
+              { type: 'string' },
+              { type: 'number' },
+              { type: 'boolean' },
+              { type: 'array', items: { oneOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }, { type: 'null' }] } },
+              { type: 'null' },
+            ],
+          },
+        },
+      },
+    },
+  ],
 }
 
 export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> {
@@ -301,6 +529,146 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
     },
   }
 
+  // Schema object and migration routes
+  paths['/v1/objects'] = {
+    get: {
+      summary: 'List object schemas',
+      operationId: 'listObjects',
+      tags: ['Schema'],
+      responses: {
+        '200': envelopeDataResponse('Schema object list', { type: 'array', items: { type: 'object' } }),
+        ...STANDARD_AUTH_ERRORS,
+      },
+    },
+  }
+
+  paths['/v1/objects/{type}'] = {
+    get: {
+      summary: 'Describe an object schema',
+      operationId: 'describeObject',
+      tags: ['Schema'],
+      parameters: [
+        { name: 'type', in: 'path', required: true, schema: { type: 'string' } },
+      ],
+      responses: {
+        '200': envelopeDataResponse('Schema object definition', { type: 'object' }),
+        ...STANDARD_GET_ERRORS,
+      },
+    },
+  }
+
+  paths['/v1/objects/{type}/fields'] = {
+    post: {
+      summary: 'Add a custom field',
+      operationId: 'addObjectField',
+      tags: ['Schema'],
+      parameters: [
+        { name: 'type', in: 'path', required: true, schema: { type: 'string' } },
+      ],
+      requestBody: {
+        required: true,
+        content: jsonContent({ type: 'object', additionalProperties: true }),
+      },
+      responses: {
+        '201': envelopeDataResponse('Created custom field', { type: 'object' }),
+        ...STANDARD_WRITE_ERRORS,
+      },
+    },
+  }
+
+  paths['/v1/objects/{type}/fields/{fieldName}'] = {
+    patch: {
+      summary: 'Update a custom field',
+      operationId: 'updateObjectField',
+      tags: ['Schema'],
+      parameters: [
+        { name: 'type', in: 'path', required: true, schema: { type: 'string' } },
+        { name: 'fieldName', in: 'path', required: true, schema: { type: 'string' } },
+      ],
+      requestBody: {
+        required: true,
+        content: jsonContent({ $ref: '#/components/schemas/SchemaMigrationUpdateFieldRequest' }),
+      },
+      responses: {
+        '200': envelopeDataResponse('Updated field or applied migration result', {
+          oneOf: [
+            { type: 'object' },
+            { $ref: '#/components/schemas/SchemaMigrationApplyResponse' },
+          ],
+        }),
+        ...STANDARD_MIGRATION_ERRORS,
+      },
+    },
+    delete: {
+      summary: 'Delete a custom field',
+      operationId: 'deleteObjectField',
+      tags: ['Schema'],
+      parameters: [
+        { name: 'type', in: 'path', required: true, schema: { type: 'string' } },
+        { name: 'fieldName', in: 'path', required: true, schema: { type: 'string' } },
+      ],
+      requestBody: {
+        required: false,
+        content: jsonContent({ $ref: '#/components/schemas/SchemaMigrationDeleteFieldRequest' }),
+      },
+      responses: {
+        '200': envelopeResponse('Field deleted'),
+        ...STANDARD_MIGRATION_ERRORS,
+      },
+    },
+  }
+
+  paths['/v1/schema/migrations/preview'] = {
+    post: {
+      summary: 'Preview a schema migration',
+      operationId: 'previewSchemaMigration',
+      tags: ['Schema'],
+      requestBody: {
+        required: true,
+        content: jsonContent({ $ref: '#/components/schemas/SchemaMigrationPreviewRequest' }),
+      },
+      responses: {
+        '200': envelopeDataResponse('Schema migration preview', { $ref: '#/components/schemas/SchemaMigrationPreviewResponse' }),
+        ...STANDARD_MIGRATION_ERRORS,
+      },
+    },
+  }
+
+  paths['/v1/schema/migrations/apply'] = {
+    post: {
+      summary: 'Apply a schema migration',
+      operationId: 'applySchemaMigration',
+      tags: ['Schema'],
+      requestBody: {
+        required: true,
+        content: jsonContent({ $ref: '#/components/schemas/SchemaMigrationApplyRequest' }),
+      },
+      responses: {
+        '200': envelopeDataResponse('Schema migration apply result', { $ref: '#/components/schemas/SchemaMigrationApplyResponse' }),
+        ...STANDARD_MIGRATION_ERRORS,
+      },
+    },
+  }
+
+  paths['/v1/schema/migrations/{id}/rollback'] = {
+    post: {
+      summary: 'Rollback a schema migration',
+      operationId: 'rollbackSchemaMigration',
+      tags: ['Schema'],
+      parameters: [
+        { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+      ],
+      requestBody: {
+        required: false,
+        content: jsonContent({ $ref: '#/components/schemas/SchemaMigrationRollbackRequest' }),
+      },
+      responses: {
+        '200': envelopeDataResponse('Schema migration rollback result', { $ref: '#/components/schemas/SchemaMigrationRollbackResponse' }),
+        ...STANDARD_MIGRATION_ERRORS,
+      },
+    },
+  }
+
   // Health + status endpoints
   paths['/health'] = {
     get: {
@@ -428,6 +796,221 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
             data: { type: 'array', items: {} },
             meta: { $ref: '#/components/schemas/EnvelopeMeta' },
             links: { $ref: '#/components/schemas/EnvelopeLinks' },
+          },
+        },
+        DestructiveSafeguards: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            environment: { type: 'string', enum: ['development', 'test', 'staging', 'production'] },
+            environmentAcknowledged: { type: 'boolean' },
+            backup: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['kind', 'evidenceId'],
+              properties: {
+                kind: { type: 'string', enum: ['backup', 'snapshot', 'branch'] },
+                evidenceId: { type: 'string', minLength: 1 },
+                capturedAt: { type: 'string', format: 'date-time' },
+              },
+            },
+            ledger: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['evidenceId'],
+              properties: {
+                evidenceId: { type: 'string', minLength: 1 },
+                recordedAt: { type: 'string', format: 'date-time' },
+              },
+            },
+            rollback: {
+              oneOf: [
+                {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['decision'],
+                  properties: {
+                    decision: { const: 'rollbackable' },
+                    evidenceId: { type: 'string', minLength: 1 },
+                  },
+                },
+                {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['decision', 'reason'],
+                  properties: {
+                    decision: { const: 'non_rollbackable' },
+                    reason: { type: 'string', minLength: 1 },
+                  },
+                },
+              ],
+            },
+          },
+        },
+        DestructiveConfirmation: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['destructive', 'checksum', 'confirmedAt'],
+          properties: {
+            destructive: { const: true },
+            checksum: checksumSchema,
+            confirmedAt: { type: 'string', format: 'date-time' },
+            safeguards: { $ref: '#/components/schemas/DestructiveSafeguards' },
+          },
+        },
+        SchemaMigrationPublicOperation: schemaMigrationPublicOperationSchema,
+        SchemaMigrationForwardOperation: schemaMigrationForwardOperationSchema,
+        SchemaMigrationTrustedScope: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['orgId'],
+          properties: {
+            orgId: { type: 'string', minLength: 1 },
+            actorId: { type: 'string', minLength: 1 },
+          },
+          description: 'Trusted scope derived from the authenticated request context, never from request bodies.',
+        },
+        SchemaMigrationAdapterScope: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['name', 'dialect'],
+          properties: {
+            name: { type: 'string' },
+            dialect: { type: 'string', enum: ['sqlite', 'postgres'] },
+          },
+        },
+        SchemaMigrationConfirmationInstructions: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['required', 'instructions', 'destructiveOperations'],
+          properties: {
+            required: { type: 'boolean' },
+            instructions: { type: 'string', minLength: 1 },
+            destructiveOperations: { type: 'array', items: { type: 'string' } },
+            checksum: checksumSchema,
+            expiresAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        DestructiveRollbackDecision: {
+          oneOf: [
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: ['decision'],
+              properties: {
+                decision: { const: 'rollbackable' },
+              },
+            },
+            {
+              type: 'object',
+              additionalProperties: false,
+              required: ['decision', 'reason'],
+              properties: {
+                decision: { const: 'non_rollbackable' },
+                reason: { type: 'string', minLength: 1 },
+              },
+            },
+          ],
+        },
+        SchemaMigrationPreviewRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['operations'],
+          properties: {
+            operations: {
+              type: 'array',
+              minItems: 1,
+              items: { $ref: '#/components/schemas/SchemaMigrationPublicOperation' },
+            },
+          },
+        },
+        SchemaMigrationApplyRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['operations', 'checksum'],
+          properties: {
+            operations: {
+              type: 'array',
+              minItems: 1,
+              items: { $ref: '#/components/schemas/SchemaMigrationPublicOperation' },
+            },
+            checksum: checksumSchema,
+            confirmation: { $ref: '#/components/schemas/DestructiveConfirmation' },
+            idempotencyKey: { type: 'string', minLength: 1, maxLength: 255 },
+          },
+        },
+        SchemaMigrationRollbackRequest: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            checksum: checksumSchema,
+            confirmation: { $ref: '#/components/schemas/DestructiveConfirmation' },
+          },
+        },
+        SchemaMigrationUpdateFieldRequest: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            ...fieldPatchProperties,
+            confirmation: { $ref: '#/components/schemas/DestructiveConfirmation' },
+          },
+        },
+        SchemaMigrationDeleteFieldRequest: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            confirmation: { $ref: '#/components/schemas/DestructiveConfirmation' },
+          },
+        },
+        SchemaMigrationPreviewResponse: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['checksum', 'operations', 'destructive', 'summary', 'adapter', 'scope', 'confirmationInstructions', 'confirmationRequired', 'warnings'],
+          properties: {
+            checksum: checksumSchema,
+            operations: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/SchemaMigrationForwardOperation' },
+            },
+            destructive: { type: 'boolean' },
+            summary: { type: 'string', minLength: 1 },
+            adapter: { $ref: '#/components/schemas/SchemaMigrationAdapterScope' },
+            scope: { $ref: '#/components/schemas/SchemaMigrationTrustedScope' },
+            confirmationInstructions: { $ref: '#/components/schemas/SchemaMigrationConfirmationInstructions' },
+            confirmationRequired: { type: 'boolean' },
+            warnings: { type: 'array', items: { type: 'string' } },
+          },
+        },
+        SchemaMigrationApplyResponse: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['migrationId', 'checksum', 'status', 'appliedOperations', 'rollbackable', 'rollbackDecision'],
+          properties: {
+            migrationId: { type: 'string', minLength: 1 },
+            checksum: checksumSchema,
+            status: { type: 'string', enum: ['applied', 'noop'] },
+            appliedOperations: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/SchemaMigrationForwardOperation' },
+            },
+            rollbackable: { type: 'boolean' },
+            rollbackDecision: { $ref: '#/components/schemas/DestructiveRollbackDecision' },
+            idempotencyKey: { type: 'string', minLength: 1, maxLength: 255 },
+          },
+        },
+        SchemaMigrationRollbackResponse: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['migrationId', 'rolledBackMigrationId', 'checksum', 'status', 'operations'],
+          properties: {
+            migrationId: { type: 'string', minLength: 1 },
+            rolledBackMigrationId: { type: 'string', minLength: 1 },
+            checksum: checksumSchema,
+            status: { const: 'rolled_back' },
+            operations: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/SchemaMigrationForwardOperation' },
+            },
           },
         },
       },

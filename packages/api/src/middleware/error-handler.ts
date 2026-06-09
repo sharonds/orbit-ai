@@ -1,40 +1,12 @@
 import type { ErrorHandler } from 'hono'
-import { OrbitError } from '@orbit-ai/core'
+import { OrbitError, orbitErrorCodeToStatus } from '@orbit-ai/core'
 import type { OrbitErrorCode } from '@orbit-ai/core'
 import { ZodError } from 'zod'
 import '../context.js'
 
-const ERROR_STATUS_MAP: Partial<Record<OrbitErrorCode, number>> = {
-  AUTH_INVALID_API_KEY: 401,
-  AUTH_INSUFFICIENT_SCOPE: 403,
-  AUTH_CONTEXT_REQUIRED: 401,
-  RATE_LIMITED: 429,
-  VALIDATION_FAILED: 400,
-  INVALID_CURSOR: 400,
-  RESOURCE_NOT_FOUND: 404,
-  RELATION_NOT_FOUND: 404,
-  CONFLICT: 409,
-  IDEMPOTENCY_CONFLICT: 409,
-  SCHEMA_INVALID_FIELD: 400,
-  SCHEMA_ENTITY_EXISTS: 409,
-  SCHEMA_DESTRUCTIVE_BLOCKED: 403,
-  SCHEMA_INCOMPATIBLE_PROMOTION: 400,
-  MIGRATION_FAILED: 500,
-  ADAPTER_UNAVAILABLE: 503,
-  ADAPTER_TRANSACTION_FAILED: 500,
-  RLS_GENERATION_FAILED: 500,
-  WEBHOOK_DELIVERY_FAILED: 502,
-  // 400 Bad Request — the search query would return more than the
-  // per-entity-type row cap and must be refined before retrying.
-  SEARCH_RESULT_TOO_LARGE: 400,
-  // 413 Payload Too Large — the HTTP request body exceeds the configured limit.
-  PAYLOAD_TOO_LARGE: 413,
-  INTERNAL_ERROR: 500,
-}
-
 export const orbitErrorHandler: ErrorHandler = (err, c) => {
   if (err instanceof OrbitError) {
-    const status = ERROR_STATUS_MAP[err.code] ?? 500
+    const status = orbitErrorCodeToStatus(err.code)
     return c.json(
       {
         error: {
@@ -46,6 +18,7 @@ export const orbitErrorHandler: ErrorHandler = (err, c) => {
           hint: err.hint,
           recovery: err.recovery,
           retryable: err.retryable ?? false,
+          details: err.details,
         },
       },
       status as Parameters<typeof c.json>[1],

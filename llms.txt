@@ -35,12 +35,30 @@ import_records, export_records,
 enroll_in_sequence, unenroll_from_sequence,
 run_report, get_dashboard_summary, assign_record
 
+MCP schema migration exclusion: destructive schema migration operations are alpha
+API/SDK/CLI-only. MCP intentionally has no preview/apply/rollback migration tools
+and no delete/rename/promote custom-field tools; update_custom_field is limited to
+safe metadata (label, description).
+
+Schema migration surfaces: API POST /v1/schema/migrations/preview, POST
+/v1/schema/migrations/apply, POST /v1/schema/migrations/:id/rollback; SDK
+client.schema.previewMigration/applyMigration/rollbackMigration; CLI orbit
+migrate --preview|--apply --operations <json>, orbit migrate --rollback --id
+<migration-id> --checksum <checksum> --yes. Destructive confirmations are
+checksum-bound. Apply returns rollbackable and rollbackDecision. custom_field.delete
+is executable but non-rollbackable unless future value snapshots exist;
+custom_field.rename is rollbackable.
+
 ## API Error Codes
 
-RESOURCE_NOT_FOUND (404), VALIDATION_FAILED (422), AUTH_INVALID_API_KEY (401),
+RESOURCE_NOT_FOUND (404), VALIDATION_FAILED (400), AUTH_INVALID_API_KEY (401),
 AUTH_INSUFFICIENT_SCOPE (403), AUTH_CONTEXT_REQUIRED (401),
 RATE_LIMITED (429), IDEMPOTENCY_CONFLICT (409),
-PAYLOAD_TOO_LARGE (413), INTERNAL_ERROR (500)
+PAYLOAD_TOO_LARGE (413), MIGRATION_AUTHORITY_UNAVAILABLE (503),
+DESTRUCTIVE_CONFIRMATION_REQUIRED (409), DESTRUCTIVE_CONFIRMATION_STALE (409),
+DESTRUCTIVE_SAFEGUARDS_REQUIRED (409), MIGRATION_CONFLICT (409),
+ROLLBACK_PRECONDITION_FAILED (412), MIGRATION_OPERATION_UNSUPPORTED (400),
+MIGRATION_FAILED (500), INTERNAL_ERROR (500)
 
 ## Key Docs
 

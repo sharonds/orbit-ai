@@ -6,6 +6,7 @@ import {
   SqliteOrbitDatabase,
   PostgresOrbitDatabase,
   type StorageAdapter,
+  type DestructiveMigrationEnvironment,
 } from '@orbit-ai/core'
 import { OrbitClient } from '@orbit-ai/sdk'
 import { CliValidationError, CliUnsupportedAdapterError } from '../errors.js'
@@ -34,9 +35,24 @@ export interface ResolveContextOptions {
 
 const VALID_ADAPTER_NAMES = ['sqlite', 'postgres', 'supabase', 'neon'] as const
 type ValidAdapterName = (typeof VALID_ADAPTER_NAMES)[number]
+const VALID_DESTRUCTIVE_MIGRATION_ENVIRONMENTS = ['development', 'test', 'staging', 'production'] as const
 
 function isValidAdapterName(value: string): value is ValidAdapterName {
   return (VALID_ADAPTER_NAMES as readonly string[]).includes(value)
+}
+
+function resolveDestructiveMigrationEnvironment(
+  env: NodeJS.ProcessEnv,
+): DestructiveMigrationEnvironment | undefined {
+  const value = env['ORBIT_DESTRUCTIVE_MIGRATION_ENVIRONMENT']
+  if (value === undefined) return undefined
+  if (!(VALID_DESTRUCTIVE_MIGRATION_ENVIRONMENTS as readonly string[]).includes(value)) {
+    throw new CliValidationError(
+      `ORBIT_DESTRUCTIVE_MIGRATION_ENVIRONMENT must be one of: ${VALID_DESTRUCTIVE_MIGRATION_ENVIRONMENTS.join(', ')}. Got: '${value}'`,
+      { code: 'INVALID_DESTRUCTIVE_MIGRATION_ENVIRONMENT', path: 'destructiveMigrationEnvironment' },
+    )
+  }
+  return value as DestructiveMigrationEnvironment
 }
 
 export function resolveAdapter(
@@ -201,12 +217,17 @@ export function resolveClient(options: ResolveContextOptions): OrbitClient {
 
     const resolvedAdapter = resolveAdapter(flags, resolvedConfig, cwd ?? process.cwd())
 
+    const destructiveMigrationEnvironment = resolveDestructiveMigrationEnvironment(env)
     return new OrbitClient({
       adapter: resolvedAdapter,
       context: {
         orgId: resolvedOrgId,
         ...(resolvedConfig.userId ? { userId: resolvedConfig.userId } : {}),
       },
+      migrationAuthority: {
+        run: (_context, fn) => resolvedAdapter.runWithMigrationAuthority(fn),
+      },
+      ...(destructiveMigrationEnvironment ? { destructiveMigrationEnvironment } : {}),
     })
   }
 

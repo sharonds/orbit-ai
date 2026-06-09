@@ -5,6 +5,7 @@ import {
   createPostgresStorageAdapter,
   type StorageAdapter,
   type ApiKeyAuthLookup,
+  type SchemaMigrationAuthority,
 } from '@orbit-ai/core'
 import { createApi } from '@orbit-ai/api/node'
 import { OrbitClient } from '@orbit-ai/sdk'
@@ -81,6 +82,12 @@ function buildFetchInterceptor(api: ReturnType<typeof createApi>, previousFetch:
     }
     return previousFetch(input, init)
   }) as typeof fetch
+}
+
+function migrationAuthorityFor(adapter: StorageAdapter): SchemaMigrationAuthority {
+  return {
+    run: (_context, fn) => adapter.runWithMigrationAuthority(fn),
+  }
 }
 
 async function insertPostgresE2eApiKey(
@@ -173,7 +180,13 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
         scopes: rawApiScopes,
       })
 
-      const api = createApi({ adapter, version: '2026-04-01' })
+      const migrationAuthority = migrationAuthorityFor(adapter)
+      const api = createApi({
+        adapter,
+        version: '2026-04-01',
+        migrationAuthority,
+        destructiveMigrationEnvironment: 'test',
+      })
       const previousFetch = globalThis.fetch
       restoreFetch = () => {
         globalThis.fetch = previousFetch
@@ -189,6 +202,8 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
       const sdkDirect = new OrbitClient({
         adapter,
         context: { orgId: acme.organization.id },
+        migrationAuthority,
+        destructiveMigrationEnvironment: 'test',
       })
 
       return {
@@ -254,7 +269,13 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
     expiresAt: null,
   }
 
-  const api = createApi({ adapter, version: '2026-04-01' })
+  const migrationAuthority = migrationAuthorityFor(adapter)
+  const api = createApi({
+    adapter,
+    version: '2026-04-01',
+    migrationAuthority,
+    destructiveMigrationEnvironment: 'test',
+  })
 
   const previousFetch = globalThis.fetch
   globalThis.fetch = buildFetchInterceptor(api, previousFetch)
@@ -269,6 +290,8 @@ export async function buildStack(opts: StackOptions): Promise<Stack> {
   const sdkDirect = new OrbitClient({
     adapter,
     context: { orgId: acme.organization.id },
+    migrationAuthority,
+    destructiveMigrationEnvironment: 'test',
   })
 
   return {

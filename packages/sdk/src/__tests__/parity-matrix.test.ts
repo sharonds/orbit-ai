@@ -336,6 +336,23 @@ describe('SDK parity matrix — Wave 2 workflow paths', () => {
     })
   })
 
+  it('schema.deleteField carries confirmation bodies through request mode', async () => {
+    const transport = createMockTransport()
+    const { SchemaResource } = await import('../resources/schema.js')
+    const schema = new SchemaResource(transport)
+    const body = {
+      confirmation: {
+        destructive: true,
+        checksum: 'e'.repeat(64),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    }
+    await schema.deleteField('contacts', 'priority', body)
+    expect(transport.calls).toContainEqual({
+      method: 'DELETE', path: '/v1/objects/contacts/fields/priority', body,
+    })
+  })
+
   it('webhooks.deliveries returns AutoPager', async () => {
     const transport = createMockTransport()
     const { WebhookResource } = await import('../resources/webhooks.js')
@@ -490,6 +507,27 @@ describe('SDK parity matrix — .response() on workflow methods', () => {
     const result = await schema.response().listObjects()
     expect(result.meta).toBeDefined()
     expect(transport.rawRequest).toHaveBeenCalled()
+  })
+
+  it('schema.response().rollbackMigration carries checksum confirmation bodies through raw mode', async () => {
+    const transport = createMockTransport()
+    const { SchemaResource } = await import('../resources/schema.js')
+    const schema = new SchemaResource(transport)
+    const body = {
+      checksum: 'f'.repeat(64),
+      confirmation: {
+        destructive: true,
+        checksum: 'f'.repeat(64),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    }
+    const result = await schema.response().rollbackMigration('migration_01', body)
+    expect(result.meta).toBeDefined()
+    expect(transport.rawRequest).toHaveBeenCalledWith({
+      method: 'POST',
+      path: '/v1/schema/migrations/migration_01/rollback',
+      body,
+    })
   })
 
   it('contacts.response().context uses rawRequest', async () => {

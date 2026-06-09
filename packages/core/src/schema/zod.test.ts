@@ -103,17 +103,43 @@ describe('slice 2 zod schemas', () => {
     const parsed = schemaMigrationInsertSchema.parse({
       id: 'migration_01ARYZ6S41YYYYYYYYYYYYYYYY',
       organizationId: 'org_01ARYZ6S41YYYYYYYYYYYYYYYY',
+      checksum: 'a'.repeat(64),
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
       description: 'Add tier field',
       entityType: null,
       operationType: 'add_column',
+      forwardOperations: [{
+        type: 'custom_field.add',
+        entityType: 'contacts',
+        fieldName: 'tier',
+        fieldType: 'text',
+      }],
+      reverseOperations: [{
+        type: 'custom_field.delete',
+        entityType: 'contacts',
+        fieldName: 'tier',
+      }],
+      destructive: false,
+      status: 'applied',
       sqlStatements: ['alter table contacts add column tier text'],
       rollbackStatements: ['alter table contacts drop column tier'],
+      appliedBy: null,
       appliedByUserId: null,
       approvedByUserId: null,
+      startedAt: appliedAt,
       appliedAt,
+      rolledBackAt: null,
+      failedAt: null,
+      errorCode: null,
+      errorMessage: null,
     })
 
     expect(parsed.entityType).toBeNull()
+    expect(parsed.checksum).toBe('a'.repeat(64))
+    expect(parsed.adapter).toEqual({ name: 'sqlite', dialect: 'sqlite' })
+    expect(parsed.forwardOperations).toHaveLength(1)
+    expect(parsed.reverseOperations).toHaveLength(1)
+    expect(parsed.status).toBe('applied')
     expect(parsed.sqlStatements).toEqual(['alter table contacts add column tier text'])
     expect(parsed.rollbackStatements).toEqual(['alter table contacts drop column tier'])
     expect(parsed.appliedAt).toEqual(appliedAt)

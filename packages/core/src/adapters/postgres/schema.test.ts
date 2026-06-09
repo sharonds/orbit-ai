@@ -1,10 +1,13 @@
 import type { SQL } from 'drizzle-orm'
+import { newDb } from 'pg-mem'
 import { describe, expect, it } from 'vitest'
 
+import { asMigrationDatabase } from '../interface.js'
 import {
   IMPLEMENTED_TENANT_TABLES,
   BOOTSTRAP_TABLES,
 } from '../../repositories/tenant-scope.js'
+import { createPostgresOrbitDatabase } from './database.js'
 import {
   POSTGRES_SCHEMA_NAME,
   initializePostgresWave1Schema,
@@ -93,8 +96,92 @@ describe('bootstrap DDL drift detection', () => {
     expect(statements[0]).toContain(`create schema if not exists ${POSTGRES_SCHEMA_NAME}`)
     expect(statements[1]).toContain(`set local search_path to ${POSTGRES_SCHEMA_NAME}, pg_temp`)
     expect(statements.some((statement) => statement.includes('create index if not exists schema_migrations_org_idx'))).toBe(true)
+    const schemaMigrationsDdl = statements.find((statement) => statement.includes('create table if not exists schema_migrations'))
+    expect(schemaMigrationsDdl).toContain('checksum text not null')
+    expect(schemaMigrationsDdl).toContain('adapter jsonb not null')
+    expect(schemaMigrationsDdl).toContain('forward_operations jsonb not null')
+    expect(schemaMigrationsDdl).toContain('reverse_operations jsonb not null')
+    expect(schemaMigrationsDdl).toContain('status text not null')
+    expect(statements.some((statement) => statement.includes('alter table schema_migrations add column if not exists checksum text'))).toBe(true)
+    expect(statements.some((statement) => statement.includes("'0000000000000000000000000000000000000000000000000000000000000000'"))).toBe(true)
+    expect(statements.some((statement) => statement.includes('alter column checksum set not null'))).toBe(true)
+    expect(statements.some((statement) => statement.includes('schema_migrations_target_idx'))).toBe(true)
     expect(statements.some((statement) => statement.includes(`create or replace function ${POSTGRES_SCHEMA_NAME}.current_org_id()`))).toBe(true)
     expect(statements.some((statement) => statement.includes(`alter table ${POSTGRES_SCHEMA_NAME}.users enable row level security`))).toBe(true)
+  })
+
+  it('emits schema_migrations indexes only after the upgrade ALTERs add their columns', async () => {
+    const statements: string[] = []
+    const db = createRecordingDb(statements)
+
+    await initializePostgresWave2SliceESchema(db as never)
+
+    // schema_migrations_target_idx references the `status` column, which a
+    // pre-C5 database only gains via the upgrade ALTERs. Creating the index
+    // before the ALTER aborts the whole bootstrap transaction on upgrade.
+    const targetIdxAt = statements.findIndex((statement) =>
+      statement.includes('schema_migrations_target_idx'),
+    )
+    const appliedAtIdxAt = statements.findIndex((statement) =>
+      statement.includes('schema_migrations_applied_at_idx'),
+    )
+    const lastUpgradeAt = statements.findIndex((statement) =>
+      statement.includes('alter column rollback_statements set not null'),
+    )
+    expect(targetIdxAt).toBeGreaterThan(-1)
+    expect(appliedAtIdxAt).toBeGreaterThan(-1)
+    expect(lastUpgradeAt).toBeGreaterThan(-1)
+    expect(targetIdxAt).toBeGreaterThan(lastUpgradeAt)
+    expect(appliedAtIdxAt).toBeGreaterThan(lastUpgradeAt)
+  })
+
+  // pg-mem bootstrap is fast in isolation (<1s) but can exceed the default
+  // 5s timeout when the whole workspace suite runs in parallel.
+  it('upgrades a pre-C5 schema_migrations table without aborting bootstrap', { timeout: 30_000 }, async () => {
+    const memory = newDb()
+    const { Pool } = memory.adapters.createPg()
+    const pool = new Pool({ max: 1 })
+
+    // Recreate the exact pre-C5 shape (origin/main before this branch):
+    // no checksum/adapter/forward_operations/reverse_operations/destructive/
+    // status/started_at/rolled_back_at/failed_at/error_code/error_message.
+    memory.public.none(`
+      create schema if not exists ${POSTGRES_SCHEMA_NAME};
+      create table ${POSTGRES_SCHEMA_NAME}.organizations (id text primary key);
+      create table ${POSTGRES_SCHEMA_NAME}.users (id text primary key);
+      create table ${POSTGRES_SCHEMA_NAME}.schema_migrations (
+        id text primary key,
+        organization_id text not null references ${POSTGRES_SCHEMA_NAME}.organizations(id),
+        description text not null,
+        entity_type text,
+        operation_type text not null,
+        sql_statements jsonb not null default '[]'::jsonb,
+        rollback_statements jsonb not null default '[]'::jsonb,
+        applied_by_user_id text references ${POSTGRES_SCHEMA_NAME}.users(id),
+        approved_by_user_id text references ${POSTGRES_SCHEMA_NAME}.users(id),
+        applied_at timestamptz,
+        created_at timestamptz not null,
+        updated_at timestamptz not null
+      );
+    `)
+
+    const database = createPostgresOrbitDatabase({ pool })
+    await expect(
+      initializePostgresWave2SliceESchema(asMigrationDatabase(database), {
+        includeRls: false,
+        includePartialUniqueIndexes: false,
+      }),
+    ).resolves.toBeUndefined()
+
+    // The upgraded table must expose the C5 columns the index depends on.
+    const upgraded = memory.public.many(
+      `select column_name from information_schema.columns
+       where table_name = 'schema_migrations'`,
+    ) as Array<{ column_name: string }>
+    const columns = new Set(upgraded.map((row) => row.column_name))
+    for (const required of ['checksum', 'adapter', 'status', 'destructive', 'forward_operations']) {
+      expect(columns.has(required), `expected upgraded column "${required}"`).toBe(true)
+    }
   })
 
   it('slice E bootstrap can skip RLS for test environments that do not support it', async () => {

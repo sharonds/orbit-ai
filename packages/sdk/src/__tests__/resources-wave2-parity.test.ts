@@ -166,6 +166,23 @@ describe('SDK Wave 2 parity — schema', () => {
     })
   })
 
+  it('schema.deleteField forwards confirmation bodies', async () => {
+    const transport = createMockTransport()
+    const { SchemaResource } = await import('../resources/schema.js')
+    const schema = new SchemaResource(transport)
+    const body = {
+      confirmation: {
+        destructive: true,
+        checksum: 'a'.repeat(64),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    }
+    await schema.deleteField('contacts', 'priority', body)
+    expect(transport.calls).toContainEqual({
+      method: 'DELETE', path: '/v1/objects/contacts/fields/priority', body,
+    })
+  })
+
   it('schema.previewMigration calls POST /v1/schema/migrations/preview', async () => {
     const transport = createMockTransport()
     const { SchemaResource } = await import('../resources/schema.js')
@@ -173,6 +190,24 @@ describe('SDK Wave 2 parity — schema', () => {
     await schema.previewMigration({ changes: [] })
     expect(transport.calls).toContainEqual({
       method: 'POST', path: '/v1/schema/migrations/preview', body: { changes: [] },
+    })
+  })
+
+  it('schema.rollbackMigration forwards checksum confirmation bodies', async () => {
+    const transport = createMockTransport()
+    const { SchemaResource } = await import('../resources/schema.js')
+    const schema = new SchemaResource(transport)
+    const body = {
+      checksum: 'b'.repeat(64),
+      confirmation: {
+        destructive: true,
+        checksum: 'b'.repeat(64),
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    }
+    await schema.rollbackMigration('migration_01', body)
+    expect(transport.calls).toContainEqual({
+      method: 'POST', path: '/v1/schema/migrations/migration_01/rollback', body,
     })
   })
 

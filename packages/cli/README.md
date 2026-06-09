@@ -62,14 +62,33 @@ orbit seed              # Seed the database with sample data
 orbit schema list           # List all registered object types
 orbit schema get <entity>   # Describe an object type and its custom fields
 
-orbit migrate --preview     # Preview pending migrations
-orbit migrate --apply       # Apply pending migrations
-orbit migrate --rollback --id <migration-id> --yes  # Roll back a migration (destructive)
+orbit migrate --preview --operations '[...]'          # Preview migration operations
+orbit migrate --apply --operations '[...]' --yes      # Apply migration operations
+orbit migrate --rollback --id <migration-id> --checksum <checksum> --yes  # Roll back a migration
 
 orbit fields list <entity>          # List custom fields on an entity
 orbit fields create <entity>        # Add a custom field interactively
 orbit fields delete <entity> <field-name>   # Delete a custom field (destructive, requires --yes)
 ```
+
+`--operations` accepts either a JSON array or a JSON object with an `operations`
+array. `migrate --apply` always previews first, then applies the previewed
+operations with the preview checksum. If the preview is destructive, `--yes`
+adds the checksum-bound destructive confirmation; otherwise JSON/non-interactive
+mode returns `DESTRUCTIVE_ACTION_REQUIRES_CONFIRMATION` and includes the preview.
+Rollback is always treated as destructive and `--rollback --yes` requires
+`--checksum` so the confirmation is bound to the expected reverse operation set.
+
+Apply output includes `migrationId`, `checksum`, `status`,
+`appliedOperations`, `rollbackable`, and `rollbackDecision`.
+`custom_field.delete` apply is executable but non-rollbackable unless future
+value snapshots exist; `custom_field.rename` is rollbackable.
+
+`--yes` supplies intent and a checksum-bound confirmation. In production-like
+environments (`ORBIT_DESTRUCTIVE_MIGRATION_ENVIRONMENT=staging` or
+`production`), core still requires safeguard evidence before elevated execution:
+environment acknowledgement, backup or snapshot evidence, ledger evidence, and a
+rollback or non-rollbackable decision.
 
 ### CRM Entities
 
@@ -205,6 +224,11 @@ When using `--mode direct`, the following API-layer protections are **not active
 - SSRF protection — no outbound request filtering
 
 Direct mode is intended for local development, scripts against a local SQLite database, or trusted server-side automation where the database is private. Do not expose direct mode to untrusted user inputs.
+
+In direct mode, the CLI constructs an explicit migration authority around the
+selected local adapter for migration apply/rollback and destructive field
+operations. Normal CRUD, reads, and previews do not use elevated migration
+authority.
 
 ## License
 
