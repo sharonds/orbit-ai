@@ -135,7 +135,9 @@ describe('bootstrap DDL drift detection', () => {
     expect(appliedAtIdxAt).toBeGreaterThan(lastUpgradeAt)
   })
 
-  it('upgrades a pre-C5 schema_migrations table without aborting bootstrap', async () => {
+  // pg-mem bootstrap is fast in isolation (<1s) but can exceed the default
+  // 5s timeout when the whole workspace suite runs in parallel.
+  it('upgrades a pre-C5 schema_migrations table without aborting bootstrap', { timeout: 30_000 }, async () => {
     const memory = newDb()
     const { Pool } = memory.adapters.createPg()
     const pool = new Pool({ max: 1 })
