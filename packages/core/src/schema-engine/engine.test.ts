@@ -7,6 +7,7 @@ import type { CustomFieldDefinitionRecord } from '../entities/custom-field-defin
 import type { SchemaMigrationRepository } from '../entities/schema-migrations/repository.js'
 import type { SchemaMigrationRecord } from '../entities/schema-migrations/validators.js'
 import { OrbitError } from '../types/errors.js'
+import { DESTRUCTIVE_CONFIRMATION_TTL_MS } from './destructive-confirmation.js'
 import {
   computeSchemaMigrationChecksum,
   schemaMigrationApplyOutputSchema,
@@ -325,7 +326,7 @@ const DESTRUCTIVE_APPLY_INPUT = {
 const VALID_DESTRUCTIVE_CONFIRMATION = {
   destructive: true,
   checksum: DESTRUCTIVE_APPLY_INPUT.checksum,
-  confirmedAt: '2026-04-26T12:00:00.000Z',
+  confirmedAt: new Date().toISOString(),
 }
 const PRODUCTION_DESTRUCTIVE_CONFIRMATION = {
   ...VALID_DESTRUCTIVE_CONFIRMATION,
@@ -686,6 +687,67 @@ describe('OrbitSchemaEngine', () => {
       },
     })
     expect(result.confirmationInstructions.checksum).toBe(result.checksum)
+  })
+
+  it('includes a confirmation expiry anchored fifteen minutes after preview time for destructive previews', async () => {
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return {
+          data: [field('field_01J00000000000000000000006', 'legacy_code')],
+          hasMore: false,
+          nextCursor: null,
+        }
+      },
+    }
+    const before = Date.now()
+
+    const result = await makeEngine(repo).preview(ctx, {
+      operations: [{
+        type: 'custom_field.delete',
+        entityType: 'contacts',
+        fieldName: 'legacy_code',
+      }],
+    })
+
+    const after = Date.now()
+    expect(result.destructive).toBe(true)
+    const expiresAt = result.confirmationInstructions.expiresAt
+    expect(typeof expiresAt).toBe('string')
+    const expiresAtMs = new Date(expiresAt!).getTime()
+    expect(expiresAtMs).toBeGreaterThanOrEqual(before + DESTRUCTIVE_CONFIRMATION_TTL_MS)
+    expect(expiresAtMs).toBeLessThanOrEqual(after + DESTRUCTIVE_CONFIRMATION_TTL_MS)
+  })
+
+  it('omits the confirmation expiry for non-destructive previews', async () => {
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+
+    const result = await makeEngine(repo).preview(ctx, {
+      operations: [{
+        type: 'custom_field.add',
+        entityType: 'contacts',
+        fieldName: 'linkedin_url',
+        fieldType: 'url',
+      }],
+    })
+
+    expect(result.destructive).toBe(false)
+    expect(result.confirmationInstructions.expiresAt).toBeUndefined()
   })
 
   it('uses applied ledger history to classify duplicate custom field adds as destructive', async () => {
@@ -1240,10 +1302,43 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum: 'c'.repeat(64),
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+    })
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('does not enter migration authority for destructive apply operations with an expired confirmation', async () => {
+    const authority = makeAuthority()
+    const repo: CustomFieldDefinitionRepository = {
+      async create(_ctx, record) {
+        return record
+      },
+      async get() {
+        return null
+      },
+      async list() {
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    }
+    const engine = makeEngine(repo, authority)
+    const expiredConfirmedAt = new Date(Date.now() - DESTRUCTIVE_CONFIRMATION_TTL_MS - 60_000).toISOString()
+
+    await expect(engine.apply(ctx, {
+      ...DESTRUCTIVE_APPLY_INPUT,
+      confirmation: {
+        destructive: true,
+        checksum: DESTRUCTIVE_APPLY_INPUT.checksum,
+        confirmedAt: expiredConfirmedAt,
+      },
+    })).rejects.toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+      details: expect.objectContaining({
+        checksum: DESTRUCTIVE_APPLY_INPUT.checksum,
+        confirmedAt: expiredConfirmedAt,
+      }),
     })
     expect(authority.run).not.toHaveBeenCalled()
   })
@@ -1749,7 +1844,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).resolves.toMatchObject({
       status: 'applied',
@@ -1877,7 +1972,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum: rollbackChecksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).resolves.toMatchObject({
       migrationId,
@@ -1927,7 +2022,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum: rollbackChecksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'MIGRATION_FAILED',
@@ -2081,7 +2176,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'MIGRATION_AUTHORITY_UNAVAILABLE',
@@ -2133,7 +2228,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'MIGRATION_OPERATION_UNSUPPORTED',
@@ -2205,7 +2300,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum: checksumFor(updateOperations),
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'MIGRATION_OPERATION_UNSUPPORTED',
@@ -2214,7 +2309,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum: checksumFor(deleteOperations),
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).resolves.toBeUndefined()
     expect(authority.run).toHaveBeenCalledTimes(2)
@@ -2250,7 +2345,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum: checksumFor(operations),
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).resolves.toBeUndefined()
     expect(authority.run).toHaveBeenCalledTimes(1)
@@ -2280,7 +2375,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'CONFLICT',
@@ -2354,7 +2449,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum: preview.checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'CONFLICT',
@@ -2504,7 +2599,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).resolves.toMatchObject({
       status: 'applied',
@@ -2547,7 +2642,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).resolves.toMatchObject({
       status: 'applied',
@@ -2597,7 +2692,7 @@ describe('OrbitSchemaEngine', () => {
         confirmation: {
           destructive: true,
           checksum,
-          confirmedAt: '2026-04-26T12:00:00.000Z',
+          confirmedAt: new Date().toISOString(),
         },
       })).resolves.toMatchObject({
         status: 'applied',
@@ -2628,7 +2723,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
@@ -2659,7 +2754,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).resolves.toMatchObject({
       status: 'applied',
@@ -2692,7 +2787,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'MIGRATION_FAILED',
@@ -2745,7 +2840,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'MIGRATION_FAILED',
@@ -2785,7 +2880,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'MIGRATION_FAILED',
@@ -2840,7 +2935,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'MIGRATION_FAILED',
@@ -2878,7 +2973,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'MIGRATION_FAILED',
@@ -2931,7 +3026,7 @@ describe('OrbitSchemaEngine', () => {
       confirmation: {
         destructive: true,
         checksum: rollbackChecksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject({
       code: 'MIGRATION_FAILED',
@@ -3042,7 +3137,7 @@ describe('strict apply/rollback output parsing (SQL leakage guard)', () => {
       confirmation: {
         destructive: true,
         checksum: rollbackChecksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })
 

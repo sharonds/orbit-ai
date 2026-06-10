@@ -11,6 +11,7 @@ import type { SchemaMigrationRepository } from '../entities/schema-migrations/re
 import type { SchemaMigrationRecord } from '../entities/schema-migrations/validators.js'
 import type { CustomFieldDefinition } from '../types/schema.js'
 import {
+  DESTRUCTIVE_CONFIRMATION_TTL_MS,
   assertDestructiveConfirmation,
   type DestructiveMigrationEnvironment,
 } from './destructive-confirmation.js'
@@ -332,6 +333,7 @@ export class OrbitSchemaEngine {
     data: Record<string, unknown>,
   ): Promise<SchemaMigrationPreviewOutput> {
     const orgId = assertOrgContext(ctx)
+    const now = new Date()
     const input = schemaMigrationPreviewInputSchema.parse(data)
     const adapter = this.schemaAdapter
     const adapterScope: SchemaMigrationAdapterScope = {
@@ -370,7 +372,7 @@ export class OrbitSchemaEngine {
         orgId,
         ...(ctx.userId ? { actorId: ctx.userId } : {}),
       },
-      confirmationInstructions: createConfirmationInstructions(destructiveOperations, checksum),
+      confirmationInstructions: createConfirmationInstructions(destructiveOperations, checksum, now),
       confirmationRequired: destructive,
       warnings,
     }
@@ -1249,6 +1251,7 @@ function isDestructiveForwardOperation(operation: SchemaMigrationForwardOperatio
 function createConfirmationInstructions(
   destructiveOperations: string[],
   checksum: string,
+  now: Date,
 ): SchemaMigrationPreviewOutput['confirmationInstructions'] {
   if (destructiveOperations.length === 0) {
     return {
@@ -1263,6 +1266,7 @@ function createConfirmationInstructions(
     instructions: 'Pass confirmation.destructive=true with this checksum when applying this migration.',
     destructiveOperations,
     checksum,
+    expiresAt: new Date(now.getTime() + DESTRUCTIVE_CONFIRMATION_TTL_MS).toISOString(),
   }
 }
 

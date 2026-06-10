@@ -109,6 +109,30 @@ describe('OpenAPI spec', () => {
     expect(rollbackResponse.properties.operations.items.$ref).toBe('#/components/schemas/SchemaMigrationForwardOperation')
   })
 
+  it('documents destructive confirmation freshness and route-accurate 412 inventories', () => {
+    const confirmationInstructions = spec.components.schemas.SchemaMigrationConfirmationInstructions
+    expect(confirmationInstructions.properties.expiresAt).toMatchObject({
+      type: 'string',
+      format: 'date-time',
+    })
+    expect(confirmationInstructions.properties.expiresAt.description).toContain('confirmedAt + 15 minutes')
+
+    const confirmedAt = spec.components.schemas.DestructiveConfirmation.properties.confirmedAt
+    expect(confirmedAt.description).toContain('15-minute freshness window')
+    expect(confirmedAt.description).toContain('60 seconds')
+    expect(confirmedAt.description).toContain('DESTRUCTIVE_CONFIRMATION_STALE')
+
+    // 412 is only produced by the rollback route (closes #104).
+    expect(spec.paths['/v1/schema/migrations/preview']?.post.responses['412']).toBeUndefined()
+    expect(spec.paths['/v1/schema/migrations/apply']?.post.responses['412']).toBeUndefined()
+    expect(spec.paths['/v1/schema/migrations/{id}/rollback']?.post.responses['412']).toBeDefined()
+    expect(spec.paths['/v1/objects/{type}/fields/{fieldName}']?.patch.responses['412']).toBeUndefined()
+    expect(spec.paths['/v1/objects/{type}/fields/{fieldName}']?.delete.responses['412']).toBeUndefined()
+
+    const migrationConflict = spec.paths['/v1/schema/migrations/apply']?.post.responses['409']
+    expect(migrationConflict.description).toContain('DESTRUCTIVE_CONFIRMATION_STALE')
+  })
+
   it('contacts emits full CRUD (proves gating does not over-restrict)', () => {
     const contactsList = spec.paths['/v1/contacts']
     expect(contactsList?.get).toBeDefined()

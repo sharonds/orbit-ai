@@ -200,7 +200,7 @@ describe('DirectTransport', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject<Partial<OrbitApiError>>({
       error: expect.objectContaining({ code: 'MIGRATION_OPERATION_UNSUPPORTED' }),
@@ -227,7 +227,7 @@ describe('DirectTransport', () => {
       confirmation: {
         destructive: true,
         checksum: 'a'.repeat(64),
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })
 
@@ -261,7 +261,7 @@ describe('DirectTransport', () => {
       confirmation: {
         destructive: true,
         checksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })).rejects.toMatchObject<Partial<OrbitApiError>>({
       error: expect.objectContaining({ code: 'MIGRATION_AUTHORITY_UNAVAILABLE' }),
@@ -310,7 +310,7 @@ describe('DirectTransport', () => {
       confirmation: {
         destructive: true,
         checksum: rollbackChecksum,
-        confirmedAt: '2026-04-26T12:00:00.000Z',
+        confirmedAt: new Date().toISOString(),
       },
     })
 
@@ -372,7 +372,7 @@ describe('DirectTransport', () => {
         confirmation: {
           destructive: true,
           checksum: rollbackChecksum,
-          confirmedAt: '2026-04-26T12:00:00.000Z',
+          confirmedAt: new Date().toISOString(),
         },
       },
     })
