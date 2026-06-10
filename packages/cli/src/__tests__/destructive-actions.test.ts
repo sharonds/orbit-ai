@@ -432,3 +432,147 @@ describe('migrate --rollback — destructive action', () => {
     expect(parsed).toBeTruthy()
   })
 })
+
+describe('schema migration SQL field redaction in CLI JSON output', () => {
+  const SQL_LEAK_FIELDS = {
+    sqlStatements: ['alter table contacts add column secret text'],
+    rollbackStatements: ['alter table contacts drop column secret'],
+    sql_statements: ['legacy snake case'],
+    rollback_statements: ['legacy snake case rollback'],
+  }
+  const SQL_FIELD_NAMES = [
+    'sqlStatements',
+    'rollbackStatements',
+    'sql_statements',
+    'rollback_statements',
+  ] as const
+
+  function expectNoSqlFields(record: Record<string, unknown>) {
+    for (const fieldName of SQL_FIELD_NAMES) {
+      expect(record).not.toHaveProperty(fieldName)
+    }
+  }
+
+  it('migrate --preview JSON output contains no SQL statement fields', async () => {
+    mockSchema.previewMigration.mockResolvedValue({
+      operations: [TEST_ADD_OPERATION],
+      checksum: TEST_CHECKSUM,
+      destructive: false,
+      ...SQL_LEAK_FIELDS,
+    })
+    const operations = JSON.stringify([TEST_ADD_OPERATION])
+
+    const { output } = await captureStdout(async () => {
+      await createProgram()
+        .exitOverride()
+        .parseAsync([
+          'node', 'orbit', '--json', '--api-key', 'key', '--mode', 'api',
+          'migrate', '--preview', '--operations', operations,
+        ])
+    })
+
+    const parsed = JSON.parse(output)
+    expect(parsed.checksum).toBe(TEST_CHECKSUM)
+    expectNoSqlFields(parsed)
+  })
+
+  it('migrate --apply --yes JSON output contains no SQL statement fields', async () => {
+    mockSchema.previewMigration.mockResolvedValue({
+      operations: [TEST_ADD_OPERATION],
+      checksum: TEST_CHECKSUM,
+      destructive: false,
+      ...SQL_LEAK_FIELDS,
+    })
+    mockSchema.applyMigration.mockResolvedValue({
+      migrationId: 'mig_123',
+      checksum: TEST_CHECKSUM,
+      status: 'applied',
+      ...SQL_LEAK_FIELDS,
+    })
+    const operations = JSON.stringify([TEST_ADD_OPERATION])
+
+    const { output } = await captureStdout(async () => {
+      await createProgram()
+        .exitOverride()
+        .parseAsync([
+          'node', 'orbit', '--json', '--api-key', 'key', '--mode', 'api',
+          'migrate', '--apply', '--operations', operations, '--yes',
+        ])
+    })
+
+    const parsed = JSON.parse(output)
+    expect(parsed.migrationId).toBe('mig_123')
+    expectNoSqlFields(parsed)
+  })
+
+  it('migrate --rollback --yes JSON output contains no SQL statement fields', async () => {
+    mockSchema.rollbackMigration.mockResolvedValue({
+      migrationId: 'migration_123',
+      checksum: TEST_CHECKSUM,
+      status: 'rolled_back',
+      ...SQL_LEAK_FIELDS,
+    })
+
+    const { output } = await captureStdout(async () => {
+      await createProgram()
+        .exitOverride()
+        .parseAsync([
+          'node', 'orbit', '--json', 'migrate', '--rollback',
+          '--id', 'migration_123', '--checksum', TEST_CHECKSUM, '--yes',
+        ])
+    })
+
+    const parsed = JSON.parse(output)
+    expect(parsed.migrationId).toBe('migration_123')
+    expectNoSqlFields(parsed)
+  })
+
+  it('non-confirmed destructive migrate --apply error embeds a preview without SQL statement fields', async () => {
+    const destructiveOperation = { type: 'column.drop', tableName: 'contacts', columnName: 'old_field' }
+    mockSchema.previewMigration.mockResolvedValue({
+      operations: [destructiveOperation],
+      checksum: TEST_CHECKSUM,
+      destructive: true,
+      ...SQL_LEAK_FIELDS,
+    })
+    const operations = JSON.stringify([destructiveOperation])
+
+    const { output, exitCode } = await captureStdout(async () => {
+      await createProgram()
+        .exitOverride()
+        .parseAsync([
+          'node', 'orbit', '--json', '--api-key', 'key', '--mode', 'api',
+          'migrate', '--apply', '--operations', operations,
+        ])
+    })
+
+    expect(exitCode).toBe(1)
+    const parsed = JSON.parse(output)
+    expect(parsed.error.code).toBe('DESTRUCTIVE_ACTION_REQUIRES_CONFIRMATION')
+    expect(parsed.error.preview.checksum).toBe(TEST_CHECKSUM)
+    expectNoSqlFields(parsed.error.preview)
+    expect(mockSchema.applyMigration).not.toHaveBeenCalled()
+  })
+
+  it('non-confirmed destructive fields update error embeds a preview without SQL statement fields', async () => {
+    mockSchema.previewMigration.mockResolvedValue({
+      checksum: TEST_CHECKSUM,
+      operations: [TEST_UPDATE_OPERATION],
+      destructive: true,
+      ...SQL_LEAK_FIELDS,
+    })
+
+    const { output, exitCode } = await captureStdout(() =>
+      createProgram().parseAsync([
+        'node', 'orbit', '--json', 'fields', 'update', 'contacts', 'custom_tier', '--type', 'number',
+      ]),
+    )
+
+    expect(exitCode).toBe(1)
+    const parsed = JSON.parse(output)
+    expect(parsed.error.code).toBe('DESTRUCTIVE_ACTION_REQUIRES_CONFIRMATION')
+    expect(parsed.error.preview.checksum).toBe(TEST_CHECKSUM)
+    expectNoSqlFields(parsed.error.preview)
+    expect(mockSchemaResponse.updateField).not.toHaveBeenCalled()
+  })
+})

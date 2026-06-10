@@ -1,4 +1,5 @@
 import { toWebhookRead, type WebhookRead } from '@orbit-ai/api'
+import { isSchemaMigrationInternalField } from '@orbit-ai/core'
 import { truncateUnknownStrings } from './truncation.js'
 
 export interface McpIntegrationConnectionRead {
@@ -91,8 +92,9 @@ export function toMcpIntegrationConnectionRead(record: Record<string, unknown>):
  * Recursively sanitizes a value for MCP output.
  *
  * - Arrays: each element is sanitized recursively.
- * - Objects: keys matching {@link isSensitiveKey} are removed; remaining values
- *   are sanitized recursively.
+ * - Objects: keys matching {@link isSensitiveKey} or the shared schema
+ *   migration internal SQL field denylist ({@link isSchemaMigrationInternalField})
+ *   are removed; remaining values are sanitized recursively.
  * - Strings longer than 5,000 characters are truncated to 5,000 characters
  *   with a `...[truncated]` suffix.
  * - Numbers, booleans, null, and undefined pass through unchanged.
@@ -104,7 +106,7 @@ export function sanitizeObjectDeep(value: unknown): unknown {
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
-        .filter(([key]) => !isSensitiveKey(key))
+        .filter(([key]) => !isSensitiveKey(key) && !isSchemaMigrationInternalField(key))
         .map(([entryKey, entryValue]) => [entryKey, sanitizeObjectDeep(entryValue)]),
     )
   }

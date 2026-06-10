@@ -447,7 +447,9 @@ function createNoopMigrationDatabase(): Parameters<Parameters<SchemaMigrationAut
       return fn(db)
     },
     async execute(_statement: unknown) {
-      return undefined
+      // SQLite-shaped DML result so fail-closed metadata row-count checks
+      // (assertMetadataRowAffected in core) treat the noop write as one row.
+      return { changes: 1 }
     },
     async query() {
       return []
@@ -856,5 +858,100 @@ describe('DirectTransport workflow sub-routes', () => {
       error: expect.objectContaining({ code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED' }),
       status: 409,
     })
+  })
+})
+
+describe('DirectTransport schema migration SQL field redaction', () => {
+  const SQL_LEAK_FIELDS = {
+    sqlStatements: ['alter table contacts add column secret text'],
+    rollbackStatements: ['alter table contacts drop column secret'],
+    sql_statements: ['legacy snake case'],
+    rollback_statements: ['legacy snake case rollback'],
+  }
+  const SQL_FIELD_NAMES = [
+    'sqlStatements',
+    'rollbackStatements',
+    'sql_statements',
+    'rollback_statements',
+  ] as const
+  const REDACTION_CHECKSUM = 'a'.repeat(64)
+  const REDACTION_OPERATIONS: SchemaMigrationPublicForwardOperation[] = [{
+    type: 'custom_field.add',
+    entityType: 'contacts',
+    fieldName: 'redaction_probe',
+    fieldType: 'text',
+  }]
+
+  async function createClientWithMockedSchemaService() {
+    const adapter = await createRealAdapter()
+    const client = new OrbitClient({
+      adapter,
+      context: { orgId: ORG_ID },
+      version: '2026-04-01',
+    })
+    const schemaService = {
+      preview: vi.fn(async () => ({
+        checksum: REDACTION_CHECKSUM,
+        status: 'applied',
+        ...SQL_LEAK_FIELDS,
+      })),
+      apply: vi.fn(async () => ({
+        checksum: REDACTION_CHECKSUM,
+        status: 'applied',
+        ...SQL_LEAK_FIELDS,
+      })),
+      rollback: vi.fn(async () => ({
+        checksum: REDACTION_CHECKSUM,
+        status: 'applied',
+        ...SQL_LEAK_FIELDS,
+      })),
+    }
+    ;((client as any).transport as any).services.schema = schemaService
+    return { client, schemaService }
+  }
+
+  function expectNoSqlFields(record: Record<string, unknown>) {
+    expect(record.checksum).toBe(REDACTION_CHECKSUM)
+    expect(record.status).toBe('applied')
+    for (const fieldName of SQL_FIELD_NAMES) {
+      expect(record).not.toHaveProperty(fieldName)
+    }
+  }
+
+  it('strips SQL fields from preview/apply/rollback in record mode', async () => {
+    const { client, schemaService } = await createClientWithMockedSchemaService()
+
+    expectNoSqlFields(await client.schema.previewMigration({ operations: REDACTION_OPERATIONS }))
+    expectNoSqlFields(await client.schema.applyMigration({
+      operations: REDACTION_OPERATIONS,
+      checksum: REDACTION_CHECKSUM,
+    }))
+    expectNoSqlFields(await client.schema.rollbackMigration('migration_01', {
+      checksum: REDACTION_CHECKSUM,
+    }))
+
+    expect(schemaService.preview).toHaveBeenCalledTimes(1)
+    expect(schemaService.apply).toHaveBeenCalledTimes(1)
+    expect(schemaService.rollback).toHaveBeenCalledTimes(1)
+  })
+
+  it('strips SQL fields from preview/apply/rollback in raw envelope mode', async () => {
+    const { client } = await createClientWithMockedSchemaService()
+    const raw = client.schema.response()
+
+    const previewEnvelope = await raw.previewMigration({ operations: REDACTION_OPERATIONS })
+    expectNoSqlFields(previewEnvelope.data as Record<string, unknown>)
+    expect(previewEnvelope.meta.request_id).toMatch(/^req_/)
+
+    const applyEnvelope = await raw.applyMigration({
+      operations: REDACTION_OPERATIONS,
+      checksum: REDACTION_CHECKSUM,
+    })
+    expectNoSqlFields(applyEnvelope.data as Record<string, unknown>)
+
+    const rollbackEnvelope = await raw.rollbackMigration('migration_01', {
+      checksum: REDACTION_CHECKSUM,
+    })
+    expectNoSqlFields(rollbackEnvelope.data as Record<string, unknown>)
   })
 })

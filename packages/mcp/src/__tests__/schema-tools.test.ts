@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { executeTool } from '../tools/registry.js'
+import { buildTools, executeTool } from '../tools/registry.js'
 import { getTextContent, makeMockClient, parseTextResult } from './helpers.js'
 
 describe('schema tools', () => {
@@ -94,5 +94,24 @@ describe('schema tools', () => {
     vi.mocked(client.schema.describeObject).mockResolvedValueOnce({ object: 'contacts', api_key: 'sk_SECRET' } as never)
     const result = await executeTool(client, 'get_schema', { object_type: 'contacts' })
     expect(getTextContent(result)).not.toContain('sk_SECRET')
+  })
+})
+
+describe('schema migration tool surface', () => {
+  it('exposes no migration preview/apply/rollback tools in the registry', () => {
+    const toolNames = buildTools().map((tool) => tool.name)
+    expect(toolNames.some((name) => /migrat/i.test(name))).toBe(false)
+    expect(toolNames.some((name) => /(preview|apply|rollback)/i.test(name))).toBe(false)
+  })
+
+  it.each([
+    ['preview_migration'],
+    ['apply_migration'],
+    ['rollback_migration'],
+    ['migrate'],
+  ])('executeTool rejects %s as an unknown tool', async (toolName) => {
+    const result = await executeTool(makeMockClient(), toolName, {})
+    expect(result.isError).toBe(true)
+    expect(parseTextResult(result).error.code).toBe('UNKNOWN_TOOL')
   })
 })

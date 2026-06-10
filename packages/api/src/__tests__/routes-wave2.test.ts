@@ -1380,3 +1380,102 @@ describe('Schema route sanitization', () => {
     expect(body.data).not.toHaveProperty('_internal_plan_id')
   })
 })
+
+describe('Schema migration SQL field redaction', () => {
+  const SQL_LEAK_FIELDS = {
+    sqlStatements: ['alter table contacts add column secret text'],
+    rollbackStatements: ['alter table contacts drop column secret'],
+    sql_statements: ['legacy snake case'],
+    rollback_statements: ['legacy snake case rollback'],
+  }
+  const SQL_FIELD_NAMES = [
+    'sqlStatements',
+    'rollbackStatements',
+    'sql_statements',
+    'rollback_statements',
+  ] as const
+
+  it('POST /v1/schema/migrations/preview strips internal SQL statement fields', async () => {
+    const services = mockWave2CoreServices()
+    ;(services as any).schema = {
+      preview: vi.fn(async () => ({
+        checksum: TEST_CHECKSUM,
+        status: 'applied',
+        ...SQL_LEAK_FIELDS,
+      })),
+    }
+    const app = createRouteTestApp()
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/schema/migrations/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ operations: [TEST_ADD_FIELD_OPERATION] }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    expect(body.data.checksum).toBe(TEST_CHECKSUM)
+    expect(body.data.status).toBe('applied')
+    for (const fieldName of SQL_FIELD_NAMES) {
+      expect(body.data).not.toHaveProperty(fieldName)
+    }
+  })
+
+  it('POST /v1/schema/migrations/apply strips internal SQL statement fields', async () => {
+    const services = mockWave2CoreServices()
+    ;(services as any).schema = {
+      apply: vi.fn(async () => ({
+        checksum: TEST_CHECKSUM,
+        status: 'applied',
+        ...SQL_LEAK_FIELDS,
+      })),
+    }
+    const app = createRouteTestApp(['*'])
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/schema/migrations/apply', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        operations: [TEST_ADD_FIELD_OPERATION],
+        checksum: TEST_CHECKSUM,
+      }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    expect(body.data.checksum).toBe(TEST_CHECKSUM)
+    expect(body.data.status).toBe('applied')
+    for (const fieldName of SQL_FIELD_NAMES) {
+      expect(body.data).not.toHaveProperty(fieldName)
+    }
+  })
+
+  it('POST /v1/schema/migrations/:id/rollback strips internal SQL statement fields', async () => {
+    const services = mockWave2CoreServices()
+    ;(services as any).schema = {
+      rollback: vi.fn(async () => ({
+        checksum: TEST_CHECKSUM,
+        status: 'applied',
+        ...SQL_LEAK_FIELDS,
+      })),
+    }
+    const app = createRouteTestApp(['schema:apply'])
+    app.onError(orbitErrorHandler)
+    registerObjectRoutes(app, services)
+
+    const res = await app.request('/v1/schema/migrations/migration_01/rollback', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ checksum: TEST_CHECKSUM }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Record<string, unknown> }
+    expect(body.data.checksum).toBe(TEST_CHECKSUM)
+    expect(body.data.status).toBe('applied')
+    for (const fieldName of SQL_FIELD_NAMES) {
+      expect(body.data).not.toHaveProperty(fieldName)
+    }
+  })
+})

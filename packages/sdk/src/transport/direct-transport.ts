@@ -1,6 +1,7 @@
 import {
   createCoreServices,
   computeSchemaMigrationChecksum,
+  isSchemaMigrationInternalField,
   ORBIT_ERROR_CODES,
   OrbitError,
   orbitErrorCodeToStatus,
@@ -591,6 +592,7 @@ function sanitizeSchemaMetadataRead(raw: unknown): unknown {
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (key.startsWith('_')) continue
+    if (isSchemaMigrationInternalField(key)) continue // never expose raw SQL statements
     out[key] = value
   }
   return out

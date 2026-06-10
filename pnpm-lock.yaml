@@ -265,6 +265,9 @@ importers:
       '@orbit-ai/api':
         specifier: workspace:*
         version: link:../api
+      '@orbit-ai/core':
+        specifier: workspace:*
+        version: link:../core
       '@orbit-ai/sdk':
         specifier: workspace:*
         version: link:../sdk

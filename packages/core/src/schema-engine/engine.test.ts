@@ -9,6 +9,8 @@ import type { SchemaMigrationRecord } from '../entities/schema-migrations/valida
 import { OrbitError } from '../types/errors.js'
 import {
   computeSchemaMigrationChecksum,
+  schemaMigrationApplyOutputSchema,
+  schemaMigrationRollbackOutputSchema,
   type DestructiveMigrationEnvironment,
   type SchemaMigrationAdapterScope,
   type SchemaMigrationForwardOperation,
@@ -2952,5 +2954,139 @@ describe('OrbitSchemaEngine', () => {
     expect(migrationLedger.updateStatus).not.toHaveBeenCalledWith(ctx, migrationId, expect.objectContaining({
       status: 'failed',
     }))
+  })
+})
+
+describe('strict apply/rollback output parsing (SQL leakage guard)', () => {
+  const APPLY_OUTPUT_KEYS = [
+    'appliedOperations',
+    'checksum',
+    'migrationId',
+    'rollbackDecision',
+    'rollbackable',
+    'status',
+  ]
+  const ROLLBACK_OUTPUT_KEYS = [
+    'checksum',
+    'migrationId',
+    'operations',
+    'rolledBackMigrationId',
+    'status',
+  ]
+
+  it('fresh apply returns only strict apply output keys (no SQL statement fields)', async () => {
+    const authority = makeAuthority()
+    const repo = createInMemoryCustomFieldRepo()
+    const engine = makeEngine(repo, authority)
+
+    const result = await engine.apply(ctx, APPLY_INPUT)
+
+    expect(Object.keys(result).sort()).toEqual(APPLY_OUTPUT_KEYS)
+    expect(result).not.toHaveProperty('sqlStatements')
+    expect(result).not.toHaveProperty('rollbackStatements')
+  })
+
+  it('idempotent existing-record apply returns only strict apply output keys', async () => {
+    const authority = makeAuthority()
+    const existing = {
+      ...migrationRecord({ forwardOperations: APPLY_OPERATIONS }),
+      sqlStatements: ['alter table contacts add column secret text'],
+      rollbackStatements: ['alter table contacts drop column secret'],
+    } as SchemaMigrationRecord
+    const migrationLedger = trackingLedger([existing])
+    const repo = createInMemoryCustomFieldRepo()
+    const engine = makeEngine(repo, authority, migrationLedger)
+
+    const result = await engine.apply(ctx, APPLY_INPUT)
+
+    expect(result.migrationId).toBe(existing.id)
+    expect(Object.keys(result).sort()).toEqual(APPLY_OUTPUT_KEYS)
+    expect(result).not.toHaveProperty('sqlStatements')
+    expect(result).not.toHaveProperty('rollbackStatements')
+    expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('rollback returns only strict rollback output keys (no SQL statement fields)', async () => {
+    const migrationDb = makeMigrationDb()
+    const authority = makeAuthority(migrationDb)
+    const migrationLedger = trackingLedger()
+    const migrationId = 'migration_01J00000000000000000000000'
+    const record = {
+      ...migrationRecord({
+        id: migrationId,
+        forwardOperations: APPLY_OPERATIONS,
+      }),
+      reverseOperations: [{
+        type: 'custom_field.delete',
+        entityType: 'contacts',
+        fieldName: 'linkedin_url',
+      }],
+      sqlStatements: ['alter table contacts add column secret text'],
+      rollbackStatements: ['alter table contacts drop column secret'],
+    } as SchemaMigrationRecord
+    vi.mocked(migrationLedger.assertRollbackPreconditions).mockResolvedValue(record)
+    vi.mocked(migrationLedger.updateStatus).mockResolvedValue(record)
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000020', 'linkedin_url'),
+    ])
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    const rollbackChecksum = computeSchemaMigrationChecksum({
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      orgId: ctx.orgId,
+      operations: record.reverseOperations,
+    })
+    const result = await engine.rollback(ctx, {
+      migrationId,
+      checksum: rollbackChecksum,
+      confirmation: {
+        destructive: true,
+        checksum: rollbackChecksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })
+
+    expect(Object.keys(result).sort()).toEqual(ROLLBACK_OUTPUT_KEYS)
+    expect(result).not.toHaveProperty('sqlStatements')
+    expect(result).not.toHaveProperty('rollbackStatements')
+  })
+
+  it('strict apply output schema rejects outputs carrying SQL statement fields', () => {
+    const validApplyOutput = {
+      migrationId: 'migration_01J00000000000000000000000',
+      checksum: checksumFor(APPLY_OPERATIONS),
+      status: 'applied',
+      appliedOperations: APPLY_OPERATIONS,
+      rollbackable: true,
+      rollbackDecision: { decision: 'rollbackable' },
+    }
+    expect(() => schemaMigrationApplyOutputSchema.parse(validApplyOutput)).not.toThrow()
+    expect(() => schemaMigrationApplyOutputSchema.parse({
+      ...validApplyOutput,
+      sqlStatements: ['alter table contacts add column secret text'],
+    })).toThrow()
+    expect(() => schemaMigrationApplyOutputSchema.parse({
+      ...validApplyOutput,
+      rollback_statements: ['legacy snake case rollback'],
+    })).toThrow()
+  })
+
+  it('strict rollback output schema rejects outputs carrying SQL statement fields', () => {
+    const validRollbackOutput = {
+      migrationId: 'migration_01J00000000000000000000000',
+      rolledBackMigrationId: 'migration_01J00000000000000000000000',
+      checksum: checksumFor(APPLY_OPERATIONS),
+      status: 'rolled_back',
+      operations: APPLY_OPERATIONS,
+    }
+    expect(() => schemaMigrationRollbackOutputSchema.parse(validRollbackOutput)).not.toThrow()
+    expect(() => schemaMigrationRollbackOutputSchema.parse({
+      ...validRollbackOutput,
+      rollbackStatements: ['alter table contacts drop column secret'],
+    })).toThrow()
+    expect(() => schemaMigrationRollbackOutputSchema.parse({
+      ...validRollbackOutput,
+      sql_statements: ['legacy snake case'],
+    })).toThrow()
   })
 })

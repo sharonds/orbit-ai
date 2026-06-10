@@ -17,10 +17,12 @@ import {
 import {
   computeSchemaMigrationChecksum,
   schemaMigrationApplyInputSchema,
+  schemaMigrationApplyOutputSchema,
   schemaMigrationDeleteFieldInputSchema,
   schemaMigrationPreviewInputSchema,
   schemaMigrationPreviewOutputSchema,
   schemaMigrationRollbackInputSchema,
+  schemaMigrationRollbackOutputSchema,
   schemaMigrationUpdateFieldRequestInputSchema,
   type SchemaMigrationAdapterScope,
   type SchemaMigrationApplyInput,
@@ -395,14 +397,16 @@ export class OrbitSchemaEngine {
         this.idempotencyConflict(input.idempotencyKey)
       }
       if (existing.record.status === 'applied') {
-        return {
+        // Strict parse before returning: guarantees internal ledger fields
+        // (e.g. sqlStatements) can never leak through this output path.
+        return schemaMigrationApplyOutputSchema.parse({
           migrationId: existing.record.id,
           checksum: existing.record.checksum,
           status: 'applied',
           appliedOperations: existing.record.forwardOperations,
           ...rollbackMetadataFor(existing.record.reverseOperations),
           ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
-        }
+        })
       }
       this.migrationConflict('Schema migration is not in an idempotent applied state', {
         migrationId: existing.record.id,
@@ -479,14 +483,16 @@ export class OrbitSchemaEngine {
           errorCode: null,
           errorMessage: null,
         })
-        return {
+        // Strict parse before returning: guarantees internal SQL fields can
+        // never leak through the fresh-apply output path.
+        return schemaMigrationApplyOutputSchema.parse({
           migrationId,
           checksum: preview.checksum,
           status: 'applied' as const,
           appliedOperations: preview.operations,
           ...rollbackMetadataFor(reverseOperations),
           ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
-        }
+        })
       } catch (error) {
         const failure = sanitizedMigrationFailure('apply', error)
         await this.ledger.updateStatus(ctx, migrationId, {
@@ -557,13 +563,15 @@ export class OrbitSchemaEngine {
           errorCode: null,
           errorMessage: null,
         })
-        return {
+        // Strict parse before returning: guarantees internal ledger fields
+        // (e.g. rollbackStatements) can never leak through rollback output.
+        return schemaMigrationRollbackOutputSchema.parse({
           migrationId: input.migrationId,
           rolledBackMigrationId: input.migrationId,
           checksum: rollbackChecksum,
           status: 'rolled_back' as const,
           operations: record.reverseOperations,
-        }
+        })
       } catch (error) {
         const failure = sanitizedMigrationFailure('rollback', error)
         await this.ledger.updateStatus(ctx, input.migrationId, {
