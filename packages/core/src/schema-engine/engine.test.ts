@@ -1994,7 +1994,14 @@ describe('OrbitSchemaEngine', () => {
     expect(listCalls).toBe(3)
     expect(migrationLedger.create).not.toHaveBeenCalled()
     expect(migrationAuthority.run).not.toHaveBeenCalled()
-    expect(migrationLedger.withMigrationLock).toHaveBeenCalledTimes(1)
+    // Idempotency-keyed applies take the key-scoped lock first, then the
+    // target lock. The key-scoped lock target must be a digest, never raw or
+    // reversibly encoded key material.
+    expect(migrationLedger.withMigrationLock).toHaveBeenCalledTimes(2)
+    const lockScopes = vi.mocked(migrationLedger.withMigrationLock).mock.calls.map(([, scope]) => scope)
+    expect(lockScopes[0]!.target).toMatch(/^idempotency:sha256:[A-Za-z0-9_-]{43}$/)
+    expect(lockScopes[0]!.target).not.toContain('late-unbound-key')
+    expect(lockScopes[1]!.target).toBe('custom_field:contacts.linkedin_url')
   })
 
   it('returns the idempotent applied result when the raced winner committed both the custom field and the ledger row before lock entry', async () => {

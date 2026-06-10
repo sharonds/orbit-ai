@@ -1,4 +1,6 @@
 import { Buffer } from 'node:buffer'
+import { createHash } from 'node:crypto'
+
 import { sql } from 'drizzle-orm'
 
 import { generateId } from '../ids/generate-id.js'
@@ -439,7 +441,8 @@ export class OrbitSchemaEngine {
     }
 
     const target = operationTarget(preview.operations[0]!)
-    return this.ledger.withMigrationLock(ctx, { adapter: preview.adapter, target }, async () => {
+    const runWithTargetLock = async (): Promise<SchemaMigrationApplyOutput> =>
+      this.ledger.withMigrationLock(ctx, { adapter: preview.adapter, target }, async () => {
       // Recheck apply idempotency FIRST, matching the pre-lock order: the
       // winner of a race commits its custom field before marking the ledger
       // 'applied', so rechecking preconditions first would surface a
@@ -502,6 +505,22 @@ export class OrbitSchemaEngine {
         ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
       })
     }).then((locked) => locked.result)
+
+    // Idempotency keys match org-wide, but the target lock only serializes
+    // applies that share a migration target. Wrap idempotency-keyed applies in
+    // an outer key-scoped lock so two concurrent applies with the same key and
+    // DIFFERENT targets cannot both pass the idempotency rechecks and create
+    // duplicate ledger rows. Both locks are non-blocking try-locks acquired in
+    // a fixed order (idempotency, then target), so contention surfaces as
+    // MIGRATION_CONFLICT rather than a deadlock.
+    if (input.idempotencyKey) {
+      return this.ledger.withMigrationLock(ctx, {
+        adapter: preview.adapter,
+        target: idempotencyLockTarget(input.idempotencyKey),
+      }, runWithTargetLock).then((locked) => locked.result)
+    }
+
+    return runWithTargetLock()
   }
 
   async rollback(
@@ -1252,6 +1271,15 @@ function customFieldOperationKey(operation: SchemaMigrationPublicForwardOperatio
     default:
       return null
   }
+}
+
+// Lock target for serializing same-idempotency-key applies across different
+// migration targets. The digest keeps raw (or reversibly encoded) idempotency
+// key material out of the lock target because lock conflict errors expose
+// `details.target` and `details.key` to callers.
+function idempotencyLockTarget(idempotencyKey: string): string {
+  const digest = createHash('sha256').update(idempotencyKey, 'utf8').digest('base64url')
+  return `idempotency:sha256:${digest}`
 }
 
 function operationTarget(operation: SchemaMigrationForwardOperation): string {

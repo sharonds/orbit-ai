@@ -1,3 +1,5 @@
+import { Buffer } from 'node:buffer'
+
 import type { SQL } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -8,6 +10,7 @@ import {
   computeSchemaMigrationChecksum,
   type SchemaMigrationAdapterScope,
   type SchemaMigrationForwardOperation,
+  type SchemaMigrationPublicForwardOperation,
 } from '../../schema-engine/migrations.js'
 import { createInMemoryCustomFieldDefinitionRepository } from '../custom-field-definitions/repository.js'
 import { createInMemoryUserRepository } from '../users/repository.js'
@@ -493,6 +496,118 @@ describe('schemaMigration admin service', () => {
     const rows = await repository.list(engineCtx, { limit: 100 })
     expect(rows.data).toHaveLength(1)
     expect(rows.data[0]!.status).toBe('applied')
+  })
+
+  it('serializes idempotency-keyed applies across different targets before ledger create', async () => {
+    const users = createUsersForOrg()
+    const baseRepository = createInMemorySchemaMigrationRepository([], { users })
+    let releaseFirstCreate!: () => void
+    const holdFirstCreate = new Promise<void>((resolve) => { releaseFirstCreate = resolve })
+    let signalFirstCreateEntered!: () => void
+    const firstCreateEntered = new Promise<void>((resolve) => { signalFirstCreateEntered = resolve })
+    let createCalls = 0
+    const repository = {
+      ...baseRepository,
+      create: vi.fn(async (...args: Parameters<typeof baseRepository.create>) => {
+        createCalls += 1
+        if (createCalls === 1) {
+          signalFirstCreateEntered()
+          await holdFirstCreate
+        }
+        return baseRepository.create(...args)
+      }),
+    }
+    const customFields = createInMemoryCustomFieldDefinitionRepository()
+    const engineCtx: OrbitAuthContext = { orgId: ctx.orgId, scopes: ['*'] }
+    const migrationDb = {
+      transaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn(migrationDb),
+      execute: async () => ({ changes: 1 }),
+      query: async () => [],
+    }
+    const contactsOperation: SchemaMigrationPublicForwardOperation = {
+      type: 'custom_field.add',
+      entityType: 'contacts',
+      fieldName: 'review_key_contacts',
+      fieldType: 'text',
+    }
+    const companiesOperation: SchemaMigrationPublicForwardOperation = {
+      type: 'custom_field.add',
+      entityType: 'companies',
+      fieldName: 'review_key_companies',
+      fieldType: 'text',
+    }
+    const contactsOperations = [contactsOperation]
+    const companiesOperations = [companiesOperation]
+    const contactsChecksum = computeSchemaMigrationChecksum({
+      adapter,
+      orgId: ctx.orgId,
+      operations: contactsOperations,
+    })
+    const companiesChecksum = computeSchemaMigrationChecksum({
+      adapter,
+      orgId: ctx.orgId,
+      operations: companiesOperations,
+    })
+
+    let authorityRuns = 0
+    const migrationAuthority: SchemaMigrationAuthority = {
+      run: async (_context, fn) => {
+        authorityRuns += 1
+        return fn(migrationDb as Parameters<Parameters<SchemaMigrationAuthority['run']>[1]>[0])
+      },
+    }
+    const engine = new OrbitSchemaEngine({
+      customFields: () => customFields,
+      ledger: () => repository,
+      migrationAuthority,
+      destructiveMigrationEnvironment: 'development',
+    })
+
+    const winner = engine.apply(engineCtx, {
+      operations: contactsOperations,
+      checksum: contactsChecksum,
+      idempotencyKey: 'same-key-different-target',
+    })
+    await firstCreateEntered
+
+    let conflictError: unknown
+    try {
+      await engine.apply(engineCtx, {
+        operations: companiesOperations,
+        checksum: companiesChecksum,
+        idempotencyKey: 'same-key-different-target',
+      })
+    } catch (error) {
+      conflictError = error
+    } finally {
+      releaseFirstCreate()
+    }
+
+    const applied = await winner
+    expect(applied.status).toBe('applied')
+    expect(authorityRuns).toBe(1)
+
+    expect(conflictError).toMatchObject({
+      code: 'MIGRATION_CONFLICT',
+      details: expect.objectContaining({
+        acquired: false,
+        contended: true,
+      }),
+    })
+    const conflictDetails = JSON.stringify(conflictError)
+    expect(conflictDetails).not.toContain('same-key-different-target')
+    expect(conflictDetails).not.toContain(Buffer.from('same-key-different-target', 'utf8').toString('base64url'))
+
+    await expect(engine.apply(engineCtx, {
+      operations: companiesOperations,
+      checksum: companiesChecksum,
+      idempotencyKey: 'same-key-different-target',
+    })).rejects.toMatchObject({
+      code: 'IDEMPOTENCY_CONFLICT',
+    })
+    expect(authorityRuns).toBe(1)
+    const rows = await repository.list(engineCtx, { limit: 100 })
+    expect(rows.data).toHaveLength(1)
   })
 
   it('uses tenant-scoped runtime context and advisory transaction locks for Postgres locks', async () => {
