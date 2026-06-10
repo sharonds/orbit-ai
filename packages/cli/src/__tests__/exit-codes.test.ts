@@ -91,6 +91,46 @@ describe('classifyError end-to-end', () => {
     })
   })
 
+  it('redacts schema migration SQL fields from OrbitApiError envelopes recursively', () => {
+    const e = Object.assign(new Error('Schema migration failed'), {
+      name: 'OrbitApiError',
+      status: 409,
+      code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
+      error: {
+        code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
+        message: 'Schema migration failed',
+        sqlStatements: ['alter table contacts add column secret text'],
+        rollbackStatements: ['alter table contacts drop column secret'],
+        details: {
+          preview: {
+            checksum: 'abc',
+            sql_statements: ['alter table companies add column secret text'],
+            rollback_statements: ['alter table companies drop column secret'],
+          },
+        },
+      },
+    })
+
+    const result = _classifyError(e)
+
+    expect(result.code).toBe(1)
+    expect(result.payload).toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_REQUIRED',
+      message: 'Schema migration failed',
+      details: {
+        preview: {
+          checksum: 'abc',
+        },
+      },
+    })
+    const serialized = JSON.stringify(result.payload)
+    expect(serialized).not.toContain('sqlStatements')
+    expect(serialized).not.toContain('rollbackStatements')
+    expect(serialized).not.toContain('sql_statements')
+    expect(serialized).not.toContain('rollback_statements')
+    expect(serialized).not.toContain('alter table')
+  })
+
   it('Generic Error → code 1, payload code UNKNOWN_ERROR', () => {
     const e = new Error('unexpected')
     const result = _classifyError(e)
