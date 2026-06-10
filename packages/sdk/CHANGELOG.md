@@ -1,4 +1,4 @@
-# Changelog
+# @orbit-ai/sdk
 
 ## 0.1.0-alpha.1
 
@@ -44,21 +44,15 @@
   - Improve release dry-run diagnostics for spawn failures, signals, and malformed manifests.
   - Fix release docs and stale Orbit SDK environment variable examples.
 
-- [#60](https://github.com/sharonds/orbit-ai/pull/60) [`b2e12a8`](https://github.com/sharonds/orbit-ai/commit/b2e12a85fb7d27d116d92748d690697ae14bcf0b) Thanks [@sharonds](https://github.com/sharonds)! - Add missing npm metadata for the CLI, demo seed, and integrations packages, and harden the alpha publish workflow with package artifact verification.
+- [#84](https://github.com/sharonds/orbit-ai/pull/84) [`e323e15`](https://github.com/sharonds/orbit-ai/commit/e323e155133be5b1397ee1d639e883f11ccdaefe) Thanks [@sharonds](https://github.com/sharonds)! - Add the alpha schema migration safety surface across core, API, SDK, and CLI:
+  checksum-bound preview/apply/rollback, explicit migration authority gating,
+  rollbackability reporting, and executable destructive custom-field delete/rename
+  semantics. MCP intentionally continues to exclude destructive schema migration
+  tools until a separate elicitation UX exists.
+
+- [#113](https://github.com/sharonds/orbit-ai/pull/113) [`6ddab7b`](https://github.com/sharonds/orbit-ai/commit/6ddab7ba728d91b10a8af90724b820f88f1d7e13) Thanks [@sharonds](https://github.com/sharonds)! - Document schema migration hardening semantics in package READMEs: time-bound destructive confirmations, supported custom-field migration targets, SQL field redaction, and Postgres connection pool requirements for migration applies.
+
+- [#111](https://github.com/sharonds/orbit-ai/pull/111) [`2185b8a`](https://github.com/sharonds/orbit-ai/commit/2185b8a93cde791944a57500233e30c1c372f261) Thanks [@sharonds](https://github.com/sharonds)! - Harden schema migration execution and public output boundaries: validate custom-field migration targets, fail closed on metadata DML row-count drift, time-bound destructive confirmations, recheck idempotency inside migration locks, and redact raw SQL statement fields across API, SDK, CLI, and MCP outputs.
 
 - Updated dependencies [[`58abcba`](https://github.com/sharonds/orbit-ai/commit/58abcba5d0c761aa8d9de46f028a545acdeaf9ea), [`8460425`](https://github.com/sharonds/orbit-ai/commit/846042535250baf354eabd223b97959babc0db63), [`ac1bd5a`](https://github.com/sharonds/orbit-ai/commit/ac1bd5a750c59cb5a98b25fa22bee3b46a5d9899), [`3ec754c`](https://github.com/sharonds/orbit-ai/commit/3ec754c47b868bf8b98fc85d648250811fd0b857), [`8f6291f`](https://github.com/sharonds/orbit-ai/commit/8f6291f0c71ea857a01d96dbcc5cd2bb52d23e63), [`e323e15`](https://github.com/sharonds/orbit-ai/commit/e323e155133be5b1397ee1d639e883f11ccdaefe), [`6ddab7b`](https://github.com/sharonds/orbit-ai/commit/6ddab7ba728d91b10a8af90724b820f88f1d7e13), [`2185b8a`](https://github.com/sharonds/orbit-ai/commit/2185b8a93cde791944a57500233e30c1c372f261)]:
   - @orbit-ai/core@0.1.0-alpha.1
-
-All notable changes to `@orbit-ai/demo-seed` are documented here.
-
-## [Unreleased]
-
-- Initial release. Deterministic multi-tenant seed dataset (`acme` and `beta` profiles) built on top of `@orbit-ai/core` services.
-- Safety: `seed({ mode: 'reset' })` now refuses to wipe an organization the current call did not create unless `allowResetOfExistingOrg: true` is set explicitly. Guards against a slug collision with a real tenant named "Acme Events" / "Beta Collective".
-- Safety: `resetSeed()` clears `entity_tags` before `tags` to prevent FK violations when a consumer has associated seed tags with records.
-- Fix: `seedPipelinesAndStages` is now append-idempotent — re-uses any existing "Default Sales Pipeline" and its stages rather than creating duplicates.
-- Fix: `seedTags` filters by name directly instead of paginating the first 100 tags, which silently broke for tenants with more than 100 tags.
-- Fix: `seedUsers` strips spaces/punctuation from generated emails so names like "De Boer" pass Zod validation.
-- Fix: `pnpm pack` now includes the compiled `dist/` via a `prepack` script. Previously tarballs contained only metadata.
-- Packaging: demo domains use only IANA-reserved, non-routable TLDs per RFC 2606 / 6761 (`.test`, `.example`, `.invalid`); demo user emails keep the RFC 6762 `.local` suffix.
-- Packaging: `engines.node` pinned to `>=22.0.0`.

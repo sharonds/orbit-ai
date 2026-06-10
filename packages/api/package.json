@@ -1,6 +1,6 @@
 {
   "name": "@orbit-ai/api",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Hono-based REST API for Orbit AI — multi-tenant CRM server with auth, tenant isolation, and idempotency",
   "keywords": [
     "crm",

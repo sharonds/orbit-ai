@@ -1,6 +1,6 @@
 {
   "name": "@orbit-ai/sdk",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "TypeScript client SDK for Orbit AI — type-safe CRM client with HTTP and direct-core transports",
   "keywords": [
     "crm",
