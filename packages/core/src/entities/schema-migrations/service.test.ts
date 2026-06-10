@@ -499,6 +499,8 @@ describe('schemaMigration admin service', () => {
   })
 
   it('serializes idempotency-keyed applies across different targets before ledger create', async () => {
+    // Park the winner inside ledger.create — at that point it holds both the
+    // idempotency and target locks — then race a same-key/different-target apply.
     const users = createUsersForOrg()
     const baseRepository = createInMemorySchemaMigrationRepository([], { users })
     let releaseFirstCreate!: () => void

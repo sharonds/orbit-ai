@@ -443,68 +443,68 @@ export class OrbitSchemaEngine {
     const target = operationTarget(preview.operations[0]!)
     const runWithTargetLock = async (): Promise<SchemaMigrationApplyOutput> =>
       this.ledger.withMigrationLock(ctx, { adapter: preview.adapter, target }, async () => {
-      // Recheck apply idempotency FIRST, matching the pre-lock order: the
-      // winner of a race commits its custom field before marking the ledger
-      // 'applied', so rechecking preconditions first would surface a
-      // misleading duplicate-field CONFLICT that shadows the idempotent
-      // applied result. Idempotency-first lets a raced identical replay
-      // succeed idempotently, with identical safety — both rechecks still
-      // run before ledger.create and authority execution.
-      const lockedExisting = await this.findExistingApplyMigration(ctx, input, preview)
-      if (lockedExisting) {
-        return this.resolveExistingApplyMigration(lockedExisting, input)
-      }
-      // Recheck mutable preconditions now that the migration lock is held:
-      // this closes migration-vs-migration races where another apply created
-      // the same custom field metadata (under a different checksum or key)
-      // between the pre-lock check and lock entry. addField-vs-migration
-      // races remain backstopped by the unique index on custom field
-      // definitions.
-      await this.assertApplyOperationPreconditions(ctx, preview.operations)
-      await this.ledger.create(ctx, record)
-      await this.ledger.updateStatus(ctx, migrationId, {
-        status: 'running',
-        startedAt: new Date(),
-        appliedBy: ctx.userId ?? null,
-      })
-      try {
-        await authority.run({
-          ctx,
-          operation: 'apply',
-          checksum: preview.checksum,
+        // Recheck apply idempotency FIRST, matching the pre-lock order: the
+        // winner of a race commits its custom field before marking the ledger
+        // 'applied', so rechecking preconditions first would surface a
+        // misleading duplicate-field CONFLICT that shadows the idempotent
+        // applied result. Idempotency-first lets a raced identical replay
+        // succeed idempotently, with identical safety — both rechecks still
+        // run before ledger.create and authority execution.
+        const lockedExisting = await this.findExistingApplyMigration(ctx, input, preview)
+        if (lockedExisting) {
+          return this.resolveExistingApplyMigration(lockedExisting, input)
+        }
+        // Recheck mutable preconditions now that the migration lock is held:
+        // this closes migration-vs-migration races where another apply created
+        // the same custom field metadata (under a different checksum or key)
+        // between the pre-lock check and lock entry. addField-vs-migration
+        // races remain backstopped by the unique index on custom field
+        // definitions.
+        await this.assertApplyOperationPreconditions(ctx, preview.operations)
+        await this.ledger.create(ctx, record)
+        await this.ledger.updateStatus(ctx, migrationId, {
+          status: 'running',
+          startedAt: new Date(),
+          appliedBy: ctx.userId ?? null,
+        })
+        try {
+          await authority.run({
+            ctx,
+            operation: 'apply',
+            checksum: preview.checksum,
+            migrationId,
+          }, async (db) => {
+            await this.executeForwardOperations(db, ctx, preview.operations)
+          })
+          await this.ledger.updateStatus(ctx, migrationId, {
+            status: 'applied',
+            appliedAt: new Date(),
+            errorCode: null,
+            errorMessage: null,
+          })
+        } catch (error) {
+          const failure = sanitizedMigrationFailure('apply', error)
+          await this.ledger.updateStatus(ctx, migrationId, {
+            status: 'failed',
+            failedAt: new Date(),
+            errorCode: failure.code,
+            errorMessage: failure.message,
+          })
+          throw migrationExecutionError('apply', error)
+        }
+        // Strict parse before returning: guarantees internal SQL fields can
+        // never leak through the fresh-apply output path. Constructed AFTER the
+        // try/catch so a parse failure can never mark a successfully-applied
+        // migration as failed in the ledger.
+        return schemaMigrationApplyOutputSchema.parse({
           migrationId,
-        }, async (db) => {
-          await this.executeForwardOperations(db, ctx, preview.operations)
+          checksum: preview.checksum,
+          status: 'applied' as const,
+          appliedOperations: preview.operations,
+          ...rollbackMetadataFor(reverseOperations),
+          ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
         })
-        await this.ledger.updateStatus(ctx, migrationId, {
-          status: 'applied',
-          appliedAt: new Date(),
-          errorCode: null,
-          errorMessage: null,
-        })
-      } catch (error) {
-        const failure = sanitizedMigrationFailure('apply', error)
-        await this.ledger.updateStatus(ctx, migrationId, {
-          status: 'failed',
-          failedAt: new Date(),
-          errorCode: failure.code,
-          errorMessage: failure.message,
-        })
-        throw migrationExecutionError('apply', error)
-      }
-      // Strict parse before returning: guarantees internal SQL fields can
-      // never leak through the fresh-apply output path. Constructed AFTER the
-      // try/catch so a parse failure can never mark a successfully-applied
-      // migration as failed in the ledger.
-      return schemaMigrationApplyOutputSchema.parse({
-        migrationId,
-        checksum: preview.checksum,
-        status: 'applied' as const,
-        appliedOperations: preview.operations,
-        ...rollbackMetadataFor(reverseOperations),
-        ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
-      })
-    }).then((locked) => locked.result)
+      }).then((locked) => locked.result)
 
     // Idempotency keys match org-wide, but the target lock only serializes
     // applies that share a migration target. Wrap idempotency-keyed applies in
@@ -512,7 +512,9 @@ export class OrbitSchemaEngine {
     // DIFFERENT targets cannot both pass the idempotency rechecks and create
     // duplicate ledger rows. Both locks are non-blocking try-locks acquired in
     // a fixed order (idempotency, then target), so contention surfaces as
-    // MIGRATION_CONFLICT rather than a deadlock.
+    // MIGRATION_CONFLICT rather than a deadlock. On Postgres each lock holds a
+    // pooled connection for the apply's duration, so idempotency-keyed applies
+    // need pool headroom for one extra concurrent connection.
     if (input.idempotencyKey) {
       return this.ledger.withMigrationLock(ctx, {
         adapter: preview.adapter,
