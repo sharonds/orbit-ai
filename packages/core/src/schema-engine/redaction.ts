@@ -22,7 +22,7 @@ export function isSchemaMigrationInternalField(key: string): boolean {
   return SCHEMA_MIGRATION_INTERNAL_FIELDS.has(key)
 }
 
-export function stripSchemaMigrationInternalFields<T extends Record<string, unknown>>(value: T): Record<string, unknown> {
+export function stripSchemaMigrationInternalFields(value: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(value).filter(([key]) => !isSchemaMigrationInternalField(key)),
   )

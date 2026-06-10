@@ -74,7 +74,7 @@ async function runMigrate(
 
   if (opts.preview) {
     const preview = await client.schema.previewMigration(parseOperationsRequest(opts.operations))
-    process.stdout.write(JSON.stringify(sanitizeSchemaPreviewForCli(preview), null, 2) + '\n')
+    process.stdout.write(JSON.stringify(stripSchemaMigrationInternalFields(preview), null, 2) + '\n')
     return
   }
 
@@ -90,7 +90,7 @@ async function runMigrate(
         process.stdout.write(
           JSON.stringify({
             ...DESTRUCTIVE_ERROR,
-            error: { ...DESTRUCTIVE_ERROR.error, preview: sanitizeSchemaPreviewForCli(preview) },
+            error: { ...DESTRUCTIVE_ERROR.error, preview: stripSchemaMigrationInternalFields(preview) },
           }) + '\n',
         )
         process.exit(1)
@@ -109,7 +109,7 @@ async function runMigrate(
 
     const operations = readPreviewOperations(preview)
     const checksum = readPreviewChecksum(preview)
-    const result = sanitizeSchemaPreviewForCli(await client.schema.applyMigration({
+    const result = stripSchemaMigrationInternalFields(await client.schema.applyMigration({
       operations,
       checksum,
       ...(hasDestructive && confirmed ? { confirmation: makeConfirmation(checksum) } : {}),
@@ -141,7 +141,7 @@ async function runMigrate(
           ...(confirmed ? { confirmation: makeConfirmation(opts.checksum) } : {}),
         }
       : undefined
-    const result = sanitizeSchemaPreviewForCli(await client.schema.rollbackMigration(opts.id, body))
+    const result = stripSchemaMigrationInternalFields(await client.schema.rollbackMigration(opts.id, body))
     if (isJsonMode()) {
       process.stdout.write(JSON.stringify(result, null, 2) + '\n')
     } else {
@@ -149,15 +149,6 @@ async function runMigrate(
     }
     return
   }
-}
-
-/**
- * CLI-owned output envelopes embed schema migration results directly, so
- * strip internal SQL statement fields via the shared core denylist before
- * writing anything to stdout.
- */
-function sanitizeSchemaPreviewForCli(preview: Record<string, unknown>): Record<string, unknown> {
-  return stripSchemaMigrationInternalFields(preview)
 }
 
 function parseOperationsRequest(value: string | undefined): { operations: unknown[] } {

@@ -483,16 +483,6 @@ export class OrbitSchemaEngine {
           errorCode: null,
           errorMessage: null,
         })
-        // Strict parse before returning: guarantees internal SQL fields can
-        // never leak through the fresh-apply output path.
-        return schemaMigrationApplyOutputSchema.parse({
-          migrationId,
-          checksum: preview.checksum,
-          status: 'applied' as const,
-          appliedOperations: preview.operations,
-          ...rollbackMetadataFor(reverseOperations),
-          ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
-        })
       } catch (error) {
         const failure = sanitizedMigrationFailure('apply', error)
         await this.ledger.updateStatus(ctx, migrationId, {
@@ -503,6 +493,18 @@ export class OrbitSchemaEngine {
         })
         throw migrationExecutionError('apply', error)
       }
+      // Strict parse before returning: guarantees internal SQL fields can
+      // never leak through the fresh-apply output path. Constructed AFTER the
+      // try/catch so a parse failure can never mark a successfully-applied
+      // migration as failed in the ledger.
+      return schemaMigrationApplyOutputSchema.parse({
+        migrationId,
+        checksum: preview.checksum,
+        status: 'applied' as const,
+        appliedOperations: preview.operations,
+        ...rollbackMetadataFor(reverseOperations),
+        ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+      })
     }).then((locked) => locked.result)
   }
 
@@ -563,15 +565,6 @@ export class OrbitSchemaEngine {
           errorCode: null,
           errorMessage: null,
         })
-        // Strict parse before returning: guarantees internal ledger fields
-        // (e.g. rollbackStatements) can never leak through rollback output.
-        return schemaMigrationRollbackOutputSchema.parse({
-          migrationId: input.migrationId,
-          rolledBackMigrationId: input.migrationId,
-          checksum: rollbackChecksum,
-          status: 'rolled_back' as const,
-          operations: record.reverseOperations,
-        })
       } catch (error) {
         const failure = sanitizedMigrationFailure('rollback', error)
         await this.ledger.updateStatus(ctx, input.migrationId, {
@@ -582,6 +575,17 @@ export class OrbitSchemaEngine {
         })
         throw migrationExecutionError('rollback', error)
       }
+      // Strict parse before returning: guarantees internal ledger fields
+      // (e.g. rollbackStatements) can never leak through rollback output.
+      // Constructed AFTER the try/catch so a parse failure can never revert
+      // the ledger status of a successfully rolled-back migration.
+      return schemaMigrationRollbackOutputSchema.parse({
+        migrationId: input.migrationId,
+        rolledBackMigrationId: input.migrationId,
+        checksum: rollbackChecksum,
+        status: 'rolled_back' as const,
+        operations: record.reverseOperations,
+      })
     }).then((locked) => locked.result)
   }
 
