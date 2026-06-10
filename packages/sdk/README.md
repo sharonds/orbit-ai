@@ -164,6 +164,12 @@ or `production`, core also requires `confirmation.safeguards` with environment
 acknowledgement, backup or snapshot evidence, ledger evidence, and a rollback or
 non-rollbackable decision before elevated execution.
 
+`schema.rollbackMigration()` validates the checksum for the stored reverse operations, not the original apply checksum. Compute or read the rollback checksum before sending confirmation. DirectTransport applies the same schema migration redaction as the HTTP API and does not expose raw SQL statement fields.
+
+Custom-field migration helpers follow the core migration target contract: only entities with custom field value storage can be migrated. Public objects without value storage, such as pipelines, stages, tags, and users, reject custom-field migration operations.
+
+On Postgres, a migration apply through DirectTransport can hold up to three concurrent connections (tenant-context transaction, advisory-lock transaction, ledger write) — four when an idempotency key is supplied, since idempotency-keyed applies take an additional advisory-lock transaction. Configure the connection pool with `max: 4` or higher when running migrations.
+
 ## Direct-core transport (server-side / tests)
 
 > **@security** DirectTransport bypasses HTTP, auth middleware, rate limiting,

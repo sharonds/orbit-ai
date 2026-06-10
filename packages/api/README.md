@@ -147,6 +147,10 @@ environments. When `destructiveMigrationEnvironment` is `staging` or
 `confirmation.safeguards`: environment acknowledgement, backup or snapshot
 evidence, ledger evidence, and a rollback or non-rollbackable decision.
 
+Destructive schema migration operations require `schema:apply` and a confirmation object whose checksum matches the current migration checksum. Confirmations expire 15 minutes after `confirmedAt` and are rejected if they are more than 60 seconds in the future. Public migration responses do not include raw SQL statement fields.
+
+Custom-field migration operations are limited to entities that store custom field values. Public objects without custom field value storage, including pipelines, stages, tags, and users, reject custom-field add, update, rename, delete, and promote operations before migration authority executes.
+
 Errors follow:
 
 ```json

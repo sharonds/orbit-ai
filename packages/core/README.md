@@ -100,6 +100,11 @@ evidence in `confirmation.safeguards` before elevated execution.
 `custom_field.delete` apply is executable but non-rollbackable unless future
 value snapshots exist; `custom_field.rename` is rollbackable.
 
+Destructive confirmations are checksum-bound and time-bound: confirmations expire
+15 minutes after `confirmedAt` and are rejected if `confirmedAt` is more than 60
+seconds in the future. Custom-field migration operations are limited to entities
+with custom field value storage.
+
 Migration execution requires an explicit `SchemaMigrationAuthority` when services
 are created. Request/runtime adapters expose normal data access; elevated DDL
 access is only entered through that authority and only for apply/rollback paths.
