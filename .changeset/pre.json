@@ -9,7 +9,21 @@
     "@orbit-ai/demo-seed": "0.1.0-alpha.0",
     "@orbit-ai/integrations": "0.1.0-alpha.0",
     "@orbit-ai/mcp": "0.1.0-alpha.0",
-    "@orbit-ai/sdk": "0.1.0-alpha.0"
+    "@orbit-ai/sdk": "0.1.0-alpha.0",
+    "@orbit-ai/e2e": "0.0.0",
+    "orbit-ai-nodejs-quickstart": "0.0.0"
   },
-  "changesets": []
+  "changesets": [
+    "business-e2e-demo-gate",
+    "dependabot-security-bumps",
+    "hono-4-12-21-security",
+    "moderate-dependency-advisories",
+    "plan-b-codex-followups",
+    "plan-c-followups",
+    "plan-c5-migration-engine",
+    "plan-d-followups",
+    "release-readiness-check",
+    "schema-migration-hardening-docs",
+    "schema-migration-hardening"
+  ]
 }

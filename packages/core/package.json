@@ -1,6 +1,6 @@
 {
   "name": "@orbit-ai/core",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Schema engine, entities, adapters, and shared types for Orbit AI — a CRM infrastructure for AI agents",
   "keywords": [
     "crm",
