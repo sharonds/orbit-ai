@@ -2285,6 +2285,112 @@ describe('OrbitSchemaEngine', () => {
     expect(authority.run).not.toHaveBeenCalled()
   })
 
+  it('rejects custom_field.add for entities without custom field value storage', async () => {
+    const customFields = createInMemoryCustomFieldRepo()
+    const migrationLedger = trackingLedger()
+    const migrationAuthority = makeAuthority()
+    const engine = makeEngine(customFields, migrationAuthority, migrationLedger)
+    const operation = {
+      type: 'custom_field.add',
+      entityType: 'pipelines',
+      fieldName: 'bad_pipeline_field',
+      fieldType: 'text',
+      label: 'Bad pipeline field',
+    } as const
+
+    const preview = await engine.preview(ctx, { operations: [operation] })
+
+    await expect(engine.apply(ctx, {
+      operations: [operation],
+      checksum: preview.checksum,
+    })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+    })
+
+    await expect(customFields.list(ctx, {
+      filter: { entity_type: 'pipelines', field_name: 'bad_pipeline_field' },
+    })).resolves.toMatchObject({ data: [] })
+    expect(migrationAuthority.run).not.toHaveBeenCalled()
+    expect(migrationLedger.create).not.toHaveBeenCalled()
+  })
+
+  it('rejects addField for entities without custom field value storage', async () => {
+    const customFields = createInMemoryCustomFieldRepo()
+    const migrationAuthority = makeAuthority()
+    const engine = makeEngine(customFields, migrationAuthority)
+
+    await expect(engine.addField(ctx, 'pipelines', {
+      name: 'bad_pipeline_field',
+      type: 'text',
+    })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+    })
+
+    await expect(customFields.list(ctx, {
+      filter: { entity_type: 'pipelines', field_name: 'bad_pipeline_field' },
+    })).resolves.toMatchObject({ data: [] })
+    expect(migrationAuthority.run).not.toHaveBeenCalled()
+  })
+
+  it('rejects duplicate custom_field.add with CONFLICT before elevated execution', async () => {
+    const customFields = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000048', 'linkedin_url'),
+    ])
+    const migrationLedger = trackingLedger()
+    const migrationAuthority = makeAuthority()
+    const engine = makeEngine(customFields, migrationAuthority, migrationLedger, undefined, 'development')
+
+    const preview = await engine.preview(ctx, { operations: APPLY_OPERATIONS })
+
+    await expect(engine.apply(ctx, {
+      operations: APPLY_OPERATIONS,
+      checksum: preview.checksum,
+      confirmation: {
+        destructive: true,
+        checksum: preview.checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'fieldName',
+    })
+
+    expect(migrationAuthority.run).not.toHaveBeenCalled()
+    expect(migrationLedger.create).not.toHaveBeenCalled()
+  })
+
+  it('rechecks custom_field.add duplicate preconditions inside the migration lock', async () => {
+    const duplicate = field('field_01J00000000000000000000049', 'linkedin_url')
+    let filteredListCalls = 0
+    const customFields = createInMemoryCustomFieldRepo({
+      async list(_requestCtx, query) {
+        if (query.filter?.field_name === 'linkedin_url') {
+          filteredListCalls += 1
+          // First filtered read is the pre-lock precondition check (no
+          // duplicate yet); a concurrent migration then creates the field
+          // before this request enters the migration lock.
+          if (filteredListCalls === 1) {
+            return { data: [], hasMore: false, nextCursor: null }
+          }
+          return { data: [duplicate], hasMore: false, nextCursor: null }
+        }
+        return { data: [], hasMore: false, nextCursor: null }
+      },
+    })
+    const migrationLedger = trackingLedger()
+    const migrationAuthority = makeAuthority()
+    const engine = makeEngine(customFields, migrationAuthority, migrationLedger)
+
+    await expect(engine.apply(ctx, APPLY_INPUT)).rejects.toMatchObject({
+      code: 'CONFLICT',
+      field: 'fieldName',
+    })
+
+    expect(filteredListCalls).toBe(2)
+    expect(migrationAuthority.run).not.toHaveBeenCalled()
+    expect(migrationLedger.create).not.toHaveBeenCalled()
+  })
+
   it('updates safe custom field metadata without migration authority', async () => {
     const repo = createInMemoryCustomFieldRepo([
       field('field_01J00000000000000000000040', 'linkedin_url', ctx.orgId, {

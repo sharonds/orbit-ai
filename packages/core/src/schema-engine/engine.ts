@@ -292,6 +292,7 @@ export class OrbitSchemaEngine {
     if (!PUBLIC_CRM_ENTITY_TYPES.includes(entityType as PublicCrmEntityType)) {
       this.validationFailed(`Unknown entity type: ${entityType}`, 'entityType')
     }
+    this.tableForExtensibleEntity(entityType)
 
     const now = new Date()
     const record: CustomFieldDefinitionRecord = {
@@ -443,6 +444,12 @@ export class OrbitSchemaEngine {
 
     const target = operationTarget(preview.operations[0]!)
     return this.ledger.withMigrationLock(ctx, { adapter: preview.adapter, target }, async () => {
+      // Recheck mutable preconditions now that the migration lock is held:
+      // this closes migration-vs-migration races where another apply created
+      // the same custom field metadata between the pre-lock check and lock
+      // entry. addField-vs-migration races remain backstopped by the unique
+      // index on custom field definitions.
+      await this.assertApplyOperationPreconditions(ctx, preview.operations)
       await this.ledger.create(ctx, record)
       await this.ledger.updateStatus(ctx, migrationId, {
         status: 'running',
@@ -633,6 +640,18 @@ export class OrbitSchemaEngine {
   ): Promise<void> {
     for (const operation of operations) {
       switch (operation.type) {
+        case 'custom_field.add': {
+          this.tableForExtensibleEntity(operation.entityType)
+          const existing = await this.findCustomField(ctx, operation.entityType, operation.fieldName)
+          if (existing) {
+            throw createOrbitError({
+              code: 'CONFLICT',
+              message: `Custom field '${operation.fieldName}' already exists for entity type '${operation.entityType}' in this organization`,
+              field: 'fieldName',
+            })
+          }
+          break
+        }
         case 'custom_field.delete': {
           this.tableForExtensibleEntity(operation.entityType)
           const existing = await this.findCustomField(ctx, operation.entityType, operation.fieldName)
