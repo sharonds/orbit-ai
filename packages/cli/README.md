@@ -90,6 +90,16 @@ environments (`ORBIT_DESTRUCTIVE_MIGRATION_ENVIRONMENT=staging` or
 environment acknowledgement, backup or snapshot evidence, ledger evidence, and a
 rollback or non-rollbackable decision.
 
+CLI JSON output redacts raw SQL statement fields from migration previews,
+applies, rollbacks, and destructive-confirmation errors — including API error
+envelopes.
+
+Custom-field migration commands are limited to entities with custom field value
+storage. Pipelines, stages, tags, and users do not support custom-field
+migration operations.
+
+On Postgres, a migration apply through DirectTransport can hold up to three concurrent connections (tenant-context transaction, advisory-lock transaction, ledger write) — four when an idempotency key is supplied, since idempotency-keyed applies take an additional advisory-lock transaction. Configure the connection pool with `max: 4` or higher when running migrations.
+
 ### CRM Entities
 
 All entity commands follow the same pattern: `orbit <entity> <verb> [args]`

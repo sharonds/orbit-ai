@@ -25,7 +25,7 @@ journeys cannot cross tenant, scope, credential, or transport boundaries.
 | Webhook SSRF | API route rejects private targets | Prove webhook create rejects localhost, loopback, link-local metadata, private IPs, and IPv4-mapped loopback | `e2e/src/security/webhook-ssrf.test.ts` |
 | SQLite tenant warning | Docs warn SQLite has no RLS | Business docs must not present SQLite as multi-tenant production-safe | Docs review checklist |
 | Postgres RLS | Current e2e does not prove restricted-role RLS | Deferred unless a restricted-role Postgres harness exists | Follow-up plan |
-| Migration safety | Journey 8 is stub passthrough only | Deferred to Plan C.5; do not claim destructive migration safety until real engine lands | Existing Plan C.5 |
+| Migration safety | Journey 8 covers destructive custom-field delete preview/apply and MCP exclusion; Journey 16 covers custom-field rename apply | Add restricted-role Postgres/RLS proof when harness exists | `e2e/src/journeys/08-migration-preview-apply.test.ts`, `e2e/src/journeys/16-custom-field-rename.test.ts`, `packages/core/src/schema-engine/engine.test.ts`, `packages/api/src/__tests__/routes-wave2.test.ts`, `packages/sdk/src/__tests__/direct-transport.test.ts`, `packages/cli/src/__tests__/destructive-actions.test.ts`, `packages/mcp/src/__tests__/schema-tools.test.ts` |
 
 ## High-Risk Abuse Stories
 
@@ -130,6 +130,17 @@ MCP stdio wire coverage remains deferred because `packages/mcp/package.json` has
 no `bin` entry and `packages/cli/src/commands/mcp.ts` still throws
 `DEPENDENCY_NOT_AVAILABLE` for `orbit mcp serve`. Restricted-role Postgres/RLS
 proof remains outside this SQLite-only gate.
+
+## Schema Migration Hardening Update
+
+**2026-06-10 update:** Schema migration safety coverage now includes invalid
+custom-field migration target rejection, metadata row-count failure handling,
+time-bound destructive confirmations, SQL field redaction across
+API/SDK/CLI/MCP output boundaries (including CLI global API-error envelopes),
+migration apply idempotency rechecks inside the lock, and cross-target
+idempotency-key lock serialization. Journey 16 rollback execution proof and
+restricted-role Postgres/RLS proof remain deferred (rollback proof tracked in
+#105).
 
 ## MCP Agent Q&A Update
 

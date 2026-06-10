@@ -86,6 +86,14 @@ Use this checklist before exposing a new table, route, connector, or environment
 - [ ] runtime app credentials cannot run schema migrations
 - [ ] destructive migrations cannot run silently in production
 
+### 4.4 Schema Migration Hardening Requirements
+
+- [x] Custom-field migration operations may target only entities with custom field value storage. Public-but-non-extensible objects such as pipelines, stages, tags, and users must be rejected before migration authority executes.
+- [x] Metadata-changing migration DML must fail closed when the expected custom field metadata row is not affected. Entity value cleanup may affect zero rows; metadata delete/rename must affect exactly one row.
+- [x] Destructive migration confirmations are checksum-bound and time-bound. A confirmation is valid for 15 minutes from `confirmedAt`, with at most 60 seconds of future clock skew.
+- [x] Public schema migration outputs must not expose raw generated SQL fields, including `sqlStatements`, `rollbackStatements`, `sql_statements`, or `rollback_statements`.
+- [x] Idempotency-keyed applies are serialized by a dedicated migration lock keyed on a SHA-256 digest of the idempotency key; lock conflict details never expose raw key material.
+
 ## 5. API Key Storage and Access
 
 ### 5.1 Required
