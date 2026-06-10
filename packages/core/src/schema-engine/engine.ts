@@ -440,22 +440,24 @@ export class OrbitSchemaEngine {
 
     const target = operationTarget(preview.operations[0]!)
     return this.ledger.withMigrationLock(ctx, { adapter: preview.adapter, target }, async () => {
-      // Recheck mutable preconditions now that the migration lock is held:
-      // this closes migration-vs-migration races where another apply created
-      // the same custom field metadata between the pre-lock check and lock
-      // entry. addField-vs-migration races remain backstopped by the unique
-      // index on custom field definitions.
-      await this.assertApplyOperationPreconditions(ctx, preview.operations)
-      // Recheck apply idempotency now that the lock is held: the pre-lock
-      // ledger read is stale if a concurrent apply committed this same
-      // migration between that read and lock acquisition. This recheck covers
-      // migration-vs-migration races (addField-vs-migration races stay
-      // backstopped by the unique index on custom field definitions) and must
-      // run before ledger.create so a replay never inserts a duplicate row.
+      // Recheck apply idempotency FIRST, matching the pre-lock order: the
+      // winner of a race commits its custom field before marking the ledger
+      // 'applied', so rechecking preconditions first would surface a
+      // misleading duplicate-field CONFLICT that shadows the idempotent
+      // applied result. Idempotency-first lets a raced identical replay
+      // succeed idempotently, with identical safety — both rechecks still
+      // run before ledger.create and authority execution.
       const lockedExisting = await this.findExistingApplyMigration(ctx, input, preview)
       if (lockedExisting) {
         return this.resolveExistingApplyMigration(lockedExisting, input)
       }
+      // Recheck mutable preconditions now that the migration lock is held:
+      // this closes migration-vs-migration races where another apply created
+      // the same custom field metadata (under a different checksum or key)
+      // between the pre-lock check and lock entry. addField-vs-migration
+      // races remain backstopped by the unique index on custom field
+      // definitions.
+      await this.assertApplyOperationPreconditions(ctx, preview.operations)
       await this.ledger.create(ctx, record)
       await this.ledger.updateStatus(ctx, migrationId, {
         status: 'running',

@@ -1996,6 +1996,65 @@ describe('OrbitSchemaEngine', () => {
     expect(migrationAuthority.run).not.toHaveBeenCalled()
   })
 
+  it('returns the idempotent applied result when the raced winner committed both the custom field and the ledger row before lock entry', async () => {
+    // Realistic raced state: the winner commits its custom field BEFORE
+    // marking the ledger 'applied', so by lock entry the loser sees both. The
+    // in-lock idempotency recheck must run before the precondition recheck —
+    // otherwise the now-existing field surfaces a misleading duplicate-field
+    // CONFLICT that shadows the idempotent applied result.
+    const applied = migrationRecord({
+      id: 'migration_01J00000000000000000000079',
+      forwardOperations: APPLY_OPERATIONS,
+    })
+    const racedField = field('field_01J0000000000000000000RACE', 'linkedin_url', ctx.orgId, {
+      fieldType: 'url',
+    })
+    const repo = createInMemoryCustomFieldRepo()
+    const migrationLedger = trackingLedger()
+    let listCalls = 0
+    vi.mocked(migrationLedger.list).mockImplementation(async () => {
+      listCalls += 1
+      // Calls 1 (preview ledger state) and 2 (pre-lock idempotency check) see
+      // no applied record; the in-lock recheck (call 3) sees the raced winner.
+      if (listCalls <= 2) {
+        return { data: [], hasMore: false, nextCursor: null }
+      }
+      return { data: [applied], hasMore: false, nextCursor: null }
+    })
+    vi.mocked(migrationLedger.withMigrationLock).mockImplementation(async (_ctx, scope, fn) => {
+      // The pre-lock precondition check already passed against an empty repo;
+      // the raced winner's field becomes visible right before lock entry.
+      await repo.create(ctx, racedField)
+      return {
+        result: await fn(),
+        lock: {
+          key: 'test-lock',
+          orgId: ctx.orgId,
+          adapter: scope.adapter,
+          target: scope.target,
+          acquired: true,
+          contended: false,
+          released: true,
+          acquiredAt: new Date('2026-04-24T00:00:00.000Z'),
+          releasedAt: new Date('2026-04-24T00:00:00.000Z'),
+        },
+      }
+    })
+    const migrationAuthority = makeAuthority()
+    const engine = makeEngine(repo, migrationAuthority, migrationLedger)
+
+    await expect(engine.apply(ctx, APPLY_INPUT)).resolves.toMatchObject({
+      migrationId: applied.id,
+      checksum: applied.checksum,
+      status: 'applied',
+      appliedOperations: APPLY_OPERATIONS,
+    })
+    expect(listCalls).toBe(3)
+    expect(migrationLedger.create).not.toHaveBeenCalled()
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalled()
+    expect(migrationAuthority.run).not.toHaveBeenCalled()
+  })
+
   it('records sanitized apply failure details when semantic execution fails inside authority', async () => {
     const migrationDb = makeMigrationDb()
     vi.mocked(migrationDb.execute).mockRejectedValue(new Error('raw sql ALTER TABLE contacts ADD COLUMN secret text leaked'))
