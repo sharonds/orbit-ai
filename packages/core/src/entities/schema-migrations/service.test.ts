@@ -457,19 +457,24 @@ describe('schemaMigration admin service', () => {
     // operation classifies as conflict-prone (destructive) and needs a
     // confirmation to reach the lock — where non-blocking acquisition must
     // still reject immediate contention, in-lock idempotency recheck or not.
-    await expect(engine.apply(engineCtx, {
-      operations: forwardOperations,
-      checksum,
-      confirmation: { destructive: true, checksum, confirmedAt: new Date().toISOString() },
-    })).rejects.toMatchObject({
-      code: 'MIGRATION_CONFLICT',
-      details: expect.objectContaining({
-        acquired: false,
-        contended: true,
-      }),
-    })
+    try {
+      await expect(engine.apply(engineCtx, {
+        operations: forwardOperations,
+        checksum,
+        confirmation: { destructive: true, checksum, confirmedAt: new Date().toISOString() },
+      })).rejects.toMatchObject({
+        code: 'MIGRATION_CONFLICT',
+        details: expect.objectContaining({
+          acquired: false,
+          contended: true,
+        }),
+      })
+    } finally {
+      // Release even if the assertion fails, so the parked winner promise
+      // cannot be left dangling.
+      releaseWinner()
+    }
 
-    releaseWinner()
     const applied = await winner
     expect(applied.status).toBe('applied')
     expect(authorityRuns).toBe(1)

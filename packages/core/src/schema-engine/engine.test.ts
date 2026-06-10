@@ -1994,6 +1994,7 @@ describe('OrbitSchemaEngine', () => {
     expect(listCalls).toBe(3)
     expect(migrationLedger.create).not.toHaveBeenCalled()
     expect(migrationAuthority.run).not.toHaveBeenCalled()
+    expect(migrationLedger.withMigrationLock).toHaveBeenCalledTimes(1)
   })
 
   it('returns the idempotent applied result when the raced winner committed both the custom field and the ledger row before lock entry', async () => {
@@ -2053,6 +2054,7 @@ describe('OrbitSchemaEngine', () => {
     expect(migrationLedger.create).not.toHaveBeenCalled()
     expect(migrationLedger.updateStatus).not.toHaveBeenCalled()
     expect(migrationAuthority.run).not.toHaveBeenCalled()
+    expect(migrationLedger.withMigrationLock).toHaveBeenCalledTimes(1)
   })
 
   it('records sanitized apply failure details when semantic execution fails inside authority', async () => {
