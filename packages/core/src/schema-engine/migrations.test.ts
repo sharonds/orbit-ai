@@ -307,6 +307,11 @@ describe('destructive confirmation freshness contract', () => {
     expect(() => assertAt(confirmedAt.toISOString())).not.toThrow()
   })
 
+  it('accepts confirmations exactly sixty seconds in the future', () => {
+    const confirmedAt = new Date(now.getTime() + DESTRUCTIVE_CONFIRMATION_FUTURE_SKEW_MS)
+    expect(() => assertAt(confirmedAt.toISOString())).not.toThrow()
+  })
+
   it('rejects confirmations sixty-one seconds in the future', () => {
     const confirmedAt = new Date(now.getTime() + DESTRUCTIVE_CONFIRMATION_FUTURE_SKEW_MS + 1_000)
     let caught: unknown

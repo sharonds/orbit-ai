@@ -1,13 +1,15 @@
 import type { SQL } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 
-import { asMigrationDatabase, type OrbitDatabase, type StorageAdapter } from '../../adapters/interface.js'
+import { asMigrationDatabase, type OrbitAuthContext, type OrbitDatabase, type StorageAdapter } from '../../adapters/interface.js'
 import { generateId } from '../../ids/generate-id.js'
+import { OrbitSchemaEngine, type SchemaMigrationAuthority } from '../../schema-engine/engine.js'
 import {
   computeSchemaMigrationChecksum,
   type SchemaMigrationAdapterScope,
   type SchemaMigrationForwardOperation,
 } from '../../schema-engine/migrations.js'
+import { createInMemoryCustomFieldDefinitionRepository } from '../custom-field-definitions/repository.js'
 import { createInMemoryUserRepository } from '../users/repository.js'
 import { createInMemorySchemaMigrationRepository, createPostgresSchemaMigrationRepository } from './repository.js'
 import { createSchemaMigrationAdminService } from './service.js'
@@ -409,6 +411,83 @@ describe('schemaMigration admin service', () => {
     await expect(first).resolves.toMatchObject({ result: 'first' })
     expect(differentOrg.result).toBe('different-org')
     expect(differentTarget.result).toBe('different-target')
+  })
+
+  it('rejects a truly concurrent second apply with lock contention and replays idempotently after the winner commits', async () => {
+    const users = createUsersForOrg()
+    const repository = createInMemorySchemaMigrationRepository([], { users })
+    const customFields = createInMemoryCustomFieldDefinitionRepository()
+    const engineCtx: OrbitAuthContext = { orgId: ctx.orgId, scopes: ['*'] }
+    const migrationDb = {
+      transaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn(migrationDb),
+      execute: async () => ({ changes: 1 }),
+      query: async () => [],
+    }
+    let releaseWinner!: () => void
+    const winnerHeld = new Promise<void>((resolve) => { releaseWinner = resolve })
+    let signalWinnerInsideLock!: () => void
+    const winnerInsideLock = new Promise<void>((resolve) => { signalWinnerInsideLock = resolve })
+    let authorityRuns = 0
+    const migrationAuthority: SchemaMigrationAuthority = {
+      run: async (_context, fn) => {
+        authorityRuns += 1
+        if (authorityRuns === 1) {
+          signalWinnerInsideLock()
+          await winnerHeld
+        }
+        return fn(migrationDb as Parameters<Parameters<SchemaMigrationAuthority['run']>[1]>[0])
+      },
+    }
+    const engine = new OrbitSchemaEngine({
+      customFields: () => customFields,
+      ledger: () => repository,
+      migrationAuthority,
+      destructiveMigrationEnvironment: 'development',
+    })
+    const checksum = computeSchemaMigrationChecksum({
+      adapter,
+      orgId: ctx.orgId,
+      operations: forwardOperations,
+    })
+
+    const winner = engine.apply(engineCtx, { operations: forwardOperations, checksum })
+    await winnerInsideLock
+
+    // The loser previews while the winner's ledger row is running, so the
+    // operation classifies as conflict-prone (destructive) and needs a
+    // confirmation to reach the lock — where non-blocking acquisition must
+    // still reject immediate contention, in-lock idempotency recheck or not.
+    await expect(engine.apply(engineCtx, {
+      operations: forwardOperations,
+      checksum,
+      confirmation: { destructive: true, checksum, confirmedAt: new Date().toISOString() },
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_CONFLICT',
+      details: expect.objectContaining({
+        acquired: false,
+        contended: true,
+      }),
+    })
+
+    releaseWinner()
+    const applied = await winner
+    expect(applied.status).toBe('applied')
+    expect(authorityRuns).toBe(1)
+
+    // A replay after the winner committed resolves idempotently from the
+    // ledger: same migration id, no second authority run, single ledger row.
+    await expect(engine.apply(engineCtx, {
+      operations: forwardOperations,
+      checksum,
+    })).resolves.toMatchObject({
+      migrationId: applied.migrationId,
+      checksum,
+      status: 'applied',
+    })
+    expect(authorityRuns).toBe(1)
+    const rows = await repository.list(engineCtx, { limit: 100 })
+    expect(rows.data).toHaveLength(1)
+    expect(rows.data[0]!.status).toBe('applied')
   })
 
   it('uses tenant-scoped runtime context and advisory transaction locks for Postgres locks', async () => {

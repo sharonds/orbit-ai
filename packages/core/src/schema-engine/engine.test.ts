@@ -304,6 +304,20 @@ function makeMigrationDb() {
   return db as unknown as Parameters<Parameters<SchemaMigrationAuthority['run']>[1]>[0]
 }
 
+function postgresSnapshotAdapter(): SchemaEngineSchemaAdapter {
+  return {
+    name: 'postgres',
+    dialect: 'postgres',
+    supportsJsonbIndexes: true,
+    async getSchemaSnapshot() {
+      return {
+        customFields: [],
+        tables: ['contacts', 'custom_field_definitions', 'schema_migrations'],
+      }
+    },
+  } satisfies SchemaEngineSchemaAdapter
+}
+
 const APPLY_OPERATIONS: SchemaMigrationPublicForwardOperation[] = [{
   type: 'custom_field.add',
   entityType: 'contacts',
@@ -323,37 +337,45 @@ const DESTRUCTIVE_APPLY_INPUT = {
   operations: DESTRUCTIVE_APPLY_OPERATIONS,
   checksum: checksumFor(DESTRUCTIVE_APPLY_OPERATIONS),
 }
-const VALID_DESTRUCTIVE_CONFIRMATION = {
-  destructive: true,
-  checksum: DESTRUCTIVE_APPLY_INPUT.checksum,
-  confirmedAt: new Date().toISOString(),
+// Evaluated per-use (not at module load) so confirmedAt is always fresh
+// relative to the destructive-confirmation TTL when the test actually runs.
+function freshConfirmation() {
+  return {
+    destructive: true,
+    checksum: DESTRUCTIVE_APPLY_INPUT.checksum,
+    confirmedAt: new Date().toISOString(),
+  }
 }
-const PRODUCTION_DESTRUCTIVE_CONFIRMATION = {
-  ...VALID_DESTRUCTIVE_CONFIRMATION,
-  safeguards: {
-    environment: 'production',
-    environmentAcknowledged: true,
-  },
+function productionConfirmation() {
+  return {
+    ...freshConfirmation(),
+    safeguards: {
+      environment: 'production',
+      environmentAcknowledged: true,
+    },
+  }
 }
-const PRODUCTION_DESTRUCTIVE_CONFIRMATION_WITH_EVIDENCE = {
-  ...VALID_DESTRUCTIVE_CONFIRMATION,
-  safeguards: {
-    environment: 'production',
-    environmentAcknowledged: true,
-    backup: {
-      kind: 'snapshot',
-      evidenceId: 'snapshot_20260426_120000',
-      capturedAt: '2026-04-26T12:00:00.000Z',
+function productionConfirmationWithEvidence() {
+  return {
+    ...freshConfirmation(),
+    safeguards: {
+      environment: 'production',
+      environmentAcknowledged: true,
+      backup: {
+        kind: 'snapshot',
+        evidenceId: 'snapshot_20260426_120000',
+        capturedAt: '2026-04-26T12:00:00.000Z',
+      },
+      ledger: {
+        evidenceId: 'audit_01J00000000000000000000000',
+        recordedAt: '2026-04-26T12:00:00.000Z',
+      },
+      rollback: {
+        decision: 'non_rollbackable',
+        reason: 'Column drop cannot be reversed without restoring from snapshot.',
+      },
     },
-    ledger: {
-      evidenceId: 'audit_01J00000000000000000000000',
-      recordedAt: '2026-04-26T12:00:00.000Z',
-    },
-    rollback: {
-      decision: 'non_rollbackable',
-      reason: 'Column drop cannot be reversed without restoring from snapshot.',
-    },
-  },
+  }
 }
 
 describe('OrbitSchemaEngine', () => {
@@ -1361,7 +1383,7 @@ describe('OrbitSchemaEngine', () => {
 
     await expect(engine.apply(ctx, {
       ...DESTRUCTIVE_APPLY_INPUT,
-      confirmation: VALID_DESTRUCTIVE_CONFIRMATION,
+      confirmation: freshConfirmation(),
     })).rejects.toMatchObject({
       code: 'MIGRATION_OPERATION_UNSUPPORTED',
     })
@@ -1398,7 +1420,7 @@ describe('OrbitSchemaEngine', () => {
 
     await expect(engine.apply(ctx, {
       ...DESTRUCTIVE_APPLY_INPUT,
-      confirmation: PRODUCTION_DESTRUCTIVE_CONFIRMATION,
+      confirmation: productionConfirmation(),
     })).rejects.toMatchObject({
       code: 'DESTRUCTIVE_SAFEGUARDS_REQUIRED',
       details: {
@@ -1425,7 +1447,7 @@ describe('OrbitSchemaEngine', () => {
 
     await expect(engine.apply(ctx, {
       ...DESTRUCTIVE_APPLY_INPUT,
-      confirmation: VALID_DESTRUCTIVE_CONFIRMATION,
+      confirmation: freshConfirmation(),
     })).rejects.toMatchObject({
       code: 'DESTRUCTIVE_SAFEGUARDS_REQUIRED',
       details: {
@@ -1453,7 +1475,7 @@ describe('OrbitSchemaEngine', () => {
     await expect(engine.apply(ctx, {
       ...DESTRUCTIVE_APPLY_INPUT,
       confirmation: {
-        ...VALID_DESTRUCTIVE_CONFIRMATION,
+        ...freshConfirmation(),
         safeguards: {
           environment: 'development',
           environmentAcknowledged: true,
@@ -1486,7 +1508,7 @@ describe('OrbitSchemaEngine', () => {
 
     await expect(engine.apply(ctx, {
       ...DESTRUCTIVE_APPLY_INPUT,
-      confirmation: PRODUCTION_DESTRUCTIVE_CONFIRMATION_WITH_EVIDENCE,
+      confirmation: productionConfirmationWithEvidence(),
     })).rejects.toMatchObject({
       code: 'MIGRATION_OPERATION_UNSUPPORTED',
     })
@@ -1903,6 +1925,75 @@ describe('OrbitSchemaEngine', () => {
     expect(migrationLedger.create).not.toHaveBeenCalled()
     expect(migrationLedger.updateStatus).not.toHaveBeenCalled()
     expect(authority.run).not.toHaveBeenCalled()
+  })
+
+  it('returns the already-applied migration from the in-lock idempotency recheck without creating a duplicate ledger row', async () => {
+    const applied = migrationRecord({
+      id: 'migration_01J00000000000000000000077',
+      forwardOperations: APPLY_OPERATIONS,
+    })
+    const migrationLedger = trackingLedger()
+    let listCalls = 0
+    vi.mocked(migrationLedger.list).mockImplementation(async () => {
+      listCalls += 1
+      // Calls 1 (preview ledger state) and 2 (pre-lock idempotency check) see
+      // no applied record; a concurrent apply then commits the same migration
+      // before this request acquires the migration lock, so the in-lock
+      // recheck (call 3) must see it.
+      if (listCalls <= 2) {
+        return { data: [], hasMore: false, nextCursor: null }
+      }
+      return { data: [applied], hasMore: false, nextCursor: null }
+    })
+    const migrationAuthority = makeAuthority()
+    const engine = makeEngine(createInMemoryCustomFieldRepo(), migrationAuthority, migrationLedger)
+
+    await expect(engine.apply(ctx, APPLY_INPUT)).resolves.toMatchObject({
+      migrationId: applied.id,
+      checksum: applied.checksum,
+      status: 'applied',
+      appliedOperations: APPLY_OPERATIONS,
+      rollbackable: false,
+      rollbackDecision: {
+        decision: 'non_rollbackable',
+      },
+    })
+    expect(listCalls).toBe(3)
+    expect(migrationLedger.withMigrationLock).toHaveBeenCalledTimes(1)
+    expect(migrationLedger.create).not.toHaveBeenCalled()
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalled()
+    expect(migrationAuthority.run).not.toHaveBeenCalled()
+  })
+
+  it('rejects a new idempotency key from the in-lock recheck when a checksum-only replay raced this apply', async () => {
+    const applied = migrationRecord({
+      id: 'migration_01J00000000000000000000078',
+      forwardOperations: APPLY_OPERATIONS,
+      description: 'Add linkedin_url custom field to contacts',
+    })
+    const migrationLedger = trackingLedger()
+    let listCalls = 0
+    vi.mocked(migrationLedger.list).mockImplementation(async () => {
+      listCalls += 1
+      if (listCalls <= 2) {
+        return { data: [], hasMore: false, nextCursor: null }
+      }
+      return { data: [applied], hasMore: false, nextCursor: null }
+    })
+    const migrationAuthority = makeAuthority()
+    const engine = makeEngine(createInMemoryCustomFieldRepo(), migrationAuthority, migrationLedger)
+
+    // Same matchedBy semantics as the pre-lock check: a checksum-only match
+    // must not bind a brand-new idempotency key to the raced migration.
+    await expect(engine.apply(ctx, {
+      ...APPLY_INPUT,
+      idempotencyKey: 'late-unbound-key',
+    })).rejects.toMatchObject({
+      code: 'IDEMPOTENCY_CONFLICT',
+    })
+    expect(listCalls).toBe(3)
+    expect(migrationLedger.create).not.toHaveBeenCalled()
+    expect(migrationAuthority.run).not.toHaveBeenCalled()
   })
 
   it('records sanitized apply failure details when semantic execution fails inside authority', async () => {
@@ -2570,17 +2661,7 @@ describe('OrbitSchemaEngine', () => {
     const migrationDb = makeMigrationDb()
     const authority = makeAuthority(migrationDb)
     const migrationLedger = trackingLedger()
-    const adapter = {
-      name: 'postgres',
-      dialect: 'postgres',
-      supportsJsonbIndexes: true,
-      async getSchemaSnapshot() {
-        return {
-          customFields: [],
-          tables: ['contacts', 'custom_field_definitions', 'schema_migrations'],
-        }
-      },
-    } satisfies SchemaEngineSchemaAdapter
+    const adapter = postgresSnapshotAdapter()
     const operations: SchemaMigrationPublicForwardOperation[] = [{
       type: 'custom_field.rename',
       entityType: 'contacts',
@@ -2804,6 +2885,47 @@ describe('OrbitSchemaEngine', () => {
     }))
   })
 
+  it('fails apply when a SQLite-shaped metadata delete affects multiple rows', async () => {
+    const migrationDb = makeMigrationDb()
+    vi.mocked(migrationDb.execute)
+      .mockResolvedValueOnce({ changes: 1 }) // value cleanup (zero or more rows is fine)
+      .mockResolvedValueOnce({ changes: 2 }) // metadata delete matched more than one row
+    const authority = makeAuthority(migrationDb)
+    const migrationLedger = trackingLedger()
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: 'contacts',
+      fieldName: 'linkedin_url',
+    }]
+    const checksum = checksumFor(operations)
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000056', 'linkedin_url'),
+    ])
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    // Exactly one metadata row must be affected: multi-row counts are just as
+    // wrong as zero-row counts and must fail the migration closed.
+    await expect(engine.apply(ctx, {
+      operations,
+      checksum,
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: new Date().toISOString(),
+      },
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_FAILED',
+      details: { phase: 'apply', causeCode: 'VALIDATION_FAILED' },
+    })
+    expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
+      status: 'failed',
+      errorCode: 'MIGRATION_FAILED',
+    }))
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
+      status: 'applied',
+    }))
+  })
+
   it('fails apply when a Postgres-shaped metadata delete affects no rows', async () => {
     const migrationDb = makeMigrationDb()
     vi.mocked(migrationDb.execute)
@@ -2812,17 +2934,7 @@ describe('OrbitSchemaEngine', () => {
       .mockResolvedValueOnce({ rowCount: 0 }) // metadata delete silently matched nothing
     const authority = makeAuthority(migrationDb)
     const migrationLedger = trackingLedger()
-    const adapter = {
-      name: 'postgres',
-      dialect: 'postgres',
-      supportsJsonbIndexes: true,
-      async getSchemaSnapshot() {
-        return {
-          customFields: [],
-          tables: ['contacts', 'custom_field_definitions', 'schema_migrations'],
-        }
-      },
-    } satisfies SchemaEngineSchemaAdapter
+    const adapter = postgresSnapshotAdapter()
     const operations: SchemaMigrationPublicForwardOperation[] = [{
       type: 'custom_field.delete',
       entityType: 'contacts',
@@ -2906,17 +3018,7 @@ describe('OrbitSchemaEngine', () => {
       .mockResolvedValueOnce({ rowCount: 0 }) // metadata update silently matched nothing
     const authority = makeAuthority(migrationDb)
     const migrationLedger = trackingLedger()
-    const adapter = {
-      name: 'postgres',
-      dialect: 'postgres',
-      supportsJsonbIndexes: true,
-      async getSchemaSnapshot() {
-        return {
-          customFields: [],
-          tables: ['contacts', 'custom_field_definitions', 'schema_migrations'],
-        }
-      },
-    } satisfies SchemaEngineSchemaAdapter
+    const adapter = postgresSnapshotAdapter()
     const operations: SchemaMigrationPublicForwardOperation[] = [{
       type: 'custom_field.rename',
       entityType: 'contacts',
