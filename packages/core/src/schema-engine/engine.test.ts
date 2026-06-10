@@ -293,7 +293,9 @@ function makeAuthority(db = makeMigrationDb()) {
 function makeMigrationDb() {
   const db = {
     transaction: vi.fn(async <T>(fn: (tx: typeof db) => Promise<T>) => fn(db)),
-    execute: vi.fn(async () => undefined),
+    // SQLite-shaped DML result so fail-closed metadata row-count checks pass
+    // by default; individual tests override per-call shapes as needed.
+    execute: vi.fn(async () => ({ changes: 1 })),
     query: vi.fn(async () => []),
   }
   return db as unknown as Parameters<Parameters<SchemaMigrationAuthority['run']>[1]>[0]
@@ -2342,6 +2344,8 @@ describe('OrbitSchemaEngine', () => {
 
     const preview = await engine.preview(ctx, { operations: APPLY_OPERATIONS })
 
+    // The duplicate makes preview classify this add as destructive; the
+    // confirmation gets us past that gate to the precondition check.
     await expect(engine.apply(ctx, {
       operations: APPLY_OPERATIONS,
       checksum: preview.checksum,
@@ -2660,5 +2664,293 @@ describe('OrbitSchemaEngine', () => {
     })
     expect(authority.run).toHaveBeenCalledTimes(1)
     expect(migrationDb.execute).toHaveBeenCalledTimes(2)
+  })
+
+  it('fails apply when a SQLite-shaped metadata delete affects no rows', async () => {
+    const migrationDb = makeMigrationDb()
+    vi.mocked(migrationDb.execute)
+      .mockResolvedValueOnce({ changes: 1 }) // value cleanup (zero or more rows is fine)
+      .mockResolvedValueOnce({ changes: 0 }) // metadata delete silently matched nothing
+    const authority = makeAuthority(migrationDb)
+    const migrationLedger = trackingLedger()
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: 'contacts',
+      fieldName: 'linkedin_url',
+    }]
+    const checksum = checksumFor(operations)
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000051', 'linkedin_url'),
+    ])
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.apply(ctx, {
+      operations,
+      checksum,
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_FAILED',
+      details: { phase: 'apply', causeCode: 'VALIDATION_FAILED' },
+    })
+    expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
+      status: 'failed',
+      errorCode: 'MIGRATION_FAILED',
+      errorMessage: 'Schema migration failed (phase=apply; causeCode=VALIDATION_FAILED)',
+      failedAt: expect.any(Date),
+    }))
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
+      status: 'applied',
+    }))
+  })
+
+  it('fails apply when a Postgres-shaped metadata delete affects no rows', async () => {
+    const migrationDb = makeMigrationDb()
+    vi.mocked(migrationDb.execute)
+      .mockResolvedValueOnce({ rowCount: 1 }) // set_config tenant context
+      .mockResolvedValueOnce({ rowCount: 7 }) // value cleanup (any count is fine)
+      .mockResolvedValueOnce({ rowCount: 0 }) // metadata delete silently matched nothing
+    const authority = makeAuthority(migrationDb)
+    const migrationLedger = trackingLedger()
+    const adapter = {
+      name: 'postgres',
+      dialect: 'postgres',
+      supportsJsonbIndexes: true,
+      async getSchemaSnapshot() {
+        return {
+          customFields: [],
+          tables: ['contacts', 'custom_field_definitions', 'schema_migrations'],
+        }
+      },
+    } satisfies SchemaEngineSchemaAdapter
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: 'contacts',
+      fieldName: 'linkedin_url',
+    }]
+    const checksum = checksumForAdapter(operations, { name: adapter.name, dialect: adapter.dialect })
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000052', 'linkedin_url'),
+    ])
+    const engine = makeEngine(repo, authority, migrationLedger, adapter, 'development')
+
+    await expect(engine.apply(ctx, {
+      operations,
+      checksum,
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_FAILED',
+      details: { phase: 'apply', causeCode: 'VALIDATION_FAILED' },
+    })
+    expect(migrationDb.execute).toHaveBeenCalledTimes(3)
+    expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
+      status: 'failed',
+      errorCode: 'MIGRATION_FAILED',
+    }))
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
+      status: 'applied',
+    }))
+  })
+
+  it('fails apply before value rename when a SQLite-shaped metadata rename affects no rows', async () => {
+    const migrationDb = makeMigrationDb()
+    vi.mocked(migrationDb.execute)
+      .mockResolvedValueOnce({ changes: 0 }) // metadata update silently matched nothing
+    const authority = makeAuthority(migrationDb)
+    const migrationLedger = trackingLedger()
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.rename',
+      entityType: 'contacts',
+      fieldName: 'linkedin',
+      newFieldName: 'linkedin_url',
+    }]
+    const checksum = checksumFor(operations)
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000053', 'linkedin'),
+    ])
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.apply(ctx, {
+      operations,
+      checksum,
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_FAILED',
+      details: { phase: 'apply', causeCode: 'VALIDATION_FAILED' },
+    })
+    // Metadata update is the first and only execute: the value JSON rename
+    // must not run after a zero-row metadata update.
+    expect(migrationDb.execute).toHaveBeenCalledTimes(1)
+    expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
+      status: 'failed',
+      errorCode: 'MIGRATION_FAILED',
+      errorMessage: 'Schema migration failed (phase=apply; causeCode=VALIDATION_FAILED)',
+    }))
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
+      status: 'applied',
+    }))
+  })
+
+  it('fails apply when a Postgres-shaped metadata rename affects no rows', async () => {
+    const migrationDb = makeMigrationDb()
+    vi.mocked(migrationDb.execute)
+      .mockResolvedValueOnce({ rowCount: 1 }) // set_config tenant context
+      .mockResolvedValueOnce({ rowCount: 0 }) // metadata update silently matched nothing
+    const authority = makeAuthority(migrationDb)
+    const migrationLedger = trackingLedger()
+    const adapter = {
+      name: 'postgres',
+      dialect: 'postgres',
+      supportsJsonbIndexes: true,
+      async getSchemaSnapshot() {
+        return {
+          customFields: [],
+          tables: ['contacts', 'custom_field_definitions', 'schema_migrations'],
+        }
+      },
+    } satisfies SchemaEngineSchemaAdapter
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.rename',
+      entityType: 'contacts',
+      fieldName: 'linkedin',
+      newFieldName: 'linkedin_url',
+    }]
+    const checksum = checksumForAdapter(operations, { name: adapter.name, dialect: adapter.dialect })
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000054', 'linkedin'),
+    ])
+    const engine = makeEngine(repo, authority, migrationLedger, adapter, 'development')
+
+    await expect(engine.apply(ctx, {
+      operations,
+      checksum,
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_FAILED',
+      details: { phase: 'apply', causeCode: 'VALIDATION_FAILED' },
+    })
+    // set_config + metadata update only — value rename must not run.
+    expect(migrationDb.execute).toHaveBeenCalledTimes(2)
+    expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
+      status: 'failed',
+      errorCode: 'MIGRATION_FAILED',
+    }))
+  })
+
+  it('fails apply closed when metadata DML returns no row-count shape at all', async () => {
+    const migrationDb = makeMigrationDb()
+    vi.mocked(migrationDb.execute)
+      .mockResolvedValueOnce({ changes: 1 }) // value cleanup
+      .mockResolvedValueOnce(undefined) // metadata delete result without a row count
+    const authority = makeAuthority(migrationDb)
+    const migrationLedger = trackingLedger()
+    const operations: SchemaMigrationPublicForwardOperation[] = [{
+      type: 'custom_field.delete',
+      entityType: 'contacts',
+      fieldName: 'linkedin_url',
+    }]
+    const checksum = checksumFor(operations)
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000055', 'linkedin_url'),
+    ])
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    await expect(engine.apply(ctx, {
+      operations,
+      checksum,
+      confirmation: {
+        destructive: true,
+        checksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_FAILED',
+      details: { phase: 'apply', causeCode: 'INTERNAL_ERROR' },
+    })
+    expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, expect.any(String), expect.objectContaining({
+      status: 'failed',
+      errorCode: 'MIGRATION_FAILED',
+    }))
+  })
+
+  it('keeps the migration applied when a rollback metadata rename affects no rows', async () => {
+    const migrationDb = makeMigrationDb()
+    vi.mocked(migrationDb.execute)
+      .mockResolvedValueOnce({ rowCount: 0 }) // reverse metadata update silently matched nothing
+    const authority = makeAuthority(migrationDb)
+    const migrationLedger = trackingLedger()
+    const migrationId = 'migration_01J00000000000000000000060'
+    const record = {
+      ...migrationRecord({
+        id: migrationId,
+        forwardOperations: [{
+          type: 'custom_field.rename',
+          entityType: 'contacts',
+          fieldName: 'linkedin',
+          newFieldName: 'linkedin_url',
+        }],
+      }),
+      reverseOperations: [{
+        type: 'custom_field.rename',
+        entityType: 'contacts',
+        fieldName: 'linkedin_url',
+        newFieldName: 'linkedin',
+      }],
+    } as SchemaMigrationRecord
+    vi.mocked(migrationLedger.assertRollbackPreconditions).mockResolvedValue(record)
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000056', 'linkedin_url'),
+    ])
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    const rollbackChecksum = computeSchemaMigrationChecksum({
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      orgId: ctx.orgId,
+      operations: record.reverseOperations,
+    })
+    await expect(engine.rollback(ctx, {
+      migrationId,
+      checksum: rollbackChecksum,
+      confirmation: {
+        destructive: true,
+        checksum: rollbackChecksum,
+        confirmedAt: '2026-04-26T12:00:00.000Z',
+      },
+    })).rejects.toMatchObject({
+      code: 'MIGRATION_FAILED',
+      details: { phase: 'rollback', causeCode: 'VALIDATION_FAILED' },
+    })
+    // Reverse metadata update is the first and only execute: value JSON
+    // rename must not run after a zero-row metadata update.
+    expect(migrationDb.execute).toHaveBeenCalledTimes(1)
+    // The rollback failure path keeps the migration applied — never failed
+    // or rolled_back — so it stays eligible for a later rollback attempt.
+    expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, migrationId, expect.objectContaining({
+      status: 'applied',
+      errorCode: 'MIGRATION_FAILED',
+      errorMessage: 'Schema migration failed (phase=rollback; causeCode=VALIDATION_FAILED)',
+      failedAt: expect.any(Date),
+    }))
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalledWith(ctx, migrationId, expect.objectContaining({
+      status: 'rolled_back',
+    }))
+    expect(migrationLedger.updateStatus).not.toHaveBeenCalledWith(ctx, migrationId, expect.objectContaining({
+      status: 'failed',
+    }))
   })
 })

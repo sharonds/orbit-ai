@@ -209,6 +209,14 @@ export class OrbitSchemaEngine {
     })
   }
 
+  private customFieldConflict(entityType: string, fieldName: string, field: string): never {
+    throw createOrbitError({
+      code: 'CONFLICT',
+      message: `Custom field '${fieldName}' already exists for entity type '${entityType}' in this organization`,
+      field,
+    })
+  }
+
   private unsupportedMigrationOperation(operation: string): never {
     throw createOrbitError({
       code: 'MIGRATION_OPERATION_UNSUPPORTED',
@@ -644,11 +652,7 @@ export class OrbitSchemaEngine {
           this.tableForExtensibleEntity(operation.entityType)
           const existing = await this.findCustomField(ctx, operation.entityType, operation.fieldName)
           if (existing) {
-            throw createOrbitError({
-              code: 'CONFLICT',
-              message: `Custom field '${operation.fieldName}' already exists for entity type '${operation.entityType}' in this organization`,
-              field: 'fieldName',
-            })
+            this.customFieldConflict(operation.entityType, operation.fieldName, 'fieldName')
           }
           break
         }
@@ -674,11 +678,7 @@ export class OrbitSchemaEngine {
             )
           }
           if (conflict) {
-            throw createOrbitError({
-              code: 'CONFLICT',
-              message: `Custom field '${operation.newFieldName}' already exists for entity type '${operation.entityType}' in this organization`,
-              field: 'newFieldName',
-            })
+            this.customFieldConflict(operation.entityType, operation.newFieldName, 'newFieldName')
           }
           break
         }
@@ -1549,6 +1549,42 @@ async function executeCustomFieldAdd(
   })
 }
 
+// Adapter DML result contract: Postgres-family adapters (pg, Supabase, Neon)
+// return `{ rowCount: number }`; the SQLite adapter returns `{ changes: number }`
+// (node:sqlite StatementResultingChanges). Metadata DML fails closed if
+// neither count is available — a missing count must never read as success.
+function affectedRows(result: unknown): number {
+  if (!result || typeof result !== 'object') {
+    throw createOrbitError({
+      code: 'INTERNAL_ERROR',
+      message: 'Schema migration metadata DML did not return an affected row count',
+    })
+  }
+  const rowCount = (result as { rowCount?: unknown }).rowCount
+  if (typeof rowCount === 'number') return rowCount
+  const changes = (result as { changes?: unknown }).changes
+  if (typeof changes === 'number') return changes
+  throw createOrbitError({
+    code: 'INTERNAL_ERROR',
+    message: 'Schema migration metadata DML did not return an affected row count',
+  })
+}
+
+function assertMetadataRowAffected(
+  result: unknown,
+  action: string,
+  operation: { entityType: string, fieldName: string },
+): void {
+  const rows = affectedRows(result)
+  if (rows !== 1) {
+    throw createOrbitError({
+      code: 'VALIDATION_FAILED',
+      message: `Schema migration ${action} expected one custom field metadata row for ${operation.entityType}.${operation.fieldName}, affected ${rows}`,
+      field: 'fieldName',
+    })
+  }
+}
+
 async function executeCustomFieldDelete(
   db: MigrationDatabase,
   orgId: string,
@@ -1558,13 +1594,15 @@ async function executeCustomFieldDelete(
   const tableName = tableNameForCustomFieldOperation(operation.entityType)
   await db.transaction(async (tx) => {
     await setAuthorityTenantContext(tx, dialect, orgId)
+    // Value cleanup may legitimately touch zero entity rows — no count check.
     await tx.execute(customFieldValueDeleteStatement(dialect, tableName, orgId, operation.fieldName))
-    await tx.execute(sql`
+    const metadataResult = await tx.execute(sql`
       delete from custom_field_definitions
       where organization_id = ${orgId}
         and entity_type = ${operation.entityType}
         and field_name = ${operation.fieldName}
     `)
+    assertMetadataRowAffected(metadataResult, 'delete', operation)
   })
 }
 
@@ -1577,7 +1615,7 @@ async function executeCustomFieldRename(
   const tableName = tableNameForCustomFieldOperation(operation.entityType)
   await db.transaction(async (tx) => {
     await setAuthorityTenantContext(tx, dialect, orgId)
-    await tx.execute(sql`
+    const metadataResult = await tx.execute(sql`
       update custom_field_definitions
       set field_name = ${operation.newFieldName},
           updated_at = ${new Date().toISOString()}
@@ -1585,6 +1623,8 @@ async function executeCustomFieldRename(
         and entity_type = ${operation.entityType}
         and field_name = ${operation.fieldName}
     `)
+    assertMetadataRowAffected(metadataResult, 'rename', operation)
+    // Value rename may legitimately touch zero entity rows — no count check.
     await tx.execute(customFieldValueRenameStatement(
       dialect,
       tableName,
