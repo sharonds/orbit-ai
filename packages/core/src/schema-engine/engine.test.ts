@@ -2148,6 +2148,65 @@ describe('OrbitSchemaEngine', () => {
     }))
   })
 
+  it('clears stale rollback failure fields when a retry succeeds', async () => {
+    const migrationDb = makeMigrationDb()
+    const authority = makeAuthority(migrationDb)
+    const migrationLedger = trackingLedger()
+    const migrationId = 'migration_01J00000000000000000000RT'
+    let record = {
+      ...migrationRecord({
+        id: migrationId,
+        forwardOperations: APPLY_OPERATIONS,
+      }),
+      reverseOperations: [{
+        type: 'custom_field.delete',
+        entityType: 'contacts',
+        fieldName: 'linkedin_url',
+      }],
+      status: 'applied',
+      failedAt: new Date('2026-04-24T10:00:00.000Z'),
+      errorCode: 'MIGRATION_FAILED',
+      errorMessage: 'previous rollback failed',
+    } as SchemaMigrationRecord
+    vi.mocked(migrationLedger.assertRollbackPreconditions).mockResolvedValue(record)
+    vi.mocked(migrationLedger.updateStatus).mockImplementation(async (_ctx, id, patch) => {
+      expect(id).toBe(migrationId)
+      record = { ...record, ...patch } as SchemaMigrationRecord
+      return record
+    })
+    const repo = createInMemoryCustomFieldRepo([
+      field('field_01J00000000000000000000RT', 'linkedin_url'),
+    ])
+    const engine = makeEngine(repo, authority, migrationLedger, undefined, 'development')
+
+    const rollbackChecksum = computeSchemaMigrationChecksum({
+      adapter: { name: 'sqlite', dialect: 'sqlite' },
+      orgId: ctx.orgId,
+      operations: record.reverseOperations,
+    })
+
+    await expect(engine.rollback(ctx, {
+      migrationId,
+      checksum: rollbackChecksum,
+      confirmation: {
+        destructive: true,
+        checksum: rollbackChecksum,
+        confirmedAt: new Date().toISOString(),
+      },
+    })).resolves.toMatchObject({
+      migrationId,
+      status: 'rolled_back',
+    })
+
+    expect(migrationLedger.updateStatus).toHaveBeenCalledWith(ctx, migrationId, expect.objectContaining({
+      status: 'rolled_back',
+      rolledBackAt: expect.any(Date),
+      failedAt: null,
+      errorCode: null,
+      errorMessage: null,
+    }))
+  })
+
   it('records sanitized rollback failure details', async () => {
     const migrationDb = makeMigrationDb()
     vi.mocked(migrationDb.execute).mockRejectedValue(new Error('DROP TABLE contacts leaked from provider'))

@@ -577,6 +577,7 @@ export class OrbitSchemaEngine {
         await this.ledger.updateStatus(ctx, input.migrationId, {
           status: 'rolled_back',
           rolledBackAt: new Date(),
+          failedAt: null,
           errorCode: null,
           errorMessage: null,
         })
