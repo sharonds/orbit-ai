@@ -1,4 +1,5 @@
 import {
+  SCHEMA_MIGRATION_INTERNAL_FIELD_NAMES,
   deserializePublicDateInputField,
   isPublicEntityDateInputField,
 } from '@orbit-ai/core'
@@ -68,7 +69,7 @@ const ENTITY_STRIP_FIELDS: Record<string, Set<string>> = {
   deals: new Set(['wonAt', 'lostAt', 'lostReason', 'probability']),
   stages: new Set(['probability', 'color', 'isWon', 'isLost']),
   webhooks: new Set(['secretEncrypted']),
-  schema_migrations: new Set(['sqlStatements', 'rollbackStatements', 'sql_statements', 'rollback_statements']),
+  schema_migrations: new Set<string>(SCHEMA_MIGRATION_INTERNAL_FIELD_NAMES),
 }
 
 /** post-snakeToCamel camelCase field → core camelCase field. */

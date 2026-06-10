@@ -54,6 +54,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@orbit-ai/api": "workspace:*",
+    "@orbit-ai/core": "workspace:*",
     "@orbit-ai/sdk": "workspace:*",
     "zod": "^4.1.11"
   }

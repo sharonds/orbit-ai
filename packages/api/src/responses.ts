@@ -1,4 +1,5 @@
 import type { Context } from 'hono'
+import { isSchemaMigrationInternalField } from '@orbit-ai/core'
 import type {
   InternalPaginatedResult,
   OrbitEnvelope,
@@ -336,17 +337,19 @@ const API_KEY_PUBLIC_FIELDS = new Set([
 ])
 
 /**
- * Strips underscore-prefixed fields from schema introspection results.
- * A conservative default for routes that return schema metadata (object
- * type definitions, column metadata, migration plans) where there is no
- * fixed public-field allowlist. Underscore-prefixed keys are reserved for
- * internal use by convention.
+ * Strips underscore-prefixed fields and schema migration internal SQL
+ * fields from schema introspection results. A conservative default for
+ * routes that return schema metadata (object type definitions, column
+ * metadata, migration plans) where there is no fixed public-field
+ * allowlist. Underscore-prefixed keys are reserved for internal use by
+ * convention; SQL statement fields come from the shared core denylist.
  */
 export function sanitizeSchemaRead(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (k.startsWith('_')) continue // strip internal-only fields by convention
+    if (isSchemaMigrationInternalField(k)) continue // never expose raw SQL statements
     out[k] = v
   }
   return out

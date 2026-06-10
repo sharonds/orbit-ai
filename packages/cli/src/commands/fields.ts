@@ -1,4 +1,5 @@
 import { Command } from 'commander'
+import { stripSchemaMigrationInternalFields } from '@orbit-ai/core'
 import { resolveClient } from '../config/resolve-context.js'
 import { CliValidationError } from '../errors.js'
 import { formatOutput } from '../output/formatter.js'
@@ -26,7 +27,9 @@ const destructiveFieldsError = (
     message: 'Use --yes to confirm this destructive action in non-interactive mode.',
     action,
     target: `${entity}.${fieldName}`,
-    ...(preview ? { preview } : {}),
+    // Strip internal SQL statement fields (shared core denylist) before
+    // embedding the preview in a CLI-owned error envelope.
+    ...(preview ? { preview: stripSchemaMigrationInternalFields(preview) } : {}),
   },
 })
 

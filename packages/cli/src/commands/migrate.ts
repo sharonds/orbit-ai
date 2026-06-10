@@ -1,4 +1,5 @@
 import { Command } from 'commander'
+import { stripSchemaMigrationInternalFields } from '@orbit-ai/core'
 import { resolveClient } from '../config/resolve-context.js'
 import { CliValidationError } from '../errors.js'
 import { isJsonMode } from '../program.js'
@@ -73,7 +74,7 @@ async function runMigrate(
 
   if (opts.preview) {
     const preview = await client.schema.previewMigration(parseOperationsRequest(opts.operations))
-    process.stdout.write(JSON.stringify(preview, null, 2) + '\n')
+    process.stdout.write(JSON.stringify(stripSchemaMigrationInternalFields(preview), null, 2) + '\n')
     return
   }
 
@@ -89,7 +90,7 @@ async function runMigrate(
         process.stdout.write(
           JSON.stringify({
             ...DESTRUCTIVE_ERROR,
-            error: { ...DESTRUCTIVE_ERROR.error, preview },
+            error: { ...DESTRUCTIVE_ERROR.error, preview: stripSchemaMigrationInternalFields(preview) },
           }) + '\n',
         )
         process.exit(1)
@@ -108,11 +109,11 @@ async function runMigrate(
 
     const operations = readPreviewOperations(preview)
     const checksum = readPreviewChecksum(preview)
-    const result = await client.schema.applyMigration({
+    const result = stripSchemaMigrationInternalFields(await client.schema.applyMigration({
       operations,
       checksum,
       ...(hasDestructive && confirmed ? { confirmation: makeConfirmation(checksum) } : {}),
-    })
+    }))
     if (isJsonMode()) {
       process.stdout.write(JSON.stringify(result, null, 2) + '\n')
     } else {
@@ -140,7 +141,7 @@ async function runMigrate(
           ...(confirmed ? { confirmation: makeConfirmation(opts.checksum) } : {}),
         }
       : undefined
-    const result = await client.schema.rollbackMigration(opts.id, body)
+    const result = stripSchemaMigrationInternalFields(await client.schema.rollbackMigration(opts.id, body))
     if (isJsonMode()) {
       process.stdout.write(JSON.stringify(result, null, 2) + '\n')
     } else {

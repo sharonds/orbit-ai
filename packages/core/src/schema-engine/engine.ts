@@ -1,4 +1,6 @@
 import { Buffer } from 'node:buffer'
+import { createHash } from 'node:crypto'
+
 import { sql } from 'drizzle-orm'
 
 import { generateId } from '../ids/generate-id.js'
@@ -11,16 +13,19 @@ import type { SchemaMigrationRepository } from '../entities/schema-migrations/re
 import type { SchemaMigrationRecord } from '../entities/schema-migrations/validators.js'
 import type { CustomFieldDefinition } from '../types/schema.js'
 import {
+  DESTRUCTIVE_CONFIRMATION_TTL_MS,
   assertDestructiveConfirmation,
   type DestructiveMigrationEnvironment,
 } from './destructive-confirmation.js'
 import {
   computeSchemaMigrationChecksum,
   schemaMigrationApplyInputSchema,
+  schemaMigrationApplyOutputSchema,
   schemaMigrationDeleteFieldInputSchema,
   schemaMigrationPreviewInputSchema,
   schemaMigrationPreviewOutputSchema,
   schemaMigrationRollbackInputSchema,
+  schemaMigrationRollbackOutputSchema,
   schemaMigrationUpdateFieldRequestInputSchema,
   type SchemaMigrationAdapterScope,
   type SchemaMigrationApplyInput,
@@ -209,6 +214,14 @@ export class OrbitSchemaEngine {
     })
   }
 
+  private customFieldConflict(entityType: string, fieldName: string, field: string): never {
+    throw createOrbitError({
+      code: 'CONFLICT',
+      message: `Custom field '${fieldName}' already exists for entity type '${entityType}' in this organization`,
+      field,
+    })
+  }
+
   private unsupportedMigrationOperation(operation: string): never {
     throw createOrbitError({
       code: 'MIGRATION_OPERATION_UNSUPPORTED',
@@ -292,6 +305,7 @@ export class OrbitSchemaEngine {
     if (!PUBLIC_CRM_ENTITY_TYPES.includes(entityType as PublicCrmEntityType)) {
       this.validationFailed(`Unknown entity type: ${entityType}`, 'entityType')
     }
+    this.tableForExtensibleEntity(entityType)
 
     const now = new Date()
     const record: CustomFieldDefinitionRecord = {
@@ -321,6 +335,7 @@ export class OrbitSchemaEngine {
     data: Record<string, unknown>,
   ): Promise<SchemaMigrationPreviewOutput> {
     const orgId = assertOrgContext(ctx)
+    const now = new Date()
     const input = schemaMigrationPreviewInputSchema.parse(data)
     const adapter = this.schemaAdapter
     const adapterScope: SchemaMigrationAdapterScope = {
@@ -359,7 +374,7 @@ export class OrbitSchemaEngine {
         orgId,
         ...(ctx.userId ? { actorId: ctx.userId } : {}),
       },
-      confirmationInstructions: createConfirmationInstructions(destructiveOperations, checksum),
+      confirmationInstructions: createConfirmationInstructions(destructiveOperations, checksum, now),
       confirmationRequired: destructive,
       warnings,
     }
@@ -382,23 +397,7 @@ export class OrbitSchemaEngine {
     }
     const existing = await this.findExistingApplyMigration(ctx, input, preview)
     if (existing) {
-      if (input.idempotencyKey && existing.matchedBy !== 'idempotencyKey') {
-        this.idempotencyConflict(input.idempotencyKey)
-      }
-      if (existing.record.status === 'applied') {
-        return {
-          migrationId: existing.record.id,
-          checksum: existing.record.checksum,
-          status: 'applied',
-          appliedOperations: existing.record.forwardOperations,
-          ...rollbackMetadataFor(existing.record.reverseOperations),
-          ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
-        }
-      }
-      this.migrationConflict('Schema migration is not in an idempotent applied state', {
-        migrationId: existing.record.id,
-        status: existing.record.status,
-      })
+      return this.resolveExistingApplyMigration(existing, input)
     }
     const destructiveOperations = preview.confirmationInstructions.destructiveOperations
     assertDestructiveConfirmation({
@@ -442,47 +441,88 @@ export class OrbitSchemaEngine {
     }
 
     const target = operationTarget(preview.operations[0]!)
-    return this.ledger.withMigrationLock(ctx, { adapter: preview.adapter, target }, async () => {
-      await this.ledger.create(ctx, record)
-      await this.ledger.updateStatus(ctx, migrationId, {
-        status: 'running',
-        startedAt: new Date(),
-        appliedBy: ctx.userId ?? null,
-      })
-      try {
-        await authority.run({
-          ctx,
-          operation: 'apply',
-          checksum: preview.checksum,
-          migrationId,
-        }, async (db) => {
-          await this.executeForwardOperations(db, ctx, preview.operations)
-        })
+    const runWithTargetLock = async (): Promise<SchemaMigrationApplyOutput> =>
+      this.ledger.withMigrationLock(ctx, { adapter: preview.adapter, target }, async () => {
+        // Recheck apply idempotency FIRST, matching the pre-lock order: the
+        // winner of a race commits its custom field before marking the ledger
+        // 'applied', so rechecking preconditions first would surface a
+        // misleading duplicate-field CONFLICT that shadows the idempotent
+        // applied result. Idempotency-first lets a raced identical replay
+        // succeed idempotently, with identical safety — both rechecks still
+        // run before ledger.create and authority execution.
+        const lockedExisting = await this.findExistingApplyMigration(ctx, input, preview)
+        if (lockedExisting) {
+          return this.resolveExistingApplyMigration(lockedExisting, input)
+        }
+        // Recheck mutable preconditions now that the migration lock is held:
+        // this closes migration-vs-migration races where another apply created
+        // the same custom field metadata (under a different checksum or key)
+        // between the pre-lock check and lock entry. addField-vs-migration
+        // races remain backstopped by the unique index on custom field
+        // definitions.
+        await this.assertApplyOperationPreconditions(ctx, preview.operations)
+        await this.ledger.create(ctx, record)
         await this.ledger.updateStatus(ctx, migrationId, {
-          status: 'applied',
-          appliedAt: new Date(),
-          errorCode: null,
-          errorMessage: null,
+          status: 'running',
+          startedAt: new Date(),
+          appliedBy: ctx.userId ?? null,
         })
-        return {
+        try {
+          await authority.run({
+            ctx,
+            operation: 'apply',
+            checksum: preview.checksum,
+            migrationId,
+          }, async (db) => {
+            await this.executeForwardOperations(db, ctx, preview.operations)
+          })
+          await this.ledger.updateStatus(ctx, migrationId, {
+            status: 'applied',
+            appliedAt: new Date(),
+            errorCode: null,
+            errorMessage: null,
+          })
+        } catch (error) {
+          const failure = sanitizedMigrationFailure('apply', error)
+          await this.ledger.updateStatus(ctx, migrationId, {
+            status: 'failed',
+            failedAt: new Date(),
+            errorCode: failure.code,
+            errorMessage: failure.message,
+          })
+          throw migrationExecutionError('apply', error)
+        }
+        // Strict parse before returning: guarantees internal SQL fields can
+        // never leak through the fresh-apply output path. Constructed AFTER the
+        // try/catch so a parse failure can never mark a successfully-applied
+        // migration as failed in the ledger.
+        return schemaMigrationApplyOutputSchema.parse({
           migrationId,
           checksum: preview.checksum,
           status: 'applied' as const,
           appliedOperations: preview.operations,
           ...rollbackMetadataFor(reverseOperations),
           ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
-        }
-      } catch (error) {
-        const failure = sanitizedMigrationFailure('apply', error)
-        await this.ledger.updateStatus(ctx, migrationId, {
-          status: 'failed',
-          failedAt: new Date(),
-          errorCode: failure.code,
-          errorMessage: failure.message,
         })
-        throw migrationExecutionError('apply', error)
-      }
-    }).then((locked) => locked.result)
+      }).then((locked) => locked.result)
+
+    // Idempotency keys match org-wide, but the target lock only serializes
+    // applies that share a migration target. Wrap idempotency-keyed applies in
+    // an outer key-scoped lock so two concurrent applies with the same key and
+    // DIFFERENT targets cannot both pass the idempotency rechecks and create
+    // duplicate ledger rows. Both locks are non-blocking try-locks acquired in
+    // a fixed order (idempotency, then target), so contention surfaces as
+    // MIGRATION_CONFLICT rather than a deadlock. On Postgres each lock holds a
+    // pooled connection for the apply's duration, so idempotency-keyed applies
+    // need pool headroom for one extra concurrent connection.
+    if (input.idempotencyKey) {
+      return this.ledger.withMigrationLock(ctx, {
+        adapter: preview.adapter,
+        target: idempotencyLockTarget(input.idempotencyKey),
+      }, runWithTargetLock).then((locked) => locked.result)
+    }
+
+    return runWithTargetLock()
   }
 
   async rollback(
@@ -539,16 +579,10 @@ export class OrbitSchemaEngine {
         await this.ledger.updateStatus(ctx, input.migrationId, {
           status: 'rolled_back',
           rolledBackAt: new Date(),
+          failedAt: null,
           errorCode: null,
           errorMessage: null,
         })
-        return {
-          migrationId: input.migrationId,
-          rolledBackMigrationId: input.migrationId,
-          checksum: rollbackChecksum,
-          status: 'rolled_back' as const,
-          operations: record.reverseOperations,
-        }
       } catch (error) {
         const failure = sanitizedMigrationFailure('rollback', error)
         await this.ledger.updateStatus(ctx, input.migrationId, {
@@ -559,7 +593,54 @@ export class OrbitSchemaEngine {
         })
         throw migrationExecutionError('rollback', error)
       }
+      // Strict parse before returning: guarantees internal ledger fields
+      // (e.g. rollbackStatements) can never leak through rollback output.
+      // Constructed AFTER the try/catch so a parse failure can never revert
+      // the ledger status of a successfully rolled-back migration.
+      return schemaMigrationRollbackOutputSchema.parse({
+        migrationId: input.migrationId,
+        rolledBackMigrationId: input.migrationId,
+        checksum: rollbackChecksum,
+        status: 'rolled_back' as const,
+        operations: record.reverseOperations,
+      })
     }).then((locked) => locked.result)
+  }
+
+  // Shared by the pre-lock check and the in-lock recheck so both apply paths
+  // resolve an existing migration with identical semantics: a checksum-only
+  // match must not bind a new idempotency key, an applied record returns the
+  // idempotent result, and anything else is a migration conflict.
+  private resolveExistingApplyMigration(
+    existing: ExistingApplyMigrationMatch,
+    input: SchemaMigrationApplyInput,
+  ): SchemaMigrationApplyOutput {
+    if (input.idempotencyKey && existing.matchedBy !== 'idempotencyKey') {
+      this.idempotencyConflict(input.idempotencyKey)
+    }
+    if (existing.record.status === 'applied') {
+      return this.appliedMigrationResultFromExisting(existing, input)
+    }
+    this.migrationConflict('Schema migration is not in an idempotent applied state', {
+      migrationId: existing.record.id,
+      status: existing.record.status,
+    })
+  }
+
+  private appliedMigrationResultFromExisting(
+    existing: ExistingApplyMigrationMatch,
+    input: SchemaMigrationApplyInput,
+  ): SchemaMigrationApplyOutput {
+    // Strict parse before returning: guarantees internal ledger fields
+    // (e.g. sqlStatements) can never leak through this output path.
+    return schemaMigrationApplyOutputSchema.parse({
+      migrationId: existing.record.id,
+      checksum: existing.record.checksum,
+      status: 'applied',
+      appliedOperations: existing.record.forwardOperations,
+      ...rollbackMetadataFor(existing.record.reverseOperations),
+      ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+    })
   }
 
   private async findExistingApplyMigration(
@@ -633,6 +714,14 @@ export class OrbitSchemaEngine {
   ): Promise<void> {
     for (const operation of operations) {
       switch (operation.type) {
+        case 'custom_field.add': {
+          this.tableForExtensibleEntity(operation.entityType)
+          const existing = await this.findCustomField(ctx, operation.entityType, operation.fieldName)
+          if (existing) {
+            this.customFieldConflict(operation.entityType, operation.fieldName, 'fieldName')
+          }
+          break
+        }
         case 'custom_field.delete': {
           this.tableForExtensibleEntity(operation.entityType)
           const existing = await this.findCustomField(ctx, operation.entityType, operation.fieldName)
@@ -655,11 +744,7 @@ export class OrbitSchemaEngine {
             )
           }
           if (conflict) {
-            throw createOrbitError({
-              code: 'CONFLICT',
-              message: `Custom field '${operation.newFieldName}' already exists for entity type '${operation.entityType}' in this organization`,
-              field: 'newFieldName',
-            })
+            this.customFieldConflict(operation.entityType, operation.newFieldName, 'newFieldName')
           }
           break
         }
@@ -1191,6 +1276,15 @@ function customFieldOperationKey(operation: SchemaMigrationPublicForwardOperatio
   }
 }
 
+// Lock target for serializing same-idempotency-key applies across different
+// migration targets. The digest keeps raw (or reversibly encoded) idempotency
+// key material out of the lock target because lock conflict errors expose
+// `details.target` and `details.key` to callers.
+function idempotencyLockTarget(idempotencyKey: string): string {
+  const digest = createHash('sha256').update(idempotencyKey, 'utf8').digest('base64url')
+  return `idempotency:sha256:${digest}`
+}
+
 function operationTarget(operation: SchemaMigrationForwardOperation): string {
   switch (operation.type) {
     case 'custom_field.add':
@@ -1218,6 +1312,7 @@ function isDestructiveForwardOperation(operation: SchemaMigrationForwardOperatio
 function createConfirmationInstructions(
   destructiveOperations: string[],
   checksum: string,
+  now: Date,
 ): SchemaMigrationPreviewOutput['confirmationInstructions'] {
   if (destructiveOperations.length === 0) {
     return {
@@ -1232,6 +1327,7 @@ function createConfirmationInstructions(
     instructions: 'Pass confirmation.destructive=true with this checksum when applying this migration.',
     destructiveOperations,
     checksum,
+    expiresAt: new Date(now.getTime() + DESTRUCTIVE_CONFIRMATION_TTL_MS).toISOString(),
   }
 }
 
@@ -1530,6 +1626,40 @@ async function executeCustomFieldAdd(
   })
 }
 
+// Adapter DML result contract: Postgres-family adapters (pg, Supabase, Neon)
+// return `{ rowCount: number }`; the SQLite adapter returns `{ changes: number }`
+// (node:sqlite StatementResultingChanges). node:sqlite would return bigint
+// `changes` if readBigInts were enabled — that shape fails closed here by
+// design. Metadata DML fails closed if neither numeric count is available —
+// a missing count must never read as success.
+function affectedRows(result: unknown): number {
+  if (result && typeof result === 'object') {
+    const rowCount = (result as { rowCount?: unknown }).rowCount
+    if (typeof rowCount === 'number') return rowCount
+    const changes = (result as { changes?: unknown }).changes
+    if (typeof changes === 'number') return changes
+  }
+  throw createOrbitError({
+    code: 'INTERNAL_ERROR',
+    message: 'Schema migration metadata DML did not return an affected row count',
+  })
+}
+
+function assertMetadataRowAffected(
+  result: unknown,
+  action: 'delete' | 'rename',
+  operation: { entityType: string, fieldName: string },
+): void {
+  const rows = affectedRows(result)
+  if (rows !== 1) {
+    throw createOrbitError({
+      code: 'VALIDATION_FAILED',
+      message: `Schema migration ${action} expected one custom field metadata row for ${operation.entityType}.${operation.fieldName}, affected ${rows}`,
+      field: 'fieldName',
+    })
+  }
+}
+
 async function executeCustomFieldDelete(
   db: MigrationDatabase,
   orgId: string,
@@ -1539,13 +1669,15 @@ async function executeCustomFieldDelete(
   const tableName = tableNameForCustomFieldOperation(operation.entityType)
   await db.transaction(async (tx) => {
     await setAuthorityTenantContext(tx, dialect, orgId)
+    // Value cleanup may legitimately touch zero entity rows — no count check.
     await tx.execute(customFieldValueDeleteStatement(dialect, tableName, orgId, operation.fieldName))
-    await tx.execute(sql`
+    const metadataResult = await tx.execute(sql`
       delete from custom_field_definitions
       where organization_id = ${orgId}
         and entity_type = ${operation.entityType}
         and field_name = ${operation.fieldName}
     `)
+    assertMetadataRowAffected(metadataResult, 'delete', operation)
   })
 }
 
@@ -1558,7 +1690,7 @@ async function executeCustomFieldRename(
   const tableName = tableNameForCustomFieldOperation(operation.entityType)
   await db.transaction(async (tx) => {
     await setAuthorityTenantContext(tx, dialect, orgId)
-    await tx.execute(sql`
+    const metadataResult = await tx.execute(sql`
       update custom_field_definitions
       set field_name = ${operation.newFieldName},
           updated_at = ${new Date().toISOString()}
@@ -1566,6 +1698,8 @@ async function executeCustomFieldRename(
         and entity_type = ${operation.entityType}
         and field_name = ${operation.fieldName}
     `)
+    assertMetadataRowAffected(metadataResult, 'rename', operation)
+    // Value rename may legitimately touch zero entity rows — no count check.
     await tx.execute(customFieldValueRenameStatement(
       dialect,
       tableName,

@@ -180,3 +180,44 @@ describe('sanitizeObjectDeep direct', () => {
     expect(result).toHaveProperty('secretCreatedAt', '2026-01-01')
   })
 })
+
+describe('sanitizeObjectDeep schema migration SQL fields', () => {
+  it.each([
+    ['sqlStatements'],
+    ['rollbackStatements'],
+    ['sql_statements'],
+    ['rollback_statements'],
+  ])('strips %s from nested objects', (fieldName) => {
+    const result = sanitizeObjectDeep({
+      migration: {
+        checksum: 'a'.repeat(64),
+        [fieldName]: ['alter table contacts drop column secret'],
+      },
+    }) as { migration: Record<string, unknown> }
+
+    expect(result.migration).not.toHaveProperty(fieldName)
+    expect(result.migration.checksum).toBe('a'.repeat(64))
+  })
+
+  it('strips all four SQL field names from objects nested inside arrays', () => {
+    const result = sanitizeObjectDeep([
+      {
+        status: 'applied',
+        sqlStatements: ['alter table contacts add column secret text'],
+        rollbackStatements: ['alter table contacts drop column secret'],
+        nested: [{
+          sql_statements: ['legacy snake case'],
+          rollback_statements: ['legacy snake case rollback'],
+          keep: true,
+        }],
+      },
+    ]) as Array<{ status: string; nested: Array<Record<string, unknown>> }>
+
+    expect(result[0]).not.toHaveProperty('sqlStatements')
+    expect(result[0]).not.toHaveProperty('rollbackStatements')
+    expect(result[0]!.status).toBe('applied')
+    expect(result[0]!.nested[0]).not.toHaveProperty('sql_statements')
+    expect(result[0]!.nested[0]).not.toHaveProperty('rollback_statements')
+    expect(result[0]!.nested[0]!.keep).toBe(true)
+  })
+})

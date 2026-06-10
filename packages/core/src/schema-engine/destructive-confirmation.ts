@@ -3,6 +3,11 @@ import { z } from 'zod'
 import { createOrbitError } from '../types/errors.js'
 
 const CHECKSUM_PATTERN = /^[a-f0-9]{64}$/
+
+/** Destructive confirmations expire 15 minutes after they were issued. */
+export const DESTRUCTIVE_CONFIRMATION_TTL_MS = 15 * 60 * 1000
+/** Tolerated future clock skew for `confirmedAt` timestamps. */
+export const DESTRUCTIVE_CONFIRMATION_FUTURE_SKEW_MS = 60 * 1000
 const PRODUCTION_LIKE_ENVIRONMENTS = new Set(['production', 'staging'])
 const destructiveMigrationEnvironmentSchema = z.enum(['development', 'test', 'staging', 'production'])
 
@@ -55,6 +60,8 @@ export interface DestructiveConfirmationInput {
   confirmation?: DestructiveConfirmation | undefined
   runtimeEnvironment?: DestructiveMigrationEnvironment | undefined
   requireRuntimeEnvironment?: boolean | undefined
+  /** Internal/test-only clock injection for deterministic freshness checks. */
+  now?: Date | undefined
 }
 
 export function assertDestructiveConfirmation(input: DestructiveConfirmationInput): void {
@@ -82,6 +89,8 @@ export function assertDestructiveConfirmation(input: DestructiveConfirmationInpu
     })
   }
 
+  assertConfirmationFreshness(input.checksum, input.confirmation.confirmedAt, input.now ?? new Date())
+
   const missingSafeguards = missingProductionSafeguards(
     input.confirmation.safeguards,
     input.runtimeEnvironment,
@@ -96,6 +105,43 @@ export function assertDestructiveConfirmation(input: DestructiveConfirmationInpu
         checksum: input.checksum,
         missingSafeguards,
       },
+    })
+  }
+}
+
+function assertConfirmationFreshness(checksum: string, confirmedAt: string, now: Date): void {
+  const confirmedAtMs = new Date(confirmedAt).getTime()
+  const staleDetails = {
+    checksum,
+    confirmedAt,
+    now: now.toISOString(),
+    expiresAt: Number.isNaN(confirmedAtMs)
+      ? null
+      : new Date(confirmedAtMs + DESTRUCTIVE_CONFIRMATION_TTL_MS).toISOString(),
+  }
+
+  if (Number.isNaN(confirmedAtMs)) {
+    throw createOrbitError({
+      code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+      message: 'Destructive schema migration confirmation timestamp is not a valid datetime',
+      details: staleDetails,
+    })
+  }
+
+  const nowMs = now.getTime()
+  if (confirmedAtMs - nowMs > DESTRUCTIVE_CONFIRMATION_FUTURE_SKEW_MS) {
+    throw createOrbitError({
+      code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+      message: 'Destructive schema migration confirmation timestamp is in the future beyond tolerated clock skew',
+      details: staleDetails,
+    })
+  }
+
+  if (nowMs - confirmedAtMs > DESTRUCTIVE_CONFIRMATION_TTL_MS) {
+    throw createOrbitError({
+      code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+      message: 'Destructive schema migration confirmation has expired; request a fresh preview confirmation',
+      details: staleDetails,
     })
   }
 }

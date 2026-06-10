@@ -74,10 +74,16 @@ const STANDARD_GET_ERRORS = {
 
 const STANDARD_MIGRATION_ERRORS = {
   '400': errorResponse('Validation error — request body failed strict schema validation'),
-  '409': errorResponse('Conflict — confirmation, checksum, idempotency, or migration precondition failure'),
-  '412': errorResponse('Rollback precondition failed'),
+  '409': errorResponse('Conflict — confirmation, checksum, idempotency, or migration precondition failure; includes expired or future-dated destructive confirmations rejected with DESTRUCTIVE_CONFIRMATION_STALE'),
   '503': errorResponse('Migration authority unavailable in this API process'),
   ...STANDARD_AUTH_ERRORS,
+}
+
+// 412 (ROLLBACK_PRECONDITION_FAILED) is only produced by the rollback route,
+// so it is documented there alone rather than in STANDARD_MIGRATION_ERRORS.
+const ROLLBACK_MIGRATION_ERRORS = {
+  ...STANDARD_MIGRATION_ERRORS,
+  '412': errorResponse('Rollback precondition failed'),
 }
 
 const checksumSchema = {
@@ -664,7 +670,7 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
       },
       responses: {
         '200': envelopeDataResponse('Schema migration rollback result', { $ref: '#/components/schemas/SchemaMigrationRollbackResponse' }),
-        ...STANDARD_MIGRATION_ERRORS,
+        ...ROLLBACK_MIGRATION_ERRORS,
       },
     },
   }
@@ -854,7 +860,11 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
           properties: {
             destructive: { const: true },
             checksum: checksumSchema,
-            confirmedAt: { type: 'string', format: 'date-time' },
+            confirmedAt: {
+              type: 'string',
+              format: 'date-time',
+              description: 'When the destructive operation was confirmed. Enforced with a 15-minute freshness window: confirmations older than 15 minutes, or more than 60 seconds in the future (tolerated clock skew), are rejected with DESTRUCTIVE_CONFIRMATION_STALE.',
+            },
             safeguards: { $ref: '#/components/schemas/DestructiveSafeguards' },
           },
         },
@@ -888,7 +898,11 @@ export function generateOpenApiSpec(info: OpenApiInfo): Record<string, unknown> 
             instructions: { type: 'string', minLength: 1 },
             destructiveOperations: { type: 'array', items: { type: 'string' } },
             checksum: checksumSchema,
-            expiresAt: { type: 'string', format: 'date-time' },
+            expiresAt: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Populated on destructive preview responses. Advisory deadline anchored at preview time (preview time + 15 minutes). Enforcement is anchored at confirmedAt + 15 minutes, so a confirmation issued later than the preview can remain valid past this advertised expiry.',
+            },
           },
         },
         DestructiveRollbackDecision: {

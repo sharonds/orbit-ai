@@ -37,6 +37,7 @@ import { buildCalendarCommands } from '@orbit-ai/integrations/google-calendar'
 import { buildStripeCommands } from '@orbit-ai/integrations/stripe'
 import { resolveIntegrationsRuntime } from './config/integrations-runtime.js'
 import type { IntegrationCommand, CliRuntimeContext } from '@orbit-ai/integrations'
+import { isSchemaMigrationInternalField } from '@orbit-ai/core'
 
 let _jsonMode = false
 let _sigintHandler: (() => void) | null = null
@@ -57,6 +58,20 @@ export function _setJsonMode(value: boolean): void {
 
 // test-only export
 export { classifyError as _classifyError }
+
+function sanitizeCliErrorPayload(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeCliErrorPayload(item))
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([key]) => !isSchemaMigrationInternalField(key))
+        .map(([key, nested]) => [key, sanitizeCliErrorPayload(nested)]),
+    )
+  }
+  return value
+}
 
 function classifyError(error: unknown): { code: number; payload: Record<string, unknown> } {
   if (error instanceof CliNotImplementedError) {
@@ -128,7 +143,10 @@ function classifyError(error: unknown): { code: number; payload: Record<string, 
       request_id?: string
       error?: Record<string, unknown>
     }
-    const envelopeError = e.error && typeof e.error === 'object' ? e.error : {}
+    const envelopeError =
+      e.error && typeof e.error === 'object'
+        ? (sanitizeCliErrorPayload(e.error) as Record<string, unknown>)
+        : {}
     return {
       code: 1,
       payload: {

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  DESTRUCTIVE_CONFIRMATION_FUTURE_SKEW_MS,
+  DESTRUCTIVE_CONFIRMATION_TTL_MS,
+  assertDestructiveConfirmation,
+  destructiveConfirmationSchema,
+  type DestructiveConfirmation,
+} from './destructive-confirmation.js'
+import {
   computeSchemaMigrationChecksum,
   schemaMigrationApplyInputSchema,
   schemaMigrationChecksumSchema,
@@ -226,5 +233,130 @@ describe('schema migration domain contracts', () => {
         defaultValue: 'Enterprise plan',
       }],
     }).success).toBe(true)
+  })
+})
+
+describe('destructive confirmation freshness contract', () => {
+  const checksum = '0'.repeat(64)
+  const now = new Date('2026-06-10T12:00:00.000Z')
+
+  function confirmationAt(confirmedAt: string): DestructiveConfirmation {
+    return { destructive: true, checksum, confirmedAt } as DestructiveConfirmation
+  }
+
+  function assertAt(confirmedAt: string, at: Date = now): void {
+    assertDestructiveConfirmation({
+      destructiveOperations: ['column.drop'],
+      checksum,
+      confirmation: confirmationAt(confirmedAt),
+      now: at,
+    })
+  }
+
+  it('rejects confirmations missing confirmedAt at schema parse time', () => {
+    expect(destructiveConfirmationSchema.safeParse({
+      destructive: true,
+      checksum,
+    }).success).toBe(false)
+  })
+
+  it('rejects confirmations with an invalid confirmedAt timestamp', () => {
+    let caught: unknown
+    try {
+      assertAt('not-a-timestamp')
+    } catch (err) {
+      caught = err
+    }
+    expect(caught).toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+      details: {
+        checksum,
+        confirmedAt: 'not-a-timestamp',
+        now: now.toISOString(),
+        expiresAt: null,
+      },
+    })
+  })
+
+  it('rejects confirmations just over fifteen minutes old', () => {
+    const confirmedAt = new Date(now.getTime() - DESTRUCTIVE_CONFIRMATION_TTL_MS - 1)
+    let caught: unknown
+    try {
+      assertAt(confirmedAt.toISOString())
+    } catch (err) {
+      caught = err
+    }
+    expect(caught).toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+      details: {
+        checksum,
+        confirmedAt: confirmedAt.toISOString(),
+        now: now.toISOString(),
+        expiresAt: new Date(confirmedAt.getTime() + DESTRUCTIVE_CONFIRMATION_TTL_MS).toISOString(),
+      },
+    })
+  })
+
+  it('accepts confirmations exactly fifteen minutes old', () => {
+    const confirmedAt = new Date(now.getTime() - DESTRUCTIVE_CONFIRMATION_TTL_MS)
+    expect(() => assertAt(confirmedAt.toISOString())).not.toThrow()
+  })
+
+  it('accepts confirmations thirty seconds in the future', () => {
+    const confirmedAt = new Date(now.getTime() + 30_000)
+    expect(() => assertAt(confirmedAt.toISOString())).not.toThrow()
+  })
+
+  it('accepts confirmations exactly sixty seconds in the future', () => {
+    const confirmedAt = new Date(now.getTime() + DESTRUCTIVE_CONFIRMATION_FUTURE_SKEW_MS)
+    expect(() => assertAt(confirmedAt.toISOString())).not.toThrow()
+  })
+
+  it('rejects confirmations sixty-one seconds in the future', () => {
+    const confirmedAt = new Date(now.getTime() + DESTRUCTIVE_CONFIRMATION_FUTURE_SKEW_MS + 1_000)
+    let caught: unknown
+    try {
+      assertAt(confirmedAt.toISOString())
+    } catch (err) {
+      caught = err
+    }
+    expect(caught).toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+      details: {
+        checksum,
+        confirmedAt: confirmedAt.toISOString(),
+        now: now.toISOString(),
+        expiresAt: new Date(confirmedAt.getTime() + DESTRUCTIVE_CONFIRMATION_TTL_MS).toISOString(),
+      },
+    })
+  })
+
+  it('accepts a current confirmation without an injected clock', () => {
+    expect(() => assertDestructiveConfirmation({
+      destructiveOperations: ['column.drop'],
+      checksum,
+      confirmation: confirmationAt(new Date().toISOString()),
+    })).not.toThrow()
+  })
+
+  it('keeps checksum mismatch as the first stale rejection with its existing detail shape', () => {
+    let caught: unknown
+    try {
+      assertDestructiveConfirmation({
+        destructiveOperations: ['column.drop'],
+        checksum,
+        confirmation: { destructive: true, checksum: 'f'.repeat(64), confirmedAt: 'not-a-timestamp' } as DestructiveConfirmation,
+        now,
+      })
+    } catch (err) {
+      caught = err
+    }
+    expect(caught).toMatchObject({
+      code: 'DESTRUCTIVE_CONFIRMATION_STALE',
+      details: {
+        checksum,
+        confirmationChecksum: 'f'.repeat(64),
+      },
+    })
   })
 })
