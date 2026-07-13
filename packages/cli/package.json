@@ -60,7 +60,7 @@
     "@types/pg": "^8.15.5",
     "@types/react": "^18.0.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.9.3",
-    "vitest": "^3.2.6"
+    "typescript": "^7.0.2",
+    "vitest": "^3.2.7"
   }
 }
