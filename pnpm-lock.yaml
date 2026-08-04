@@ -109,7 +109,7 @@ importers:
         version: link:../core
       hono:
         specifier: ^4.12.21
-        version: 4.12.25
+        version: 4.12.34
       zod:
         specifier: ^4.1.11
         version: 4.3.6
@@ -1561,6 +1561,10 @@ packages:
 
   hono@4.12.25:
     resolution: {integrity: sha512-2NFaIyNVgJmBs/ecmtGzlmluTFs5cHEWGTdu0t1HBwYzoGXOL5nUQBRMXsXWla5i4KkG//QMzVP88m1+I3fdAQ==}
+    engines: {node: '>=16.9.0'}
+
+  hono@4.12.34:
+    resolution: {integrity: sha512-GqXJqY/xJkJmuloTrnV1ZEXG3fqte+VjkUqoRNZXcrUidiUOP4fMSIHHY4tsqZBK++kVyWmt/AAfSUuy57/eSA==}
     engines: {node: '>=16.9.0'}
 
   http-errors@2.0.1:
@@ -3780,6 +3784,8 @@ snapshots:
       function-bind: 1.1.2
 
   hono@4.12.25: {}
+
+  hono@4.12.34: {}
 
   http-errors@2.0.1:
     dependencies:
