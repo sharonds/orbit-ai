@@ -1,13 +1,15 @@
 version: 2
 updates:
   - package-ecosystem: npm
+    # Version-update PRs off: each PR runs paid CI and review. Vulnerabilities
+    # still raise Dependabot alerts (email); fix those by hand in a normal PR.
+    open-pull-requests-limit: 0
     directory: /
     schedule:
       interval: weekly
       day: monday
       time: "09:00"
       timezone: Europe/Amsterdam
-    open-pull-requests-limit: 3
     groups:
       development-dependencies:
         dependency-type: development
@@ -17,10 +19,12 @@ updates:
           - "vitest"
 
   - package-ecosystem: github-actions
+    # Version-update PRs off: each PR runs paid CI and review. Vulnerabilities
+    # still raise Dependabot alerts (email); fix those by hand in a normal PR.
+    open-pull-requests-limit: 0
     directory: /
     schedule:
       interval: weekly
       day: monday
       time: "09:30"
       timezone: Europe/Amsterdam
-    open-pull-requests-limit: 1
